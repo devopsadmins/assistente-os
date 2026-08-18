@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Assistente OS</title>
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAACXBIwXAAAASAwardAAAAAGlUAAAK8wC/AAAxEBEwXqAAAAAElFTkSuQmCC" />
+<link rel="manifest" href="/manifest.json" />
+<link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+<svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-menu" viewBox="0 0 24 24">
+    <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-close" viewBox="0 0 24 24">
+    <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-dashboard" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="7" height="7" rx="1.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+  </symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24">
+    <path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 3.5V16H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    <circle cx="8.5" cy="10.5" r="1.4" fill="currentColor"/>
+    <circle cx="12" cy="10.5" r="1.4" fill="currentColor"/>
+    <circle cx="15.5" cy="10.5" r="1.4" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-memory" viewBox="0 0 24 24">
+    <ellipse cx="12" cy="5" rx="7" ry="2.6" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <path d="M5 5v14c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <path d="M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  </symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24">
+    <circle cx="5.5" cy="18" r="2.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="12" cy="6" r="2.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="18.5" cy="15" r="2.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <path d="M7.2 16.4 10.8 7.4M13.5 7.6l3.4 6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24">
+    <circle cx="11" cy="11" r="6.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <path d="m16 16 4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-send" viewBox="0 0 24 24">
+    <path d="M3.5 11 21 3l-6 17-3.5-6.5L3.5 11Z" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M21 3 11.5 13.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  </symbol>
+  <symbol id="i-soul" viewBox="0 0 24 24">
+    <rect x="5" y="8" width="14" height="10" rx="2.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <path d="M9 8V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="9.5" cy="13" r="1.3" fill="currentColor"/>
+    <circle cx="14.5" cy="13" r="1.3" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24">
+    <path d="M3 12h4l2-5 4 10 2-5h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle cx="19.5" cy="4.5" r="2" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.4"/>
+  </symbol>
+  <symbol id="i-cash" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5" fill="var(--icon-fill)" stroke="currentColor" stroke-width="1.6"/>
+    <path d="M15.5 9.5c-.6-1-1.9-1.5-3.5-1.5s-3 .8-3 2 1.1 1.6 3 2 3 .7 3 1.9-1.4 2.1-3 2.1-2.9-.6-3.5-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  </symbol>
+</svg>
+<div class="app">
+  <div class="mobile-header">
+    <div class="brand" style="border:none; padding:0;">
+      <img class="brand-logo" src="/assets/logo.png" alt="Assistente OS" style="width:32px;height:32px;" />
+      <div class="brand-text">
+        <h1><span class="prompt">&gt;_</span> Assistente OS</h1>
+      </div>
+    </div>
+    <button id="mobile-menu-btn" class="icon-btn" title="Menu"><svg class="ic"><use href="#i-menu"/></svg></button>
+  </div>
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
+  <aside class="sidebar">
+    <header class="brand">
+      <img class="brand-logo" src="/assets/logo.png" alt="Assistente OS" />
+      <div class="brand-text">
+        <h1><span class="prompt">&gt;_</span> Assistente OS</h1>
+        <span id="status-pill" class="pill pill-unknown">conectando…</span>
+      </div>
+    </header>
+    <div class="souls-header">
+      <span class="souls-title"><svg class="ic ic-sm"><use href="#i-search"/></svg>SOULS</span>
+      <input id="soul-filter" type="search" placeholder="buscar soul…" autocomplete="off" />
+    </div>
+    <ul id="soul-list" class="soul-list"></ul>
+    <footer class="sidebar-foot">
+      <span id="daemon-info">daemon: —</span>
+      <span id="ws-info">ws: —</span>
+    </footer>
+  </aside>
+
+  <main class="main">
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="dashboard"><svg class="ic"><use href="#i-dashboard"/></svg>C&C Node</button>
+      <button class="tab" data-tab="chat"><svg class="ic"><use href="#i-chat"/></svg>Chat</button>
+      <button class="tab" data-tab="memory"><svg class="ic"><use href="#i-memory"/></svg>Memória</button>
+      <button class="tab" data-tab="graph"><svg class="ic"><use href="#i-graph"/></svg>Grafo</button>
+      <button class="tab" data-tab="buffer"><svg class="ic"><use href="#i-pulse"/></svg>Buffer</button>
+      <button class="tab" data-tab="llm"><svg class="ic"><use href="#i-pulse"/></svg>Motores LLM</button>
+      <button class="tab" data-tab="mcp"><svg class="ic"><use href="#i-pulse"/></svg>MCP</button>
+      <button class="tab" data-tab="observability"><svg class="ic"><use href="#i-pulse"/></svg>Telemetria</button>
+    </nav>
+
+    <section id="tab-dashboard" class="panel active">
+      <div style="margin-bottom: 20px;">
+        <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Command & Control · Almas do Acervo</div>
+        <h2 style="font-size: 26px; color: var(--text-primary); margin: 0; font-weight: 700;">Consciências <span style="color: var(--neon-cyan); text-shadow: var(--glow-cyan);">em serviço</span></h2>
+        <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">Gerencie agentes (almas), sessões e memórias persistentes.<br/>Cada alma é um perfil vivo de conhecimento.</div>
+      </div>
+      
+      <div class="cards" id="cnc-cards">
+        <div class="stat-card"><div class="label">ALMAS / AGENTES</div><div class="value" id="cnc-almas" style="color: var(--neon-cyan); text-shadow: var(--glow-cyan);">0</div></div>
+        <div class="stat-card"><div class="label">SESSÕES TOTAIS</div><div class="value" id="cnc-sessoes" style="color: var(--neon-cyan); text-shadow: var(--glow-cyan);">0</div></div>
+        <div class="stat-card"><div class="label">ALMA ATIVA</div><div class="value" id="cnc-ativa" style="color: var(--neon-cyan); text-shadow: var(--glow-cyan);">—</div></div>
+        <div class="stat-card"><div class="label">MOTOR ATIVO</div><div class="value" id="cnc-motor" style="color: var(--neon-cyan); text-shadow: var(--glow-cyan);">—</div></div>
+      </div>
+      
+      <div class="cnc-layout">
+        <div class="cnc-left">
+          <div class="cnc-filters">
+            <button class="cnc-btn active">TODAS</button>
+            <button class="cnc-btn">ATIVA</button>
+            <button class="cnc-btn">INATIVAS</button>
+          </div>
+          <div id="cnc-soul-list" class="cnc-soul-list">
+             <!-- Soul Cards -->
+          </div>
+        </div>
+        <div class="cnc-right">
+           <canvas id="network-canvas"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-chat" class="panel">
+      <div class="chat-head">
+        <h2 id="chat-title">Chat</h2>
+        <label class="model-field">modelo
+          <input id="chat-model" type="text" placeholder="ex.: nemotron-3-ultra-free" />
+        </label>
+        <button id="chat-buffer" type="button" title="Inspecionar o buffer da soul (contexto montado)">Ver buffer</button>
+        <div id="voice-controls" class="voice-controls">
+          <button id="voice-toggle" type="button" class="voice-btn" title="Iniciar/Parar voz">
+            <svg class="ic" id="voice-icon-off"><use href="#i-pulse"/></svg>
+            <svg class="ic" id="voice-icon-on" style="display:none;color:#00ff9d"><use href="#i-pulse"/></svg>
+          </button>
+          <span id="voice-status" class="voice-status">Voz: off</span>
+        </div>
+      </div>
+      <div id="voice-transcript" class="voice-transcript" style="display:none"></div>
+      <div id="chat-log" class="chat-log"></div>
+      <form id="chat-form" class="chat-form" autocomplete="off" style="margin-top:8px">
+        <textarea id="chat-input" rows="2" placeholder="Escreva para a soul… (Enter envia, Shift+Enter quebra linha)"></textarea>
+        <button id="chat-send" type="submit"><svg class="ic"><use href="#i-send"/></svg>Enviar</button>
+      </form>
+    </section>
+
+    <section id="tab-memory" class="panel">
+      <h2>Memória</h2>
+      <div id="memory-status" class="box"></div>
+
+      <div id="upload-box" class="box">
+        <h3>Upload de arquivos</h3>
+        <form id="upload-form" class="chat-form" autocomplete="off">
+          <input id="upload-input" type="file" multiple accept="*/*,.zip" />
+          <button type="submit">Enviar</button>
+        </form>
+        <span class="muted">arquivos individuais ou .zip (extraído automaticamente) — vão pra sources/uploads/ da soul selecionada e reindexam sozinhos ao terminar.</span>
+        <div id="upload-result"></div>
+      </div>
+
+      <form id="memory-form" class="chat-form" autocomplete="off">
+        <input id="memory-query" type="text" placeholder="buscar na memória da soul…" />
+        <button type="submit">Buscar</button>
+      </form>
+      <div id="memory-results" class="box results"></div>
+    </section>
+
+    <section id="tab-buffer" class="panel">
+      <h2>Buffer Inspector</h2>
+      <div id="buffer-box" class="box">
+        <span class="muted">clique em "Ver buffer" no Chat ou selecione uma soul para inspecionar o contexto.</span>
+      </div>
+    </section>
+
+    <section id="tab-llm" class="panel">
+      <h2>Motores LLM (Ollama)</h2>
+      <div id="router-box" class="box" style="margin-bottom: 15px;"></div>
+      <div id="llm-list" class="box results">
+        <span class="muted">Carregando modelos...</span>
+      </div>
+    </section>
+
+    <section id="tab-mcp" class="panel">
+      <h2>Servidores MCP</h2>
+      <div id="mcp-list" class="box results">
+        <span class="muted">Carregando MCPs...</span>
+      </div>
+    </section>
+
+    <section id="tab-graph" class="panel">
+      <h2>Grafo da soul</h2>
+      <div class="graph-cols">
+        <div class="box">
+          <h3>Entidades</h3>
+          <ul id="graph-entities" class="graph-list"></ul>
+        </div>
+        <div class="box">
+          <h3>Relações</h3>
+          <ul id="graph-relations" class="graph-list"></ul>
+        </div>
+        <div class="box">
+          <h3>Observações</h3>
+          <ul id="graph-observations" class="graph-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-observability" class="panel">
+      <h2>Infraestrutura</h2>
+      <div class="cards" id="infra-cards"></div>
+      <h2>Eventos</h2>
+      <div id="events-box" class="box"></div>
+      <h2>Execuções recentes</h2>
+      <div id="executions-box" class="box"></div>
+      <h2>Monitor de sites</h2>
+      <form id="monitor-form" class="chat-form" autocomplete="off">
+        <input id="monitor-name" type="text" placeholder="nome (ex.: portal)" />
+        <input id="monitor-url" type="text" placeholder="https://…" />
+        <input id="monitor-code" type="number" value="200" title="código HTTP esperado (0 = qualquer)" style="width:80px" />
+        <button type="submit"><svg class="ic"><use href="#i-send"/></svg>Adicionar</button>
+      </form>
+      <div style="display:flex;gap:8px;margin:10px 0">
+        <button id="monitor-check" type="button">Checar agora</button>
+      </div>
+      <div id="monitors-box" class="box"></div>
+    </section>
+  </main>
+</div>
+<script src="/assets/app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(registration => {
+      console.log('SW registrada:', registration.scope);
+    })
+    .catch(err => {
+      console.error('Falha ao registrar SW:', err);
+    });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "writers-room-story-engine",
+  "installedVersion": "1.0.1",
+  "installedAt": 1784157237191,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "8f5fd49745364e9017a6672461c3932240edff359daccbac468e1d7b76961644",
+    "integrity": "sha256-j1/Ul0U2TpAXpmckYcOTIkDt/zWdrMusRo4de3aWFkQ="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "c6ce6280571b894ed17cc73c514acb18ac7e76c1fa0dd508e2944fdc77640e07"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "the-storytellers-workbench",
+  "installedVersion": "1.0.0",
+  "installedAt": 1784157235758,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "6e6ba1405fd65a0867c36d400276d2f62a8f6875912bacec8a9f19c19a4ad4ee",
+    "integrity": "sha256-bmuhQF/WWghnw21AAnbS9iqPaHWRK6zsip8ZwZpK1O4="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "c55df887716d8cb59890baa62ba7123f66dff377238529b4293343eabdbce620"
+  }
+}

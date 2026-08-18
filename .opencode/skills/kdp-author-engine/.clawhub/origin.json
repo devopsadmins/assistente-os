@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "kdp-author-engine",
+  "installedVersion": "1.0.3",
+  "installedAt": 1784157238478,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "e3127818dad9a66e214eb6ff61fc97c56edff82c652ac9004e9d99a97a9c5d51",
+    "integrity": "sha256-4xJ4GNrZpm4hTrb/YfyXxW7f+CxlKskATp2ZqXqcXVE="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "648b8f21311ada1b7fcee48edae130d4f1a13717ffd6c234712c126a11c8a3f2"
+  }
+}

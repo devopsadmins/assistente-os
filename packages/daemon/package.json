@@ -1,0 +1,24 @@
+{
+  "name": "@assistente-os/daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test": "node --test \"dist/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@assistente-os/core": "*",
+    "@assistente-os/memory": "*",
+    "@assistente-os/voice": "*",
+    "adm-zip": "^0.6.0",
+    "busboy": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/busboy": "^1.5.4"
+  }
+}

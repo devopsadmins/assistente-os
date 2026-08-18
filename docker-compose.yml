@@ -1,0 +1,57 @@
+services:
+  # Único serviço que a instalação "daemon nativo no Linux" precisa deste
+  # compose (o app em si continua sem Docker; Postgres é dependência de
+  # infra, igual ao Ollama). Exposto em 5432 pro daemon nativo alcançar via
+  # localhost:5432/DATABASE_URL — não só pela rede interna do compose.
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=assistente_os
+      - POSTGRES_PASSWORD=assistente_os
+      - POSTGRES_DB=assistente_os
+    ports:
+      - "5432:5432"
+    volumes:
+      - assistente_os_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assistente_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Só necessário se você optar por rodar o daemon em Docker também (ver
+  # docs/ARCHITECTURE.md — o padrão recomendado no Linux é daemon nativo).
+  daemon:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4310:4310"
+    volumes:
+      - ~/.assistant-os:/root/.assistant-os
+    environment:
+      - ASSISTENTE_OS_HOME=/root/.assistant-os
+      - AOS_HOST=0.0.0.0
+      - AOS_PORT=4310
+      - DATABASE_URL=postgres://assistente_os:assistente_os@postgres:5432/assistente_os
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_CHAT_MODEL=llama3.2
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - VOICE_ENABLED=${VOICE_ENABLED:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=eyJhIjoiMzgwMDE2MjU4M2YyMzk2NjM1MjNkNDNhNDUxMTZiYTYiLCJ0IjoiMGYzZWQ4NGEtN2NjNC00MTE4LTk1MDktNzM5MjY0NjE2MjI1IiwicyI6ImdZRldsYTRMVHlDWUFrSnNIdjQvQ2swamk2KzhFdlpZaWFCQ2JVelA0azdyVWRSeTBtN3BObnhwTEw1Ty9rejJZLzg1RUc4Z296Unp5ZmJOWk1MWFJ3PT0ifQ==
+    depends_on:
+      - daemon
+
+volumes:
+  assistente_os_pgdata:

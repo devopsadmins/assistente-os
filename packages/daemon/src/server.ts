@@ -1,0 +1,1094 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
+import { statSync, readFileSync, existsSync } from "node:fs";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
+import {
+  loadConfig,
+  getPool,
+  runMigrations,
+  recordCostCall,
+  route,
+  anotar,
+  registrarLicao,
+  decidir,
+  getSoul,
+  todayISODate,
+  sumCostBySoul,
+  addEvent,
+  recentEvents,
+  verifyRequest,
+  openSession,
+  bumpSessionPrompt,
+  recordExecution,
+  eventStats,
+  listExecutions,
+  addMonitor,
+  listMonitors,
+  deleteMonitor,
+  getMonitor,
+  addAgendaItem,
+  getAgendaItems,
+  logger,
+  type EventRecord,
+  type MonitorRecord,
+  type AgendaItem,
+  type RouterProbe,
+} from "@assistente-os/core";
+import { indexFile, indexStats, search, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, OllamaEmbedder, LiteralEmbedder } from "@assistente-os/memory";
+import { handleUpload } from "./upload.js";
+import { buildPrompt } from "./context.js";
+import { processPendingEvents } from "./events.js";
+import { processDueAgenda } from "./agenda.js";
+import { checkMonitors } from "./monitors.js";
+import { relevanceRule } from "./relevance.js";
+import { VoiceHandler } from "./voice.js";
+
+/**
+ * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
+ * Sem dependências: `node:http`/`node:crypto`/`node:net`. Envia eventos JSON
+ * a todos os clientes conectados. Frames servidor->cliente são SEM máscara
+ * (RFC6455 exige máscara apenas cliente->servidor).
+ */
+export class WsHub {
+  private clients = new Set<Duplex>();
+  private server: ReturnType<typeof createServer>;
+
+  constructor(server: ReturnType<typeof createServer>) {
+    this.server = server;
+    server.on("upgrade", (req, socket) => {
+      const key = req.headers["sec-websocket-key"];
+      if (typeof key !== "string" || req.headers["sec-websocket-version"] !== "13") {
+        socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      const accept = createHash("sha1")
+        .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+        .digest("base64");
+      socket.write(
+        "HTTP/1.1 101 Switching Protocols\r\n" +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          `Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
+      );
+      this.clients.add(socket);
+      socket.on("close", () => this.clients.delete(socket));
+      socket.on("error", () => this.clients.delete(socket));
+    });
+  }
+
+  /** Envia um evento JSON a todos os clientes (sem máscara, como exige o servidor). */
+  broadcast(event: Record<string, unknown>): void {
+    const frame = encodeTextFrame(JSON.stringify(event));
+    for (const client of this.clients) {
+      if (client.writable) client.write(frame);
+    }
+  }
+
+  get clientCount(): number {
+    return this.clients.size;
+  }
+}
+
+/** Enquadra um texto em frame WS texto, sem máscara (servidor -> cliente). */
+export function encodeTextFrame(payload: string): Buffer {
+  const data = Buffer.from(payload, "utf8");
+  let header: Buffer;
+  if (data.length < 126) {
+    header = Buffer.from([0x81, data.length]);
+  } else if (data.length < 65536) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(data.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(data.length), 2);
+  }
+  return Buffer.concat([header, data]);
+}
+
+export interface DaemonOptions {
+  port?: number;
+  home: string;
+  /** Por segurança o daemon só escuta localhost por padrão. */
+  host?: string;
+  /** Necessário para escutar fora de localhost. Enviado como Bearer token. */
+  token?: string;
+  /** Injeção para testes; em produção usa runOpenCode. */
+  run?: (prompt: string, options: Parameters<typeof runOpenCode>[1]) => Promise<OpenCodeRunResult>;
+  /** Diretório com os arquivos estáticos da interface web (padrão: packages/daemon/web). */
+  webDir?: string;
+  /** Habilita o módulo de voz (padrão: false). */
+  voiceEnabled?: boolean;
+}
+
+export interface DaemonHandle {
+  port: number;
+  hub: WsHub;
+  voice?: VoiceHandler;
+  close: () => Promise<void>;
+}
+
+/**
+ * Daemon API-first do Assistente OS.
+ * Rotas:
+ *   GET  /health                -> status + souls
+ *   GET  /souls                 -> lista de souls
+ *   GET  /souls/:id             -> detalhe da soul
+ *   GET  /souls/:id/context     -> perfil/contexto/licoes/pessoas concatenados
+ *   POST /souls/:id/chat        -> body { prompt, model?, timeoutSeconds? } roda opencode run headless
+ *   GET  /router/status         -> degraus do roteador
+ *   GET  /costs                 -> resumo de custos do kernel.db
+ */
+export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle> {
+  const { port = 4310, home, host = "127.0.0.1" } = options;
+  const token = options.token ?? process.env.ASSISTENTE_OS_DAEMON_TOKEN;
+  if (!isLoopback(host) && !token) {
+    logger.warn("AVISO: Daemon escutando fora de localhost sem ASSISTENTE_OS_DAEMON_TOKEN configurado. Certifique-se de que está protegido por um proxy/tunnel.");
+  }
+  const startupConfig = loadConfig({ home });
+  const applied = await runMigrations(getPool(startupConfig.databaseUrl));
+  if (applied.length > 0) logger.info({ applied }, "migrações do banco aplicadas");
+  const webDir = options.webDir ?? defaultWebDir();
+  const server = createServer(async (req, res) => {
+    try {
+      await handle(req, res, { home, token, run: options.run ?? runOpenCode, hub, webDir, onEventDone, onAgendaDone, voiceHandler });
+    } catch (err) {
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+  const hub = new WsHub(server);
+  
+  // Voice handler (opcional)
+  let voiceHandler: VoiceHandler | undefined;
+  if (options.voiceEnabled) {
+    voiceHandler = new VoiceHandler({
+      home,
+      hub,
+      // onChat é definido dinamicamente no /voice/start com a soul do request
+    });
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("daemon não informou uma porta TCP após iniciar");
+  }
+  const actualPort = address.port;
+  const runFn = options.run ?? runOpenCode;
+  const onEventDone = (event: { id: number; type: string; soul: string | null; status: string }) => {
+    try {
+      hub.broadcast({ type: "event.processed", event });
+    } catch {
+      /* ws opcional */
+    }
+  };
+  const onAgendaDone = (item: { id: number; title: string; soul: string | null; status: string }) => {
+    try {
+      hub.broadcast({ type: "agenda.processed", item });
+    } catch {
+      /* ws opcional */
+    }
+  };
+  // Loops de observabilidade em background (unref: não seguram o processo).
+  const monitorTimer = setInterval(() => {
+    void checkMonitors(home)
+      .then((monitors) => {
+        try {
+          hub.broadcast({ type: "monitor.updated", monitors });
+        } catch {
+          /* ws opcional */
+        }
+      })
+      .catch(() => {});
+  }, 60_000);
+  monitorTimer.unref?.();
+  const eventTimer = setInterval(() => {
+    void processPendingEvents({ home, run: runFn, onDone: onEventDone }).catch(() => {});
+  }, 30_000);
+  eventTimer.unref?.();
+  const agendaTimer = setInterval(() => {
+    void processDueAgenda({ home, run: runFn, onDone: onAgendaDone }).catch(() => {});
+  }, 30_000);
+  agendaTimer.unref?.();
+  return {
+    port: actualPort,
+    hub,
+    voice: voiceHandler,
+    close: () =>
+      new Promise<void>((resolve) => {
+        clearInterval(monitorTimer);
+        clearInterval(eventTimer);
+        clearInterval(agendaTimer);
+        voiceHandler?.stop();
+        server.close(() => resolve());
+      }),
+  };
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(body));
+}
+
+/**
+ * Sonda barata e segura de repetir (não executa o prompt): só o degrau `local`
+ * (provider "ollama") tem um jeito de checar disponibilidade sem custo —
+ * `GET /api/tags` não roda inferência. Degraus `zen`/`soul` não têm um health
+ * check equivalente pelo daemon (dependem do provider configurado no
+ * opencode.json), então são considerados disponíveis; falhas reais neles só
+ * aparecem na execução de fato (após route() já ter escolhido o degrau).
+ */
+function makeLocalFallbackProbe(ollamaUrl: string): RouterProbe {
+  return async (target) => {
+    if (target.provider !== "ollama") return { ok: true };
+    let baseUrl = ollamaUrl;
+    if (baseUrl.includes("host.docker.internal")) {
+      baseUrl = baseUrl.replace("host.docker.internal", "192.168.65.254");
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      return res.ok ? { ok: true } : { ok: false, reason: `HTTP ${res.status}` };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+  };
+}
+
+/**
+ * Chama o /api/chat do Ollama via node:http. O fetch() do Node (undici) aborta
+ * com "fetch failed" após 300s aguardando os headers da resposta — tempo que um
+ * modelo local em CPU pode exceder só no prompt eval. Aqui o único limite é o
+ * timeoutMs do chamador (o timeoutSeconds da requisição de chat).
+ */
+function ollamaChat(
+  baseUrl: string,
+  payload: unknown,
+  timeoutMs: number,
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean }> {
+  return new Promise((resolvePromise) => {
+    let url: URL;
+    try {
+      url = new URL("/api/chat", baseUrl);
+    } catch {
+      resolvePromise({ code: 1, stdout: "", stderr: `OLLAMA_URL inválida: ${baseUrl}`, timedOut: false });
+      return;
+    }
+    const body = JSON.stringify(payload);
+    let timedOut = false;
+    const req = httpRequest(
+      {
+        hostname: url.hostname,
+        port: url.port || 80,
+        path: url.pathname,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => (data += chunk));
+        res.on("end", () => {
+          if ((res.statusCode ?? 0) >= 400) {
+            resolvePromise({ code: 1, stdout: "", stderr: `Ollama HTTP ${res.statusCode}: ${data.slice(0, 300)}`, timedOut: false });
+            return;
+          }
+          try {
+            const parsed = JSON.parse(data) as { message?: { content?: string } };
+            resolvePromise({ code: 0, stdout: parsed.message?.content || "(sem resposta)", stderr: "", timedOut: false });
+          } catch {
+            resolvePromise({ code: 1, stdout: "", stderr: `resposta inválida do Ollama: ${data.slice(0, 200)}`, timedOut: false });
+          }
+        });
+      },
+    );
+    // Resposta não-streaming: nenhum byte chega antes da resposta completa,
+    // então o timeout de inatividade do socket equivale ao timeout total.
+    req.setTimeout(timeoutMs, () => {
+      timedOut = true;
+      req.destroy(new Error(`Ollama não respondeu em ${Math.round(timeoutMs / 1000)}s`));
+    });
+    req.on("error", (err) => resolvePromise({ code: 1, stdout: "", stderr: err.message, timedOut }));
+    req.end(body);
+  });
+}
+
+interface RequestContext {
+  home: string;
+  token?: string;
+  run: DaemonOptions["run"];
+  hub: WsHub;
+  webDir: string;
+  onEventDone: (event: { id: number; type: string; soul: string | null; status: string }) => void;
+  onAgendaDone: (item: { id: number; title: string; soul: string | null; status: string }) => void;
+  voiceHandler?: VoiceHandler;
+}
+
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
+};
+
+/** Serve arquivo estático da interface web (index.html em /, assets sob /assets). */
+function serveStatic(req: IncomingMessage, res: ServerResponse, webDir: string): boolean {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const pathname = url.pathname;
+  if (!pathname.startsWith("/assets/") && pathname !== "/") return false;
+  const rel = pathname === "/" ? "index.html" : pathname.slice(1);
+  const target = normalize(resolve(webDir, rel));
+  const rootPrefix = webDir.endsWith(sep) ? webDir : webDir + sep;
+  if (target !== webDir && !target.startsWith(rootPrefix)) {
+    sendJson(res, 403, { error: "acesso negado" });
+    return true;
+  }
+  if (!existsSync(target) || !statSync(target).isFile()) {
+    sendJson(res, 404, { error: "não encontrado" });
+    return true;
+  }
+  const type = MIME[extname(target).toLowerCase()] ?? "application/octet-stream";
+  const body = readFileSync(target);
+  res.writeHead(200, {
+    "content-type": type,
+    "content-length": body.length,
+    "cache-control": pathname === "/" ? "no-cache" : "public, max-age=3600",
+  });
+  if (req.method === "HEAD") res.end();
+  else res.end(body);
+  return true;
+}
+
+async function handle(req: IncomingMessage, res: ServerResponse, context: RequestContext): Promise<void> {
+  const { home, token, run, hub, webDir, onEventDone, onAgendaDone, voiceHandler } = context;
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const path = url.pathname;
+
+  logger.info({ method: req.method, path }, "incoming request");
+
+  if (serveStatic(req, res, webDir)) return;
+
+  if (token && !isAuthorized(req, token)) {
+    logger.warn({ path, ip: req.socket.remoteAddress }, "unauthorized request");
+    sendJson(res, 401, { error: "não autorizado" });
+    return;
+  }
+
+  if (req.method === "GET" && path === "/health") {
+    const { listSouls } = await import("@assistente-os/core");
+    sendJson(res, 200, { ok: true, service: "assistente-os", souls: listSouls(home).map((s) => s.id) });
+    return;
+  }
+
+  if (req.method === "GET" && path === "/souls") {
+    const { listSouls } = await import("@assistente-os/core");
+    sendJson(res, 200, listSouls(home).map((s) => ({ id: s.id, config: s.config })));
+    return;
+  }
+
+  if (req.method === "GET" && path === "/costs") {
+    const { loadConfig, listSouls, recentCalls } = await import("@assistente-os/core");
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const bySoul: Record<string, number> = {};
+    for (const soul of listSouls(home)) bySoul[soul.id] = await sumCostBySoul(pool, soul.id);
+    sendJson(res, 200, { bySoul, recent: await recentCalls(pool, "main", 10) });
+    return;
+  }
+
+  const soulMatch = path.match(/^\/souls\/([^/]+)$/);
+  if (soulMatch && req.method === "GET") {
+    const { getSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(soulMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    sendJson(res, 200, soul);
+    return;
+  }
+
+  const contextMatch = path.match(/^\/souls\/([^/]+)\/context$/);
+  if (contextMatch && req.method === "GET") {
+    const { getSoul } = await import("@assistente-os/core");
+    const { readFileSync, existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const soul = getSoul(home, decodeURIComponent(contextMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    const files = ["perfil.md", "contexto.md", "licoes.md", "pessoas.md", "soul.md"];
+    const parts: string[] = [];
+    for (const f of files) {
+      const p = join(soul.dir, f);
+      if (existsSync(p)) parts.push(`# ${f}\n\n${readFileSync(p, "utf8")}`);
+    }
+    sendJson(res, 200, { soul: soul.id, context: parts.join("\n\n") });
+    return;
+  }
+
+  const bufferMatch = path.match(/^\/souls\/([^/]+)\/buffer$/);
+  if (bufferMatch && req.method === "GET") {
+    const soul = getSoul(home, decodeURIComponent(bufferMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    const config = loadConfig({ home });
+    const prompt = url.searchParams.get("prompt") ?? "";
+    const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule(), withRag: prompt.trim().length > 0 });
+    sendJson(res, 200, {
+      soul: soul.id,
+      builtAt: new Date().toISOString(),
+      files: built.files,
+      contextChars: built.contextChars,
+      tokenEstimate: Math.ceil(built.contextChars / 4),
+      ragVerdict: built.verdict,
+      systemPrompt: built.fullPrompt,
+    });
+    return;
+  }
+
+  const chatMatch = path.match(/^\/souls\/([^/]+)\/chat$/);
+  if (chatMatch && req.method === "POST") {
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
+    const body = parsed.body;
+    const prompt = body && typeof body.prompt === "string" ? body.prompt : "";
+    if (!prompt.trim()) return sendJson(res, 400, { error: "prompt é obrigatório" });
+    const timeoutSeconds = body && typeof body.timeoutSeconds === "number" ? body.timeoutSeconds : 300;
+    if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 600) {
+      return sendJson(res, 400, { error: "timeoutSeconds deve ser um inteiro entre 1 e 600" });
+    }
+    const requestedModel = body && typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined;
+    const memorizar = body && body.memorizar === true;
+    const soul = getSoul(home, decodeURIComponent(chatMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+
+    const config = await loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    {
+      // ---- Limites: teto diário de custo e turnos por sessão ----
+      const dailyLimit = soul.config.dailyLimit;
+      const maxTurns = soul.config.maxTurns ?? config.defaultMaxTurns;
+      const spentToday = await sumCostBySoul(pool, soul.id, todayISODate());
+      if (dailyLimit !== undefined && spentToday >= dailyLimit) {
+        return sendJson(res, 429, { error: "teto diário de gastos atingido", limit: dailyLimit, spent: spentToday });
+      }
+      const session = await openSession(pool, soul.id, maxTurns, dailyLimit);
+      // if (session.promptCount >= session.maxTurns) {
+      //   return sendJson(res, 429, { error: "limite de turnos da sessão atingido", maxTurns: session.maxTurns, prompts: session.promptCount });
+      // }
+      const promptsUsed = await bumpSessionPrompt(pool, session.id);
+
+      // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
+      const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule() });
+
+      // route() sonda cada degrau (sem executar o prompt) e cai para o próximo se o
+      // degrau local não responder; a execução real acontece uma única vez, abaixo,
+      // no degrau vencedor.
+      const decision = await route(pool, config, soul, makeLocalFallbackProbe(config.ollamaUrl), config.routerTiers);
+      const model = requestedModel ?? decision.target.model;
+      const startedAt = Date.now();
+      let result: { code: number; stdout: string; stderr: string; timedOut: boolean };
+      if (decision.target.provider === "ollama") {
+        let baseUrl = config.ollamaUrl;
+        if (baseUrl.includes("host.docker.internal")) {
+          baseUrl = baseUrl.replace("host.docker.internal", "192.168.65.254");
+        }
+        
+        const ollamaModel = (requestedModel ?? decision.target.model).replace(/^openai\//, "");
+        result = await ollamaChat(
+          baseUrl,
+          {
+            model: ollamaModel,
+            messages: [
+              { role: "system", content: built.fullPrompt.replace(prompt, "").trim() },
+              { role: "user", content: prompt },
+            ],
+            stream: false,
+          },
+          timeoutSeconds * 1000,
+        );
+      } else {
+        const env = { ...(process.env as Record<string, string>) };
+        result = await run!(built.fullPrompt, { cwd: soul.dir, model, timeoutSeconds, env });
+      }
+      await recordCostCall(pool, {
+        soul: soul.id,
+        provider: decision.target.provider,
+        model,
+        inputTokens: 0,
+        outputTokens: 0,
+        cost: 0,
+        status: result.code === 0 && !result.timedOut ? "ok" : "failed",
+        note: `tier=${decision.target.tier}; latency_ms=${Date.now() - startedAt}`,
+      });
+      await recordExecution(pool, {
+        sessionId: session.id,
+        soul: soul.id,
+        kind: "chat",
+        promptHash: createHash("sha256").update(prompt).digest("hex").slice(0, 16),
+        model,
+        tier: decision.target.tier,
+        filesLoaded: built.files.filter((f) => f.chars > 0).length,
+        contextChars: built.contextChars,
+        verdict: built.verdict == null ? undefined : JSON.stringify(built.verdict),
+        status: result.code === 0 && !result.timedOut ? "ok" : "failed",
+        note: `latency_ms=${Date.now() - startedAt}`,
+      });
+      // evento WS de conclusão (fire-and-forget; não bloqueia a resposta)
+      try {
+        hub.broadcast({ type: "chat.done", soul: soul.id, code: result.code, timedOut: result.timedOut, tier: decision.target.tier });
+      } catch {
+        /* ws opcional */
+      }
+
+      // Write-back opt-in: memorizar=true persiste um resumo da interação na sessão do dia.
+      // Nunca grava sobre falhas/timeout (result.code !== 0 || timedOut).
+      let memorizado = false;
+      if (memorizar && result.code === 0 && !result.timedOut) {
+        try {
+          anotar(soul.dir, `Interação: ${prompt.slice(0, 200)}${prompt.length > 200 ? "…" : ""}`);
+          memorizado = true;
+        } catch {
+          /* fall-through: chat responde mesmo se o write-back falhar */
+        }
+      }
+
+      sendJson(res, 200, {
+        ok: result.code === 0 && !result.timedOut,
+        soul: soul.id,
+        model,
+        tier: decision.target.tier,
+        code: result.code,
+        timedOut: result.timedOut,
+        stdout: result.stdout.slice(-2000),
+        stderr: result.stderr.slice(-1000),
+        routerReason: decision.reason,
+        ragVerdict: built.verdict,
+        memorizado,
+        limit: { dailyLimit: dailyLimit ?? null, spentToday, maxTurns, prompts: promptsUsed },
+      });
+    }
+    return;
+  }
+
+  // ----- Webhooks assinados: fila de eventos processados em background -----
+  if (req.method === "POST" && path === "/events") {
+    const config = loadConfig({ home });
+    if (!config.webhookSecret) {
+      return sendJson(res, 503, { error: "ASSISTENTE_OS_WEBHOOK_SECRET não configurado; HMAC é obrigatório" });
+    }
+    const raw = await readRawBody(req);
+    if (raw.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (raw.error === "invalid") return sendJson(res, 400, { error: "leitura do body falhou" });
+    const bodyBuffer = raw.body ?? Buffer.alloc(0);
+    const signature = req.headers["x-aos-signature"];
+    const ts = req.headers["x-aos-timestamp"];
+    const verified = verifyRequest(config.webhookSecret, bodyBuffer, signature as string | undefined, ts as string | undefined);
+    if (!verified.ok) return sendJson(res, 401, { error: verified.reason });
+    let body: { type?: unknown; payload?: unknown; soul?: unknown };
+    try {
+      body = JSON.parse(bodyBuffer.toString("utf8")) as { type?: unknown; payload?: unknown; soul?: unknown };
+    } catch {
+      return sendJson(res, 400, { error: "JSON inválido" });
+    }
+    const type = typeof body.type === "string" && body.type.trim() ? body.type.trim() : "";
+    if (!type) return sendJson(res, 400, { error: "type é obrigatório" });
+    const soul = typeof body.soul === "string" ? body.soul : null;
+    const pool = getPool(config.databaseUrl);
+    const ev: EventRecord = await addEvent(pool, { type, payload: body.payload, soul, signature: String(signature) });
+    // Consumo imediato em background; o loop periódico cobre reinícios/atrasos.
+    setImmediate(() => {
+      void processPendingEvents({ home, run, onDone: onEventDone }).catch(() => {});
+    });
+    try {
+      hub.broadcast({ type: "event.received", event: ev });
+    } catch {
+      /* ws opcional */
+    }
+    sendJson(res, 202, { id: ev.id, status: ev.status, type: ev.type, soul: ev.soul });
+    return;
+  }
+
+  if (req.method === "GET" && path === "/events") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    sendJson(res, 200, { stats: await eventStats(pool), recent: await recentEvents(pool, 20) });
+    return;
+  }
+
+  // ----- Observabilidade: sites monitorados (up/down configurável na UI) -----
+  if (req.method === "GET" && path === "/monitors") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    sendJson(res, 200, await listMonitors(pool));
+    return;
+  }
+
+  if (req.method === "POST" && path === "/monitors") {
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
+    const body = parsed.body ?? {};
+    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : "";
+    const url = typeof body.url === "string" && body.url.trim() ? body.url.trim() : "";
+    if (!name || !url) return sendJson(res, 400, { error: "name e url são obrigatórios" });
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return sendJson(res, 400, { error: "url inválida" });
+    }
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return sendJson(res, 400, { error: "url deve usar http(s)" });
+    }
+    const expectedCode = body && typeof body.expectedCode === "number" ? Math.floor(body.expectedCode) : 200;
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const monitor = await addMonitor(pool, { name, url, expectedCode });
+    try {
+      hub.broadcast({ type: "monitor.added", monitor });
+    } catch {
+      /* ws opcional */
+    }
+    sendJson(res, 201, monitor);
+    return;
+  }
+
+  if (req.method === "POST" && path === "/monitors/check") {
+    const monitors = await checkMonitors(home);
+    try {
+      hub.broadcast({ type: "monitor.updated", monitors });
+    } catch {
+      /* ws opcional */
+    }
+    sendJson(res, 200, { ok: true, checked: monitors.length, monitors });
+    return;
+  }
+
+  const monitorDeleteMatch = path.match(/^\/monitors\/([^/]+)$/);
+  if (monitorDeleteMatch && req.method === "DELETE") {
+    const id = Number(monitorDeleteMatch[1]);
+    if (!Number.isInteger(id) || id < 1) return sendJson(res, 400, { error: "id inválido" });
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const existing = await getMonitor(pool, id);
+    if (!existing) return sendJson(res, 404, { error: "monitor não encontrado" });
+    await deleteMonitor(pool, id);
+    try {
+      hub.broadcast({ type: "monitor.deleted", id });
+    } catch {
+      /* ws opcional */
+    }
+    sendJson(res, 200, { ok: true, deleted: id });
+    return;
+  }
+
+  // ----- Agendador (F2): fila de tarefas com due_at, despachada via opencode run -----
+  if (req.method === "GET" && path === "/agenda") {
+    const filter = url.searchParams.get("status");
+    const doneFilter = filter === "done" || filter === "all" ? filter : "pending";
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    sendJson(res, 200, await getAgendaItems(pool, doneFilter));
+    return;
+  }
+
+  if (req.method === "POST" && path === "/agenda") {
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
+    const body = parsed.body ?? {};
+    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "";
+    if (!title) return sendJson(res, 400, { error: "title é obrigatório" });
+    const soul = typeof body.soul === "string" && body.soul.trim() ? body.soul.trim() : null;
+    const itemBody = typeof body.body === "string" && body.body.trim() ? body.body.trim() : null;
+    const dueAt = typeof body.due_at === "string" && body.due_at.trim() ? body.due_at.trim() : null;
+    if (soul) {
+      const { getSoul } = await import("@assistente-os/core");
+      if (!getSoul(home, soul)) return sendJson(res, 404, { error: `soul não encontrada: ${soul}` });
+    }
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const item: AgendaItem = await addAgendaItem(pool, soul, title, itemBody, dueAt);
+    // Despacho imediato em background se já vencido; o loop periódico cobre reinícios/atrasos.
+    setImmediate(() => {
+      void processDueAgenda({ home, run, onDone: onAgendaDone }).catch(() => {});
+    });
+    try {
+      hub.broadcast({ type: "agenda.added", item });
+    } catch {
+      /* ws opcional */
+    }
+    sendJson(res, 201, item);
+    return;
+  }
+
+  if (req.method === "GET" && path === "/infra/status") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const { listSouls } = await import("@assistente-os/core");
+    const souls = listSouls(home).map((s) => s.id);
+    let ollamaOk = false;
+    let ollamaLatencyMs: number | null = null;
+    let ollamaModels = 0;
+    try {
+      const t0 = Date.now();
+      const r = await fetch(`${config.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(4000) });
+      ollamaOk = r.ok;
+      ollamaLatencyMs = Date.now() - t0;
+      if (r.ok) {
+        const data = (await r.json()) as { models?: unknown[] };
+        ollamaModels = data.models?.length ?? 0;
+      }
+    } catch {
+      ollamaOk = false;
+    }
+    const { rows: sizeRows } = await pool.query<{ bytes: string }>("SELECT pg_database_size(current_database()) AS bytes");
+    sendJson(res, 200, {
+      ok: true,
+      service: "assistente-os",
+      ts: new Date().toISOString(),
+      daemon: { tier: "local" },
+      souls: { total: souls.length, ids: souls },
+      ollama: { ok: ollamaOk, url: config.ollamaUrl, latencyMs: ollamaLatencyMs, models: ollamaModels },
+      database: { bytes: Number(sizeRows[0]?.bytes ?? 0) },
+      router: { tiers: config.routerTiers },
+      events: await eventStats(pool),
+      monitors: await listMonitors(pool),
+      executions: await listExecutions(pool, undefined, 5),
+    });
+    return;
+  }
+
+  if (req.method === "GET" && path === "/router/status") {
+    const { loadConfig } = await import("@assistente-os/core");
+    const config = loadConfig({ home });
+    sendJson(res, 200, { tiers: config.routerTiers, ollamaUrl: config.ollamaUrl });
+    return;
+  }
+
+  const memoryMatch = path.match(/^\/souls\/([^/]+)\/memory\/status$/);
+  if (memoryMatch && req.method === "GET") {
+    const { getSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(memoryMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    sendJson(res, 200, { soul: soul.id, chunks: await indexStats(pool, soul.id), graph: await graphStats(pool, soul.id) });
+    return;
+  }
+
+  const memorySearchMatch = path.match(/^\/souls\/([^/]+)\/memory\/search$/);
+  if (memorySearchMatch && req.method === "POST") {
+    const { getSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(memorySearchMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
+    const body = parsed.body;
+    const query = body && typeof body.query === "string" && body.query.trim() ? body.query.trim() : "";
+    if (!query) return sendJson(res, 400, { error: "query é obrigatório" });
+    const limit = body && typeof body.limit === "number" ? Math.max(1, Math.min(20, body.limit)) : 5;
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const embedder = new OllamaEmbedder(config.ollamaUrl, config.ollamaEmbedModel);
+    const { results, verdict } = await searchWithVerdict(pool, soul.id, query, embedder, relevanceRule(), limit);
+    const payload = {
+      soul: soul.id,
+      query,
+      verdict,
+      results: results.map((r) => ({ doc: r.docKey, path: r.path, score: r.score, method: r.method, snippet: r.body.slice(0, 300) })),
+    };
+    // modo "recusar" + gate fechado -> 409 para que clientes saibam que a busca foi recusada
+    if (!verdict.ok && verdict.modo === "recusar") return sendJson(res, 409, payload);
+    sendJson(res, 200, payload);
+    return;
+  }
+
+  // ----- Upload de arquivos/zips pra base da soul (sources/uploads/) -----
+  const uploadMatch = path.match(/^\/souls\/([^/]+)\/upload$/);
+  if (uploadMatch && req.method === "POST") {
+    const soul = getSoul(home, decodeURIComponent(uploadMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    if (!(req.headers["content-type"] ?? "").startsWith("multipart/form-data")) {
+      return sendJson(res, 400, { error: "esperado multipart/form-data (campo files)" });
+    }
+    const uploadsDir = join(soul.dir, "sources", "uploads");
+    let result;
+    try {
+      result = await handleUpload(req, uploadsDir);
+    } catch (err) {
+      return sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    }
+    // Indexa em segundo plano só os arquivos recém-salvos (.md/.txt): reindexar
+    // a soul inteira (indexDirectory) a cada upload re-embeda tudo via Ollama —
+    // horas em CPU — e a resposta HTTP ficava presa até o fim (a UI travava em
+    // "enviando…"). Reindex completo continua disponível pela CLI (comando index).
+    const TEXT_EXT = /\.(md|markdown|txt)$/i;
+    const newFiles: string[] = [];
+    for (const s of result.saved) {
+      if (s.extracted) {
+        const destDir = join(uploadsDir, s.name.replace(/\.zip$/i, ""));
+        for (const entry of s.extracted) if (TEXT_EXT.test(entry)) newFiles.push(join(destDir, entry));
+      } else if (TEXT_EXT.test(s.name)) {
+        newFiles.push(join(uploadsDir, s.name));
+      }
+    }
+    try {
+      hub.broadcast({ type: "upload.done", soul: soul.id, saved: result.saved.length, rejected: result.rejected.length });
+    } catch {
+      /* ws opcional */
+    }
+    sendJson(res, result.rejected.length > 0 && result.saved.length === 0 ? 400 : 200, { ok: true, ...result, indexing: newFiles.length });
+    if (newFiles.length > 0) {
+      const config = loadConfig({ home });
+      const pool = getPool(config.databaseUrl);
+      const embedder = new OllamaEmbedder(config.ollamaUrl, config.ollamaEmbedModel);
+      void (async () => {
+        let indexed = 0;
+        for (const file of newFiles) {
+          try {
+            indexed += await indexFile(pool, soul.id, soul.dir, file, embedder);
+          } catch (err) {
+            logger.warn({ err, file }, "falha ao indexar arquivo de upload");
+          }
+        }
+        try {
+          hub.broadcast({ type: "index.done", soul: soul.id, indexed, files: newFiles.length });
+        } catch {
+          /* ws opcional */
+        }
+      })();
+    }
+    return;
+  }
+
+  // ----- Escrita de memória da alma (openclaw-style) -----
+  const almaBaseMatch = path.match(/^\/souls\/([^/]+)\/(anotar|licao|decidir)$/);
+  if (almaBaseMatch && req.method === "POST") {
+    const { getSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(almaBaseMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
+    const body = parsed.body ?? {};
+    const dir = soul.dir;
+    try {
+      const op = almaBaseMatch[2]!;
+      if (op === "anotar") {
+        const texto = body && typeof body.texto === "string" && body.texto.trim() ? body.texto.trim() : null;
+        if (!texto) return sendJson(res, 400, { error: "texto é obrigatório" });
+        const file = anotar(dir, texto);
+        return sendJson(res, 200, { ok: true, arquivo: file, texto });
+      }
+      if (op === "licao") {
+        const texto = body && typeof body.texto === "string" && body.texto.trim() ? body.texto.trim() : null;
+        if (!texto) return sendJson(res, 400, { error: "texto é obrigatório" });
+        const file = registrarLicao(dir, texto);
+        return sendJson(res, 200, { ok: true, arquivo: file, texto });
+      }
+      // decidir
+      const titulo = body && typeof body.titulo === "string" && body.titulo.trim() ? body.titulo.trim() : null;
+      if (!titulo) return sendJson(res, 400, { error: "titulo é obrigatório" });
+      const file = decidir(dir, {
+        titulo,
+        contexto: typeof body.contexto === "string" ? body.contexto : undefined,
+        decisao: typeof body.decisao === "string" ? body.decisao : undefined,
+        alternativas: typeof body.alternativas === "string" ? body.alternativas : undefined,
+        consequencias: typeof body.consequencias === "string" ? body.consequencias : undefined,
+      });
+      return sendJson(res, 200, { ok: true, arquivo: file, titulo });
+    } catch (err) {
+      return sendJson(res, 409, { ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  const healthMatch = path.match(/^\/souls\/([^/]+)\/health$/);
+  if (healthMatch && req.method === "GET") {
+    const { getSoul, soulHealth } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(healthMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    sendJson(res, 200, soulHealth(soul.dir));
+    return;
+  }
+
+  const limparMatch = path.match(/^\/souls\/([^/]+)\/limpar$/);
+  if (limparMatch && req.method === "POST") {
+    const { getSoul, limparSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(limparMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
+    const body = parsed.body ?? {};
+    const maxAgeDays = typeof body.maxAgeDays === "number" ? body.maxAgeDays : undefined;
+    const maxBytes = typeof body.maxBytes === "number" ? body.maxBytes : undefined;
+    const result = limparSoul(soul.dir, { maxAgeDays, maxBytes });
+    sendJson(res, 200, { soul: soul.id, ...result });
+    return;
+  }
+
+  const graphMatch = path.match(/^\/souls\/([^/]+)\/graph$/);
+  if (graphMatch && req.method === "GET") {
+    const { getSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(graphMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    sendJson(res, 200, {
+      soul: soul.id,
+      entities: await listEntities(pool, soul.id),
+      relations: await listRelations(pool, soul.id),
+      observations: await listObservations(pool, soul.id),
+    });
+    return;
+  }
+
+  // ----- Voice: controle do pipeline de voz -----
+  if (req.method === "POST" && path === "/voice/start") {
+    if (!voiceHandler) {
+      return sendJson(res, 503, { error: "voice não habilitado (defina VOICE_ENABLED=true)" });
+    }
+    try {
+      const parsed = await readJson(req);
+      const soulId: string = (parsed.body?.soul as string) ?? "";
+
+      // Configura o handler de chat com a soul do request (ou sem handler se soul não informada)
+      const soul = soulId ? getSoul(home, soulId) : null;
+      if (soul) {
+        voiceHandler.setOnChat(async (prompt: string) => {
+          const config = loadConfig({ home });
+          const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule() });
+          const pool = getPool(config.databaseUrl);
+          const decision = await route(pool, config, soul, makeLocalFallbackProbe(config.ollamaUrl), config.routerTiers);
+          const model = soul.config.models?.chat ?? decision.target.model ?? "local";
+          const result = await run!(built.fullPrompt, { cwd: soul.dir, model, timeoutSeconds: 120 });
+          return result.stdout || "(sem resposta)";
+        });
+      }
+
+      await voiceHandler.start();
+      sendJson(res, 200, { ok: true, message: "pipeline de voz iniciado" });
+    } catch (err) {
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && path === "/voice/stop") {
+    if (!voiceHandler) {
+      return sendJson(res, 503, { error: "voice não habilitado" });
+    }
+    voiceHandler.stop();
+    sendJson(res, 200, { ok: true, message: "pipeline de voz parado" });
+    return;
+  }
+
+  if (req.method === "GET" && path === "/voice/status") {
+    if (!voiceHandler) {
+      return sendJson(res, 200, { enabled: false, running: false });
+    }
+    sendJson(res, 200, { enabled: true, running: voiceHandler.isRunning });
+    return;
+  }
+
+  sendJson(res, 404, { error: `rota não encontrada: ${req.method} ${path}` });
+}
+
+/** Resolve packages/daemon/web a partir deste arquivo (funciona em src/ e dist/). */
+function defaultWebDir(): string {
+  const here = fileURLToPath(import.meta.url);
+  return resolve(dirname(here), "..", "web");
+}
+
+function readJson(req: IncomingMessage): Promise<{ body: Record<string, unknown> | null; error?: "invalid" | "too_large" }> {
+  return new Promise((resolve) => {
+    let raw = "";
+    let bytes = 0;
+    let settled = false;
+    const finish = (value: { body: Record<string, unknown> | null; error?: "invalid" | "too_large" }) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    req.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > 1_000_000) {
+        req.resume();
+        finish({ body: null, error: "too_large" });
+        return;
+      }
+      raw += chunk.toString("utf8");
+    });
+    req.on("end", () => {
+      if (settled || !raw.trim()) return finish({ body: null });
+      try {
+        finish({ body: JSON.parse(raw) as Record<string, unknown> });
+      } catch {
+        finish({ body: null, error: "invalid" });
+      }
+    });
+    req.on("error", () => finish({ body: null, error: "invalid" }));
+  });
+}
+
+/** Lê o body cru (Buffer) para verificação de HMAC; respeita o limite de 1 MB. */
+function readRawBody(req: IncomingMessage): Promise<{ body?: Buffer; error?: "invalid" | "too_large" }> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let settled = false;
+    const finish = (value: { body?: Buffer; error?: "invalid" | "too_large" }) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    req.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > 1_000_000) {
+        req.resume();
+        finish({ error: "too_large" });
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (settled) return;
+      finish({ body: Buffer.concat(chunks) });
+    });
+    req.on("error", () => finish({ error: "invalid" }));
+  });
+}
+
+function isLoopback(host: string): boolean {
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+
+function isAuthorized(req: IncomingMessage, token: string): boolean {
+  const auth = req.headers.authorization;
+  if (typeof auth !== "string" || !auth.startsWith("Bearer ")) return false;
+  const provided = Buffer.from(auth.slice(7), "utf8");
+  const expected = Buffer.from(token, "utf8");
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@assistente-os/tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "os-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test": "node --test \"dist/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@assistente-os/core": "*",
+    "@assistente-os/daemon": "*",
+    "@assistente-os/memory": "*",
+    "@google/stitch-sdk": "^0.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
