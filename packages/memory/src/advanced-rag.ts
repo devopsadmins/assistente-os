@@ -9,7 +9,8 @@
  * - Atualização idempotente de memoriais
  * - Estatísticas e métricas de índice
  */
-import { createEmbedder, checkLangChainAvailability } from "./embedders-langchain.js";
+import { getEmbedder } from "./embedder-provider.js";
+import { chunkTextExact } from "./chunker.js";
 import { runRagChain } from "./rag-chain.js";
 import { STOPWORDS_PT } from "./relevance.js";
 import { listObservations, upsertEntity, upsertRelation, addObservation } from "./graph.js";
@@ -69,7 +70,8 @@ export async function hybridSearch(
   pool: Pool,
   soul: string,
   query: string,
-  limit = 5
+  limit = 5,
+  minScore = 0.3
 ): Promise<Array<{
   chunk: IndexedChunk;
   semanticScore: number; // 0 a 1 (1 = mais relevante)
@@ -79,51 +81,41 @@ export async function hybridSearch(
 }>> {
   // 1. Busca semântica usando embeddings
   let semanticResults: Array<{ chunk: IndexedChunk; score: number }> = [];
-  
-  try {
-    const availability = await checkLangChainAvailability();
-    const embedder = createEmbedder(
-      process.env.OLLAMA_URL || "http://localhost:11434",
-      process.env.OLLAMA_MODEL || "nemotron-3-ultra-free",
-      availability.enabled
-    );
-    
-    const queryEmbedding = await embedder.embed(query);
-    
-    if (queryEmbedding) {
-      // Buscar no grafo de observações
-      const observations = await listObservations(pool, soul, undefined, 50);
-      
-      semanticResults = observations
-        .filter((obs) => obs.body && obs.body.length > 0)
-        .map((obs): { chunk: IndexedChunk; score: number } => {
-          // Calcula similaridade de cosseno simplificada
-          // Em um sistema real, compararíamos embeddings vetoriais
-          const baseScore = 0.5; // placeholder - seria cosine(queryEmbedding, obs.embedding)
-          return {
-            chunk: {
-              docKey: `${soul}:observation:${obs.entity}`,
-              path: `${soul}/observation`,
-              content: obs.body,
-              metadata: {
-                soul,
-                entity: obs.entity,
-                timestamp: obs.ts,
-              },
+
+  const embedder = getEmbedder();
+  const queryEmbedding = await embedder.embed(query);
+
+  if (queryEmbedding) {
+    // Buscar no grafo de observações
+    const observations = await listObservations(pool, soul, undefined, 50);
+
+    semanticResults = observations
+      .filter((obs) => obs.body && obs.body.length > 0)
+.map((obs): { chunk: IndexedChunk; score: number } => {
+        // Calcula similaridade de cosseno simplificada
+        // Em um sistema real, compararíamos embeddings vetoriais
+        const baseScore = 0.5; // placeholder - seria cosine(queryEmbedding, obs.embedding)
+        return {
+          chunk: {
+            docKey: `${soul}:observation:${obs.entity}`,
+            path: `${soul}/observation`,
+            content: obs.body,
+            metadata: {
+              soul,
+              entity: obs.entity,
+              timestamp: obs.ts,
             },
-            score: baseScore,
-          };
-        })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
-    }
-  } catch (err) {
-    console.error("Erro na busca semântica:", err);
+          },
+          score: baseScore,
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
   }
 
   // 2. Busca keywords (literal/tradicional)
   let keywordResults: Array<{ chunk: IndexedChunk; score: number }> = [];
-  
+
   try {
     const { rows } = await pool.query(`
       SELECT entity_name, body, ts
@@ -140,7 +132,7 @@ export async function hybridSearch(
       const lowerQuery = query.toLowerCase();
       const termMatches = (lowerBody.match(new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')) || []).length;
       const keywordScore = Math.min(1.0, termMatches / Math.max(1, query.split(' ').length));
-      
+
       return {
         chunk: {
           docKey: `${soul}:observation:${row.entity_name}`,
@@ -181,7 +173,7 @@ export async function hybridSearch(
 
   // Adicionar resultados keywords (evitar duplicatas)
   const existingDocs = new Set(semanticResults.map(r => r.chunk.docKey));
-  
+
   keywordResults.forEach((r) => {
     if (!existingDocs.has(r.chunk.docKey)) {
       combined.push({
@@ -201,8 +193,16 @@ export async function hybridSearch(
     }
   });
 
-  // Ranquear por score combinado e limitar
+  // Verificar threshold de relevância: se o melhor resultado não atingir minScore, retornar vazio
+  const best = combined[0];
+  if (best && best.combinedScore < minScore) {
+    console.log(`Query não encontrou resultados relevantes (best score: ${best.combinedScore.toFixed(2)}, threshold: ${minScore})`);
+    return [];
+  }
+
+  // Filtrar por threshold de relevância e ranquear
   return combined
+    .filter((r) => r.combinedScore >= minScore)
     .sort((a, b) => b.combinedScore - a.combinedScore)
     .slice(0, limit);
 }
@@ -232,22 +232,22 @@ export async function indexSoul(
   try {
     // 1. Garantir que a soul existe e tem estrutura de arquivos
     const filesToIndex = ["perfil.md", "contexto.md", "licoes.md", "pessoas.md", "soul.md"];
-    
+
     for (const file of filesToIndex) {
       const filePath = `${homePath}/${file}`;
       try {
         const exists = await import("fs").then(fs => fs.existsSync(filePath));
         if (!exists) continue;
-        
-        const content = await import("fs").then(fs => 
+
+        const content = await import("fs").then(fs =>
           import("fs/promises").then(promises => promises.readFile(filePath, "utf8"))
         ).catch(() => "");
-        
+
         // 2. Extrair entidades e relações do conteúdo
         // Patterns simples de extração
         const entityPatterns = content.match(/[A-Z][a-z]+(?:[A-Z][a-z]+)*/g) || [];
         const uniqueEntities = [...new Set(entityPatterns.filter(w => w.length > 3 && !STOPWORDS_PT.has(w.toLowerCase())))];
-        
+
         // 3. Inserir entidades no grafo
         for (const entity of uniqueEntities.slice(0, 20)) { // limite de 20 entidades por arquivo
           try {
@@ -257,7 +257,7 @@ export async function indexSoul(
             errors.push({ message: `Erro ao inserir entidade ${entity}`, path: file });
           }
         }
-        
+
         // 4. Inserir observações do conteúdo, ligadas à entidade dominante do arquivo
         const primaryEntity = uniqueEntities[0] ?? "document";
         const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 10);
@@ -274,11 +274,11 @@ export async function indexSoul(
         errors.push({ message: `Erro ao processar ${file}`, path: file });
       }
     }
-    
+
     // 5. Indexar relações entre entidades (simples: menção mútua)
     const allObservations = await listObservations(pool, soul, undefined, 100);
     const entityMentions: Record<string, string[]> = {};
-    
+
     allObservations.forEach((obs) => {
       const words = obs.body?.split(/\s+/) || [];
       words.forEach((word) => {
@@ -353,4 +353,3 @@ export async function advancedRagSearch(
     searchMethod: "rag_chain",
   };
 }
-

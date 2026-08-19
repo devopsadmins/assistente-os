@@ -57,6 +57,7 @@ export function relevancia(
   pergunta: string,
   results: SearchResult[],
   regra: RelevanceRule = {},
+  minScore?: number
 ): RelevanceVerdict {
   const modo: RelevanceMode =
     regra.modo && ["recusar", "aviso", "libre"].includes(regra.modo) ? regra.modo : "recusar";
@@ -75,6 +76,9 @@ export function relevancia(
     min_termos = 1;
   }
 
+  // Usa o minScore explícito se fornecido; senão usa o da regra
+  const effectiveMinScore = (minScore !== undefined && minScore > 0) ? minScore : min_score;
+
   if (results.length === 0) {
     return {
       ok: false,
@@ -92,7 +96,7 @@ export function relevancia(
   const corpusTokens = new Set(tokenize(corpus));
   const termos = uteis.reduce((acc, t) => (corpusTokens.has(t) ? acc + 1 : acc), 0);
 
-  if (score < min_score) {
+  if (score < effectiveMinScore) {
     return {
       ok: false,
       score,
@@ -132,8 +136,9 @@ export async function searchWithVerdict(
   embedder: Embedder,
   rule: RelevanceRule,
   max = 5,
+  minScore?: number
 ): Promise<SearchVerdict> {
   const { search } = await import("./indexer.js");
   const results = await search(pool, soul, query, embedder, max);
-  return { results, verdict: relevancia(query, results, rule) };
+  return { results, verdict: relevancia(query, results, rule, minScore) };
 }

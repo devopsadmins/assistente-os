@@ -37,7 +37,7 @@ import {
   type AgendaItem,
   type RouterProbe,
 } from "@assistente-os/core";
-import { indexFile, indexStats, search, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, OllamaEmbedder, LiteralEmbedder } from "@assistente-os/memory";
+import { indexFile, indexStats, search, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, getEmbedder } from "@assistente-os/memory";
 import { handleUpload } from "./upload.js";
 import { buildPrompt } from "./context.js";
 import { processPendingEvents } from "./events.js";
@@ -809,15 +809,24 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     const query = body && typeof body.query === "string" && body.query.trim() ? body.query.trim() : "";
     if (!query) return sendJson(res, 400, { error: "query é obrigatório" });
     const limit = body && typeof body.limit === "number" ? Math.max(1, Math.min(20, body.limit)) : 5;
+    const rawMinScore = body && typeof body.minScore === "number" ? Math.max(0, Math.min(1, body.minScore)) : 0.3;
+// Map slider [0,1] to threshold [0.1, 0.5] — more permissive: slider 0 = 0.1, slider 1 = 0.5
+// This allows low-relevance results like "dimastec" to appear while still filtering
+const minScore = rawMinScore * 0.4 + 0.1;
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
-    const embedder = new OllamaEmbedder(config.ollamaUrl, config.ollamaEmbedModel);
-    const { results, verdict } = await searchWithVerdict(pool, soul.id, query, embedder, relevanceRule(), limit);
+    const embedder = getEmbedder();
+    const { results, verdict } = await searchWithVerdict(pool, soul.id, query, embedder, relevanceRule(), limit, minScore);
+    // Se o gate de relevância recusou (ok=false), filtra resultados por score >= minScore
+    const scoreThreshold = minScore || 0.3;
+    const filteredResults = verdict.ok
+      ? results
+      : results.filter((r) => r.score && r.score >= scoreThreshold);
     const payload = {
       soul: soul.id,
       query,
       verdict,
-      results: results.map((r) => ({ doc: r.docKey, path: r.path, score: r.score, method: r.method, snippet: r.body.slice(0, 300) })),
+      results: filteredResults.map((r) => ({ doc: r.docKey, path: r.path, score: r.score, method: r.method, snippet: r.body.slice(0, 300) })),
     };
     // modo "recusar" + gate fechado -> 409 para que clientes saibam que a busca foi recusada
     if (!verdict.ok && verdict.modo === "recusar") return sendJson(res, 409, payload);
@@ -863,7 +872,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     if (newFiles.length > 0) {
       const config = loadConfig({ home });
       const pool = getPool(config.databaseUrl);
-      const embedder = new OllamaEmbedder(config.ollamaUrl, config.ollamaEmbedModel);
+const embedder = getEmbedder();
       void (async () => {
         let indexed = 0;
         for (const file of newFiles) {

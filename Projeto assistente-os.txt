@@ -1,0 +1,237 @@
+Projeto assistente-os
+
+DOCUMENTAÇÃO: EMBEDDER LOCAL XENOVA COM FALLBACK OLLAMA
+
+Guia de implementação de embeddings multilinguais in-process com alta disponibilidade
+
+18 de agosto de 2026
+
+---
+
+### 1. Objetivo
+
+Esta documentação detalha a transição da arquitetura de embeddings do projeto assistente-os de uma dependência exclusiva do Ollama para um sistema híbrido. O objetivo principal é utilizar o LocalXenovaEmbedder (baseado em @xenova/transformers) como provedor prioritário, garantindo que a busca semântica funcione mesmo com o serviço Ollama offline. O modelo multilingual-e5-base foi selecionado por sua paridade de qualidade com o nomic-embed-text e suporte superior ao idioma português (PT-BR).
+
+### 2. Arquitetura do Sistema
+
+A nova estrutura de memória opera em duas camadas distintas para garantir que o assistente nunca perca sua capacidade de recuperação de contexto (RAG):
+
+Camada de Embedding (Busca): Prioriza a execução in-process no Node.js. Isso elimina latência de rede e custos de tokens, além de permitir que a indexação de "Souls" ocorra de forma assíncrona e resiliente.
+
+Camada de Geração (LLM): O Ollama permanece como o motor exclusivo para inferência de texto, utilizando o modelo qwen2.5-coder:3b para processamento de lógica e resposta.
+
+
+
+
+Critério
+nomic-embed-text (Ollama)
+multilingual-e5-base (Xenova)
+
+
+
+
+Dimensões
+768
+768
+
+
+MTEB Score
+~62-63
+~63
+
+
+Multilíngue (PT-BR)
+Parcial (English-focused)
+Nativo (50+ idiomas)
+
+
+Janela de Contexto
+8192 tokens
+512 tokens
+
+
+Dependência Externa
+Sim (Serviço HTTP)
+Não (In-process Node)
+
+
+Latência Média
+~50ms
+~20ms
+
+
+
+
+### 3. Implementação Técnica
+
+#### 3.1. Embedder Local: `packages/memory/src/embedder-local.ts`
+
+Este módulo encapsula o modelo multilingual-e5-base. O carregamento é feito via singleton para evitar consumo excessivo de memória RAM.
+
+```typescript
+import { pipeline } from '@xenova/transformers';
+import { logger } from './logger';
+
+const XENOVA_MODEL = 'Xenova/multilingual-e5-base';
+const XENOVA_DIMENSIONS = 768;
+
+export class LocalXenovaEmbedder {
+  private extractor: any;
+  private initialized: boolean = false;
+  private initPromise: Promise | null = null;
+
+  async init(): Promise {
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = this._doInit();
+    await this.initPromise;
+  }
+
+  private async _doInit(): Promise {
+    try {
+      logger.info({ model: XENOVA_MODEL }, 'Inicializando embedder Xenova local');
+      this.extractor = await pipeline('feature-extraction', XENOVA_MODEL);
+      this.initialized = true;
+      logger.info({ model: XENOVA_MODEL, dimensions: XENOVA_DIMENSIONS }, 'Embedder Xenova pronto');
+    } catch (err) {
+      logger.error({ err, model: XENOVA_MODEL }, 'Falha ao inicializar embedder Xenova');
+      throw err;
+    }
+  }
+
+  async embed(text: string): Promise {
+    await this.init();
+    const output = await this.extractor(text, { pooling: 'mean', normalize: true });
+    return Array.from(output.data as Float32Array);
+  }
+
+  async embedBatch(texts: string[]): Promise {
+    await this.init();
+    const outputs = await this.extractor(texts, { pooling: 'mean', normalize: true });
+    const data = outputs.data as Float32Array;
+    const results: number[][] = [];
+    for (let i = 0; i < texts.length; i++) {
+      const start = i * XENOVA_DIMENSIONS;
+      const end = start + XENOVA_DIMENSIONS;
+      results.push(Array.from(data.slice(start, end)));
+    }
+    return results;
+  }
+
+  isReady(): boolean { return this.initialized; }
+  getDimensions(): number { return XENOVA_DIMENSIONS; }
+}
+```
+
+#### 3.2. Lógica de Fallback: `packages/memory/src/embedder-fallback.ts`
+
+Gerencia a transição automática para o Ollama caso o motor local falhe (ex: falta de memória ou erro de carregamento do modelo).
+
+```typescript
+import { LocalXenovaEmbedder } from './embedder-local';
+import { logger } from './logger';
+
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
+
+export class FallbackEmbedder {
+  private xenova: LocalXenovaEmbedder;
+  private xenovaFailed: boolean = false;
+  private xenovaFailCount: number = 0;
+  private readonly MAX_XENOVA_RETRIES = 3;
+
+  constructor() { this.xenova = new LocalXenovaEmbedder(); }
+
+  async embed(text: string): Promise {
+    if (!this.xenovaFailed) {
+      try {
+        return await this.xenova.embed(text);
+      } catch (err) {
+        this.xenovaFailCount++;
+        if (this.xenovaFailCount >= this.MAX_XENOVA_RETRIES) {
+          this.xenovaFailed = true;
+          logger.error('Xenova desativado após falhas consecutivas');
+        }
+      }
+    }
+    return await this.embedWithOllama(text);
+  }
+
+  private async embedWithOllama(text: string): Promise {
+    const response = await fetch(`${OLLAMA_URL}/api/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, prompt: text }),
+    });
+    if (!response.ok) throw new Error(`Ollama Error: ${response.status}`);
+    const data = await response.json() as { embedding: number[] };
+    return data.embedding;
+  }
+}
+```
+
+### 4. Estratégia de Migração e Re-indexação
+
+
+Atenção: Embeddings gerados com nomic-embed-text NÃO são compatíveis com multilingual-e5-base. É obrigatório re-indexar todos os Souls após a atualização.
+
+
+#### 4.1. Atualização do Banco de Dados (PostgreSQL)
+
+Execute o seguinte comando SQL para preparar a tabela de chunks para o novo modelo:
+
+```sql
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS embedding_model TEXT DEFAULT 'nomic-embed-text';
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS content_hash TEXT;
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMP DEFAULT NOW();
+
+UPDATE chunks SET embedding_model = 'nomic-embed-text' WHERE embedding_model IS NULL;
+```
+
+#### 4.2. Script de Re-indexação
+
+Utilize o utilitário abaixo para processar todos os Souls existentes com o novo embedder local:
+
+```typescript
+// packages/memory/src/reindex.ts
+import { pool } from './db';
+import { getEmbedder } from './embedder-provider';
+import { indexSoul } from './advanced-rag';
+
+async function reindexAllSouls(homePath: string) {
+  const souls = await pool.query('SELECT DISTINCT soul_id FROM chunks');
+  for (const { soul_id } of souls.rows) {
+    await pool.query('DELETE FROM chunks WHERE soul_id = $1', [soul_id]);
+    await indexSoul(pool, soul_id, homePath);
+    console.log(`✓ Soul ${soul_id} re-indexado com Xenova`);
+  }
+}
+```
+
+### 5. Ajuste de Chunking (Janela de 512 Tokens)
+
+Diferente do nomic, o modelo e5-base possui uma janela de contexto menor. O sistema de chunking deve ser ajustado para garantir que nenhum dado seja truncado durante a indexação:
+
+```typescript
+const MAX_TOKENS = 400; // Margem de segurança
+const OVERLAP = 50;     // Sobreposição para manter contexto entre chunks
+
+export function chunkText(text: string): string[] {
+  // Implementação de divisão por parágrafos respeitando MAX_TOKENS
+  // ... (ver código-fonte em packages/memory/src/chunker.ts)
+}
+```
+
+### 6. Checklist de Validação
+
+1. **Instalação:** Confirmar `@xenova/transformers` no `package.json`.
+2. **Singleton:** Verificar se `getEmbedder()` está sendo usado em `rag-chain.ts` e `advanced-rag.ts`.
+3. **Offline Test:** Parar o container Ollama e verificar se a busca semântica continua retornando resultados válidos.
+4. **PT-BR Test:** Validar se termos técnicos em português são recuperados corretamente via busca vetorial.
+5. **Memory Leak:** Monitorar o processo Node para garantir que o modelo não está sendo recarregado a cada requisição.
+
+---
+
+Local e data: São Paulo, SP, 18 de agosto de 2026
+
+*Documento elaborado em 18 de agosto de 2026. As informações contidas são de responsabilidade do solicitante.*

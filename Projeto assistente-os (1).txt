@@ -1,0 +1,107 @@
+Projeto assistente-os
+
+PLANO DE IMPLEMENTAÇÃO: EMBEDDER LOCAL XENOVA COM FALLBACK OLLAMA
+
+Briefing de tarefa para agente de codificação — Transição de infraestrutura de embeddings
+
+18 de agosto de 2026
+
+---
+
+## 1. Resumo Executivo
+
+O projeto **assistente-os** depende exclusivamente do Ollama para gerar embeddings (vetores de busca semântica). O objetivo é substituir essa dependência por um embedder local baseado em `@xenova/transformers` (modelo `multilingual-e5-base`) como **PRIORIDADE**, mantendo o Ollama como **FALLBACK** automático. O Ollama continua sendo usado para geração de texto (LLM com `qwen2.5-coder:3b`) — apenas a camada de embedding muda para reduzir latência e dependência de serviços externos.
+
+## 2. Decisões Técnicas Já Tomadas
+
+- **Modelo Xenova:** `Xenova/multilingual-e5-base` (768 dimensões, multilíngue com suporte PT-BR, ~420MB).
+- **Modelo Ollama (fallback):** `nomic-embed-text` (768 dimensões, já instalado).
+- **Compatibilidade:** Ambos possuem 768 dimensões, mantendo compatibilidade com o `pgvector` existente.
+- **Incompatibilidade Semântica:** Embeddings gerados pelo nomic **NÃO** são compatíveis com o e5-base. A re-indexação de todos os Souls é obrigatória.
+- **Janela de Contexto:** O e5-base possui limite de **512 tokens**. O chunking deve ser ajustado para uma margem segura de 400 tokens.
+
+## 3. Fases de Implementação
+
+### 3.1. FASE 1: Criação dos Arquivos Novos (Sem Dependências)
+
+Esta fase foca na construção da nova infraestrutura sem alterar o fluxo atual do sistema.
+
+#### Tarefa 1.1: Criar `packages/memory/src/embedder-local.ts`
+- **Responsabilidade:** Encapsular o modelo `multilingual-e5-base`.
+- **Requisitos:** Implementar `init()` thread-safe (singleton), `embed()` e `embedBatch()`.
+- **Configuração:** Usar `pipeline('feature-extraction')` com `pooling: 'mean'` e `normalize: true`.
+- **Critério de Aceitação:** O modelo deve ser carregado uma única vez e permanecer em memória.
+
+#### Tarefa 1.2: Criar `packages/memory/src/embedder-fallback.ts`
+- **Responsabilidade:** Orquestrar a transição entre Xenova e Ollama.
+- **Requisitos:** Tentar Xenova primeiro; após 3 falhas consecutivas, desativar temporariamente e usar Ollama via HTTP.
+- **Critério de Aceitação:** Lógica de fallback deve cobrir cenários de falha parcial e total (throw error se ambos falharem).
+
+#### Tarefa 1.3: Criar `packages/memory/src/embedder-provider.ts`
+- **Responsabilidade:** Prover o Singleton global do `FallbackEmbedder`.
+- **Critério de Aceitação:** Exportar `getEmbedder()` garantindo instância única.
+
+#### Tarefa 1.4: Criar `packages/memory/src/chunker.ts`
+- **Responsabilidade:** Divisão de texto adaptada para a janela de 512 tokens.
+- **Requisitos:** `MAX_TOKENS = 400`, `OVERLAP = 50`. Divisão inteligente por parágrafos e sentenças.
+- **Critério de Aceitação:** Textos longos devem ser fragmentados sem exceder 400 tokens estimados.
+
+#### Tarefa 1.5: Criar `packages/memory/src/health-check.ts`
+- **Responsabilidade:** Diagnóstico de saúde dos provedores.
+- **Critério de Aceitação:** Retornar status `healthy` (Xenova ok), `degraded` (só Ollama) ou `critical` (nenhum).
+
+### 3.2. FASE 2: Integração com Código Existente
+
+#### Tarefa 2.1: Atualizar `packages/memory/src/index.ts`
+- **Ação:** Exportar todos os novos componentes mantendo compatibilidade com `LangChainOllamaEmbedder`.
+
+#### Tarefa 2.2: Modificar `packages/memory/src/rag-chain.ts`
+- **Ação:** Substituir a chamada direta do LangChain pelo `getEmbedder().embed(query)`.
+
+#### Tarefa 2.3: Modificar `packages/memory/src/advanced-rag.ts`
+- **Ação:** Atualizar `hybridSearch` e `indexSoul` para usar o novo embedder e o novo `chunker.ts`.
+- **Critério de Aceitação:** A indexação deve utilizar `embedBatch` para otimização de performance.
+
+### 3.3. FASE 3: Migração de Dados
+
+#### Tarefa 3.1: Criar `packages/memory/src/reindex.ts`
+- **Responsabilidade:** Script standalone para re-processar a base de dados.
+- **Ação:** Iterar sobre `soul_id` distintos, deletar chunks antigos e re-indexar usando o novo modelo.
+
+#### Tarefa 3.2: Migration SQL
+- **Ação:** Adicionar colunas `embedding_model` (TEXT), `content_hash` (TEXT) e `embedded_at` (TIMESTAMP) à tabela `chunks`.
+
+#### Tarefa 3.3: Execução da Migração
+- **Ação:** Realizar backup (`pg_dump`), aplicar SQL e executar o script de re-indexação.
+
+## 4. Matriz de Dependências e Ordem de Execução
+
+1.  **Arquitetura Base:** Tarefas 1.1 até 1.5 (Arquivos novos).
+2.  **Refatoração:** Tarefas 2.1 até 2.3 (Integração de código).
+3.  **Dados:** Tarefas 3.2 (SQL) e 3.1/3.3 (Re-indexação).
+4.  **Ambiente:** Tarefa 4.2 (Pré-carregamento do modelo via CLI).
+5.  **Validação:** Testes de latência, memória e precisão em PT-BR.
+
+## 5. Riscos e Mitigações
+
+
+Atenção: A incompatibilidade entre vetores nomic e e5-base causará falha total na busca semântica se a re-indexação for ignorada.
+
+
+- **Risco de RAM:** O modelo Xenova adiciona ~500MB de consumo fixo. **Mitigação:** Uso de Singleton para evitar múltiplas instâncias.
+- **Risco de Contexto:** Janela reduzida de 512 tokens. **Mitigação:** Chunker com overlap de 50 tokens para preservar semântica nas bordas.
+- **Risco de Cold Start:** Download do modelo na primeira execução. **Mitigação:** Script de pré-carregamento na Fase 4.
+
+## 6. Critérios de Aceitação Geral (DoD)
+
+- [ ] `npm run typecheck` e `npm run test` sem falhas.
+- [ ] Busca semântica funcional com Ollama offline (provando execução local Xenova).
+- [ ] Tabela `chunks` preenchida exclusivamente com modelo `multilingual-e5-base`.
+- [ ] Resultados de busca em PT-BR validados como relevantes.
+- [ ] Uso de memória RAM estabilizado após carregamento inicial.
+
+---
+
+Local e data: Brasília, 18 de agosto de 2026
+
+*Documento elaborado em 18 de agosto de 2026. As informações contidas são de responsabilidade do solicitante.*

@@ -1,9 +1,1 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist"
-  },
-  "references": [{ "path": "../core" }],
-  "include": ["src/**/*.ts"]
-}
+/home/support/assistente-os/packages/memory/tsconfig_standalone.json

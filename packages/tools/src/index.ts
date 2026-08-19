@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg } from "@assistente-os/core";
-import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, LiteralEmbedder, OllamaEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
+import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
 import { runOpenCode } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
@@ -460,7 +460,7 @@ export class McpServer {
         if (!query) throw new Error("parâmetro query é obrigatório");
         const limit = typeof args.limit === "number" ? Math.max(1, Math.min(20, args.limit)) : 5;
         const pool = getPool(this.config.databaseUrl);
-        const embedder = new OllamaEmbedder(this.config.ollamaUrl, this.config.ollamaEmbedModel);
+        const embedder = getEmbedder();
         const { results, verdict } = await searchWithVerdict(pool, soul.id, query, embedder, relevanceRule(this.config.home), limit);
         return {
           soul: soul.id,
@@ -474,7 +474,7 @@ export class McpServer {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
         const pool = getPool(this.config.databaseUrl);
-        const n = await indexDirectory(pool, soul.id, join(this.config.home, "souls", soul.id), new OllamaEmbedder(this.config.ollamaUrl, this.config.ollamaEmbedModel));
+        await indexDirectory(pool, soul.id, join(this.config.home, "souls", soul.id), getEmbedder());
         return { indexed: n };
       }
 

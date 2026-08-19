@@ -1,0 +1,143 @@
+Projeto assistente-os
+
+BRIEFING TÉCNICO: INSIGHTS E AÇÕES PARA O AGENTE DE DESENVOLVIMENTO
+
+Consolidação de melhorias estruturais para RAG, Grafos de Agentes e Engenharia de Prompt
+
+18 de agosto de 2026
+
+---
+
+## 1. Origem e Propósito
+
+Este documento consolida insights práticos extraídos da análise de referências técnicas sobre RAG, agentes de desenvolvimento e orquestração de grafos (Graph Engineering). O objetivo é traduzir conceitos em ações concretas para a evolução do projeto assistente-os, filtrando o que é aplicável à stack atual (TypeScript, LangGraph, PostgreSQL) para elevar a maturidade do sistema.
+
+## 2. Insight 1: Threshold de Relevância no hybridSearch
+
+### 2.1. O Problema Identificado
+O hybridSearch atual retorna os N melhores chunks pela pontuação combinada (70% semântica + 30% keyword), mas não verifica se o melhor resultado possui qualidade mínima. Em perguntas sem correspondência na base, o sistema entrega ao LLM contextos irrelevantes, gerando alucinações ou respostas confusas.
+
+### 2.2. Ação para o Agente
+TAREFA A1: Adicionar threshold de relevância no hybridSearch
+
+*   **Arquivo:** `packages/memory/src/advanced-rag.ts`
+*   Implementar parâmetro `minScore` (sugerido: **0.3** para `combinedScore`).
+*   Se o melhor resultado (`index 0`) tiver score inferior ao threshold, retornar array vazio e logar: *"Query não encontrou resultados relevantes (best score: X, threshold: Y)"*.
+
+TAREFA A2: Adicionar threshold no runRagChain
+
+*   **Arquivo:** `packages/memory/src/rag-chain.ts`
+*   Se a busca retornar vazio pelo threshold, interromper o fluxo e retornar resposta padrão: *"Não encontrei informações relevantes sobre isso na base de conhecimento."*
+
+## 3. Insight 2: Verificação por Nó no StateGraph
+
+### 3.1. O Problema Identificado
+O StateGraph atual (retrieve → generate → execute_tool) carece de validações independentes. Erros de recuperação ou gerações de baixa qualidade se propagam silenciosamente, queimando tokens sem gerar valor.
+
+### 3.2. Ação para o Agente
+TAREFA B1: Verificação no nó "retrieve"
+
+*   Validar resultados via threshold (A1). Se falhar, marcar `retrieveFailed: true` no estado e saltar para o fim (`END`).
+
+TAREFA B2: Verificação no nó "generate"
+
+*   Detectar respostas vazias ou puramente genéricas. Se detectado, sinalizar no estado para evitar loops inúteis.
+
+TAREFA B3: Verificação no nó "execute_tool"
+
+*   Validar se o retorno da ferramenta é um erro. Permitir retry até `maxIterations` antes de encerrar.
+
+## 4. Insight 3: Ajuste do Parâmetro K (Número de Chunks)
+
+### 4.1. O Problema Identificado
+O parâmetro limit é fixo e não documentado. Valores muito baixos perdem completude; valores muito altos diluem a relevância e aumentam o custo.
+
+### 4.2. Ação para o Agente
+TAREFA C1: Parametrizar e Documentar K
+
+*   Definir valor padrão **4** (equilíbrio ideal).
+*   Adicionar comentários técnicos sobre o trade-off entre completude e custo de tokens no `advanced-rag.ts`.
+
+## 5. Insight 4: Prompt Template — Restrição de Escape
+
+### 5.1. O Problema Identificado
+Instruções como *"Se não souber, diga que não sabe"* dão ao LLM uma saída fácil, fazendo-o ignorar contextos presentes mas sutis.
+
+### 5.2. Ação para o Agente
+TAREFA D1: Revisar prompt-templates.ts
+
+*   Remover alternativas de "escape" dos 5 templates.
+*   Substituir por: *"Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo."*
+
+## 6. Insight 5: Planejamento vs Execução
+
+### 6.1. Contexto
+Garantir que o agente de código compreenda o impacto sistêmico antes de realizar alterações em arquivos core.
+
+### 6.2. Ação para o Agente
+TAREFA E1: Fase de Análise Obrigatória
+
+*   Antes de qualquer `write`, o agente deve ler: `advanced-rag.ts`, `rag-chain.ts`, `prompt-templates.ts`, `graph.ts` e `agent-workflow.ts`.
+*   Mapear referências ao `LangChainOllamaEmbedder` para garantir compatibilidade com a migração Xenova.
+
+## 7. Insight 6: Integridade do Estado no Grafo
+
+### 7.1. O Problema Identificado
+A cada salto entre nós (handoff), há risco de degradação da informação se o estado for excessivamente resumido.
+
+### 7.2. Ação para o Agente
+TAREFA F1: Auditoria de Handoff
+
+*   Verificar se o `AgentStateSimple` transporta os chunks e metadados íntegros do nó *retrieve* para o nó *generate*.
+
+## 8. Priorização e Cronograma
+
+As tarefas devem seguir a ordem de dependência técnica e impacto imediato:
+
+
+
+
+Prioridade
+Tarefa
+Impacto
+
+
+
+
+Crítica
+A1 + A2 (Thresholds)
+Elimina respostas irrelevantes e alucinações.
+
+
+Alta
+D1 (Prompt Review)
+Melhora a extração de informação do contexto.
+
+
+Média
+B1 + B2 + B3 (Graph Checks)
+Aumenta a robustez e economia de tokens.
+
+
+Baixa
+C1 + F1 (Docs & Audit)
+Manutenibilidade e consistência de dados.
+
+
+
+
+
+Atenção: A implementação do threshold (A1) é pré-requisito para as verificações de nó (B1). Não inverter a ordem.
+
+
+## 9. Critérios de Aceitação (Definition of Done)
+
+*   [ ] `hybridSearch` retorna vazio quando nenhum resultado atinge score **0.3**.
+*   [ ] `runRagChain` interrompe fluxo sem chamar o LLM em casos de baixa relevância.
+*   [ ] Nó *retrieve* redireciona para `END` se a busca falhar.
+*   [ ] Prompt templates não possuem cláusulas de escape ("não sei").
+*   [ ] `npm run typecheck` e `npm run test` finalizados com sucesso.
+
+---
+
+*Documento elaborado em 18 de agosto de 2026. As informações contidas são de responsabilidade do solicitante.*

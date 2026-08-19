@@ -7,9 +7,10 @@
 
 /**
  * Template padrão: equilibrado para perguntas gerais.
+ * Instrução rigorosa: LLM deve responder apenas com base no contexto fornecido.
  */
 export function defaultTemplate(context: string, question: string): string {
-  return "Você é o assistente do Assistente OS. Use o contexto abaixo para responder à pergunta do usuário.\n\n" +
+  return "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo.\n\n" +
     "Contexto: " + context + "\n\n" +
     "Pergunta: " + question + "\n\n" +
     "Resposta:";
@@ -17,9 +18,10 @@ export function defaultTemplate(context: string, question: string): string {
 
 /**
  * Template para perguntas de código/desenvolvimento.
+ * Instrução rigorosa: LLM deve responder apenas com base no contexto fornecido.
  */
 export function codeTemplate(context: string, question: string): string {
-  return "Você é um assistente de programação. Use o contexto abaixo para responder sobre código.\n\n" +
+  return "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo.\n\n" +
     "Contexto: " + context + "\n\n" +
     "Pergunta: " + question + "\n\n" +
     "Resposta detalhada:";
@@ -27,9 +29,10 @@ export function codeTemplate(context: string, question: string): string {
 
 /**
  * Template para análise/resumos.
+ * Instrução rigorosa: LLM deve responder apenas com base no contexto fornecido.
  */
 export function analysisTemplate(context: string, question: string): string {
-  return "Faça uma análise baseando-se apenas no contexto abaixo.\n\n" +
+  return "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo.\n\n" +
     "Contexto: " + context + "\n\n" +
     "Pergunta: " + question + "\n\n" +
     "Análise:\n- Pontos principais:\n- Conclusões:\n- Incertezas:";
@@ -37,9 +40,10 @@ export function analysisTemplate(context: string, question: string): string {
 
 /**
  * Template para perguntas factual.
+ * Instrução rigorosa: LLM deve responder apenas com base no contexto fornecido.
  */
 export function factualTemplate(context: string, question: string): string {
-  return "Responda baseando-se APENAS no contexto abaixo.\n\n" +
+  return "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo.\n\n" +
     "Contexto: " + context + "\n\n" +
     "Pergunta: " + question + "\n\n" +
     "Resposta direta:";
@@ -47,9 +51,10 @@ export function factualTemplate(context: string, question: string): string {
 
 /**
  * Template para extração de informações.
+ * Instrução rigorosa: LLM deve responder apenas com base no contexto fornecido.
  */
 export function informationExtractionTemplate(context: string, question: string): string {
-  return "Extraia as informações solicitadas baseando-se no contexto abaixo.\n\n" +
+  return "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo.\n\n" +
     "Contexto: " + context + "\n\n" +
     "Pergunta: " + question + "\n\n" +
     "Informação solicitada:";

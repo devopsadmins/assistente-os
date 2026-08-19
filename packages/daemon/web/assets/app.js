@@ -380,6 +380,7 @@ async function loadMemoryStatus() {
 $("#memory-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const query = $("#memory-query").value.trim();
+  const threshold = parseFloat($("#memory-threshold").value);
   const box = $("#memory-results");
   if (!state.active) {
     box.innerHTML = `<span class="muted">Selecione uma soul na sidebar.</span>`;
@@ -390,7 +391,7 @@ $("#memory-form").addEventListener("submit", async (e) => {
   try {
     const data = await api(`/souls/${encodeURIComponent(state.active)}/memory/search`, {
       method: "POST",
-      body: JSON.stringify({ query, limit: 8 }),
+      body: JSON.stringify({ query, limit: 8, minScore: threshold }),
     });
     if (!data.results.length) {
       box.innerHTML = `<span class="muted">nenhum resultado para <b>${esc(query)}</b></span>`;
@@ -409,9 +410,14 @@ $("#memory-form").addEventListener("submit", async (e) => {
         </div>`,
       )
       .join("");
-  } catch (err) {
+} catch (err) {
     box.innerHTML = `<span class="muted">erro: ${esc(err.message)}</span>`;
   }
+});
+
+// Atualiza o valor do threshold enquanto o slider é movimentado
+$("#memory-threshold")?.addEventListener("input", () => {
+  $("#threshold-value").textContent = $("#memory-threshold").value;
 });
 
 /* ---------- upload ---------- */

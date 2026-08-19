@@ -27,7 +27,7 @@ import {
   listRelations,
   listObservations,
   graphStats,
-  OllamaEmbedder,
+  getEmbedder,
 } from "@assistente-os/memory";
 import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
@@ -217,7 +217,7 @@ async function main(): Promise<void> {
         return;
       }
       const pool = getPool(config.databaseUrl);
-      const embedder = new OllamaEmbedder(config.ollamaUrl, config.ollamaEmbedModel);
+      const embedder = getEmbedder();
       if (action === "index") {
         const n = await indexDirectory(pool, id, soul.dir, embedder);
         console.log(`indexado: ${n} arquivos (idempotente)`);

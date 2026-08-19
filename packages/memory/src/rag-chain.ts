@@ -8,9 +8,9 @@
  * como um dos nós do grafo de agentes.
  */
 import { Embedder } from "./embedders.js";
-import { createEmbedder, checkLangChainAvailability } from "./embedders-langchain.js";
 import { search } from "./indexer.js";
 import { applyTemplate } from "./prompt-templates.js";
+import { getEmbedder } from "./embedder-provider.js";
 import type { Pool } from "@assistente-os/core";
 
 /**
@@ -123,18 +123,21 @@ export async function runRagChain(
   query: string,
   limit = 5
 ): Promise<RagResult> {
-  // 1. Verificar disponibilidade da LangChain
-  const availability = await checkLangChainAvailability();
+  // 1. Verificar disponibilidade (usar embedder híbrido)
+  const embedder: Embedder = getEmbedder();
 
-  // 2. Criar embedder (LangChain ou nativo baseado no flag)
-  const embedder = createEmbedder(
-    process.env.OLLAMA_URL || "http://localhost:11434",
-    process.env.OLLAMA_MODEL || "nemotron-3-ultra-free",
-    availability.enabled
-  );
-
-  // 3. Recuperar documentos relevantes
+  // 2. Recuperar documentos relevantes
   const documents = await retrieveDocuments(pool, soul, query, embedder, limit);
+
+  // 3. Verificar se a busca retornou vazio (threshold de relevância)
+  if (documents.length === 0) {
+    return {
+      answer: "Não encontrei informações relevantes sobre isso na base de conhecimento.",
+      sources: [],
+      model: "hybrid-embedder",
+      query,
+    };
+  }
 
   // 4. Formatar contexto
   const context = formatContext(documents);
@@ -148,9 +151,9 @@ export async function runRagChain(
   // e marcamos que precisaria de chamada LLM real
 
   return {
-    answer: `=== CONTEXTO RECUPERADO ===\n${context}\n=== FIM DO CONTEXTO ===`,
+    answer: `=== CONTEXTO RECUPERADO ===${context}=== FIM DO CONTEXTO ===`,
     sources: documents,
-    model: availability.model,
+    model: "hybrid-embedder",
     query,
   };
 }

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { todayISODate, getPool, type AssistenteOsConfig, type Soul } from "@assistente-os/core";
-import { OllamaEmbedder, searchWithVerdict, type RelevanceRule } from "@assistente-os/memory";
+import { getEmbedder, searchWithVerdict, type RelevanceRule } from "@assistente-os/memory";
 
 export interface BuiltPromptFile {
   path: string;
@@ -58,7 +58,7 @@ ${sessao ? `--- Sessão atual (${today}) ---\n${sessao}\n` : ""}`.trim();
   if (withRag && prompt.trim()) {
     try {
       const pool = getPool(config.databaseUrl);
-      const embedder = new OllamaEmbedder(config.ollamaUrl, config.ollamaEmbedModel);
+      const embedder = getEmbedder();
       const res = await searchWithVerdict(pool, soul.id, prompt, embedder, relevance, 5);
       verdict = res.verdict;
       if (res.verdict.ok && res.results.length) {
