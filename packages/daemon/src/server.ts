@@ -475,6 +475,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       return sendJson(res, 400, { error: "timeoutSeconds deve ser um inteiro entre 1 e 600" });
     }
     const requestedModel = body && typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined;
+    const requestedTier = body && typeof body.tier === "string" && body.tier.trim() ? body.tier.trim() : undefined;
     const memorizar = body && body.memorizar === true;
     const soul = getSoul(home, decodeURIComponent(chatMatch[1]!));
     if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
@@ -503,6 +504,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       // no degrau vencedor.
       const decision = await route(pool, config, soul, makeLocalFallbackProbe(config.ollamaUrl), config.routerTiers);
       const model = requestedModel ?? decision.target.model;
+    const tier = requestedTier ?? decision.target.tier;
       const startedAt = Date.now();
       let result: { code: number; stdout: string; stderr: string; timedOut: boolean };
       if (decision.target.provider === "ollama") {
@@ -536,7 +538,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         outputTokens: 0,
         cost: 0,
         status: result.code === 0 && !result.timedOut ? "ok" : "failed",
-        note: `tier=${decision.target.tier}; latency_ms=${Date.now() - startedAt}`,
+        note: `tier=${tier}; latency_ms=${Date.now() - startedAt}`,
       });
       await recordExecution(pool, {
         sessionId: session.id,
@@ -544,7 +546,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         kind: "chat",
         promptHash: createHash("sha256").update(prompt).digest("hex").slice(0, 16),
         model,
-        tier: decision.target.tier,
+        tier: tier,
         filesLoaded: built.files.filter((f) => f.chars > 0).length,
         contextChars: built.contextChars,
         verdict: built.verdict == null ? undefined : JSON.stringify(built.verdict),
@@ -553,7 +555,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       });
       // evento WS de conclusão (fire-and-forget; não bloqueia a resposta)
       try {
-        hub.broadcast({ type: "chat.done", soul: soul.id, code: result.code, timedOut: result.timedOut, tier: decision.target.tier });
+        hub.broadcast({ type: "chat.done", soul: soul.id, code: result.code, timedOut: result.timedOut, tier: tier });
       } catch {
         /* ws opcional */
       }
@@ -574,7 +576,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         ok: result.code === 0 && !result.timedOut,
         soul: soul.id,
         model,
-        tier: decision.target.tier,
+        tier: tier,
         code: result.code,
         timedOut: result.timedOut,
         stdout: result.stdout.slice(-2000),

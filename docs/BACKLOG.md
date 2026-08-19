@@ -54,6 +54,17 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 - **Upload não trava mais a UI.** `POST /souls/:id/upload` reindexava a soul INTEIRA (`indexDirectory`, ~320 arquivos re-embedados via Ollama = horas em CPU) antes de responder — o navegador ficava preso em "enviando…". Agora responde imediatamente após salvar/extrair, indexa só os arquivos novos (`indexFile`) em background e avisa via WS `index.done`; a UI mostra "indexando em segundo plano…" → "indexado: N chunks". Reindex completo continua na CLI (`os memory index`).
 - **Senha do Postgres realinhada.** A senha do role `assistente_os` no `memoria-db` divergia do `.env` (alterada por fora ~16:05) — toda conexão nova falhava com "password authentication failed"; a aba TELEMETRIA expunha isso a cada poll (283 falhas nos logs). Corrigido com `ALTER ROLE ... PASSWORD` para o valor do `.env` (fonte de verdade). **Atenção:** quem reprovisionar o banco deve usar a senha do `~/.assistant-os/.env`, nunca gerar outra.
 
+### Correção dos 60 erros de tipo da integração LangChain/ADO (concluída, 2026-08-18, sessão Claude Code)
+
+- O build do monorepo estava quebrado (60 erros TS; `npm run build` falhava) após a adição de `advanced-rag.ts`, `core/src/ado.ts` e das tools ADO em `packages/tools`. Corrigido — typecheck e build zerados:
+  - `core/src/ado.ts`: `IRequestHandler` importado do path correto (`interfaces/common/VsoBaseInterfaces.js`).
+  - `packages/tools/src/index.ts`: 5 chamadas ADO ajustadas às assinaturas reais da `azure-devops-node-api` (`queryByWiql` recebe `TeamContext`, `createWorkItem` exige `customHeaders` como 1º arg, `getWorkItem(s)` sem args extras, `$top` movido de `GitPullRequestSearchCriteria` para o parâmetro `top` de `getPullRequests`).
+  - `memory/src/advanced-rag.ts`: exports duplicados removidos, `runRagChain` importado, `STOPWORDS_PT.has(toLowerCase())` (era `.includes(toLowerString())` — nunca compilou), variável `entity` fora de escopo → `primaryEntity`, guards de `undefined`, e SQL corrigido de `entity` para `entity_name` (coluna real de `observations` — quebraria em runtime).
+  - `memory/src/agent-workflow.ts`: `export type` de funções trocado por re-export de valor (importá-las falharia em runtime).
+  - `memory/src/rag-chain.ts`: busca semântica era placebo (`cosine(queryEmbedding, [])` → score 0 pra tudo); agora usa o `search()` real do indexer (pgvector sobre `chunks`), com fallback literal nas observações. Validado em runtime: scores reais (0.66–0.69) achando os docs corretos.
+- **Achado importante:** apesar de `@langchain/core`, `@langchain/community` e `@langchain/langgraph` estarem instalados, **nenhum código os importa** — a "integração LangChain/LangGraph" é nominal (wrapper fino sobre o `OllamaEmbedder` + funções puras de estado). A alegação "graph.invoke testado no LangGraph" não corresponde a nada no repo. Decidir: usar os pacotes de verdade ou removê-los do `package.json`.
+- Testes por pacote (com `DATABASE_URL` do `.env`): core 17/17, memory 15/15, voice ok; **2 falhas pré-existentes** (ver pendências).
+
 ### Decisões descartadas
 
 - **Bytebot como executor de ações de UI (F3)** — avaliado (2026-08-15) e descartado (2026-08-17): agente desktop self-hosted (Docker, Ubuntu+XFCE, `bytebotd` porta 9990, agent NestJS 9991, MCP SSE em `/mcp`, LiteLLM proxy). Conflita com o princípio "sem Docker" do projeto (ARCHITECTURE.md:3); não entra como dependência do núcleo. Se a necessidade de automação de UI (forms, 2FA, extração de arquivos) voltar, avaliar alternativa sem container.
@@ -65,6 +76,9 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 - [ ] **Completar OAuth dos MCPs Google** — reiniciar o opencode para disparar o fluxo de autorização do `stitch` remoto e reautorizar gmail/drive/docs (todos retornaram `Unauthorized` com o mesmo client OAuth). Agora mais urgente para o `stitch`: a entrada em `opencode.jsonc` está sem credencial (bearer token estático removido na limpeza acima) até isso ser feito.
 - [ ] **MCP `standards` com caminho Windows quebrado** — `opencode.json` do repo aponta `D:/Projetos/projeto0/...`, inexistente nesta máquina Linux. Corrigir o caminho ou desabilitar a entrada (gera erro/latência a cada run do opencode no repo).
 - [ ] **Autenticação do `@azure-devops/mcp`** — confirmar `az login` ou PAT disponível para o daemon/opencode; sem isso as ferramentas aparecem mas falham ao chamar.
+- [ ] **Teardown dos testes do `tools` falha** — "Cannot use a pool after calling end on the pool" em `pgTestHelper.cleanup` (13/13 testes reais passam; só o after do arquivo quebra). Provável `closePool()` sem args fechando o `adminPool` compartilhado antes do `DROP SCHEMA`.
+- [ ] **Teste de backup da CLI falha sem `pg_dump`** — `backup.test.ts` espera que o manifest registre a falha do dump (`/"database"/`), mas quando o binário não existe no host (caso desta máquina) o manifest omite a chave. Instalar `postgresql-client` ou tratar ENOENT no código de backup.
+- [ ] **Suíte `daemon.test.ts` chama o Ollama real e trava** — os 2 testes de chat desatualizados (já documentados acima) agora aguardam a inferência real em CPU (>1h de suíte; foi preciso matar o processo). Urgente: apontar `OLLAMA_URL` para porta sem listener ou mockar `ollamaChat` nesses testes.
 
 ## Roadmap por fases
 

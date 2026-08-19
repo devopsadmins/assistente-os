@@ -34,8 +34,8 @@ export async function createTestSchema(): Promise<TestDb> {
     pool,
     schema,
     async cleanup() {
-      await closePool(scopedUrl);
       await adminPool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await closePool(scopedUrl);
     },
   };
 }

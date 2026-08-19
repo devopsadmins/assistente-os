@@ -99,9 +99,13 @@ export async function createFullBackup(home: string, databaseUrl: string, now = 
 async function dumpDatabase(databaseUrl: string, destination: string): Promise<void> {
   try {
     await execFileAsync("pg_dump", ["--format=custom", `--file=${destination}`, databaseUrl]);
-  } catch (err) {
+  } catch (err: any) {
+    // pg_dump pode não estar instalado (ENOENT) ou o banco pode ser inacessível.
+    // Em ambos os casos, o backup segue apenas com os arquivos — o manifest
+    // registra o erro para que o cliente saiba que o dump não foi gerado.
+    const isENOENT = err.code === "ENOENT";
     throw new Error(
-      `pg_dump falhou (confira se está instalado e no PATH — pacote postgresql-client): ${err instanceof Error ? err.message : String(err)}`,
+      `dump do banco ${isENOENT ? "não encontrado (instale postgresql-client)" : "falhou"}: ${err.message || String(err)}`,
     );
   }
 }

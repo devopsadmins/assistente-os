@@ -86,6 +86,7 @@ test("runOpenCode: cwd inexistente falha sem spawnar", async () => {
 
 test("daemon: chat executa o prompt uma única vez e registra a chamada", async () => {
   const { home, cleanup } = await tempHome();
+  process.env.OLLAMA_URL = "http://127.0.0.1:1";
   let calls = 0;
   const daemon = await startDaemon({
     port: 0,
@@ -115,6 +116,7 @@ test("daemon: chat executa o prompt uma única vez e registra a chamada", async 
     assert.equal(entries[0]?.status, "ok");
     assert.equal(entries[0]?.provider, "ollama");
   } finally {
+    delete process.env.OLLAMA_URL;
     await daemon.close();
     await cleanup();
   }

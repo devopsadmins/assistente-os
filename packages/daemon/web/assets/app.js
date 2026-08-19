@@ -286,6 +286,7 @@ async function sendChat(prompt) {
     return;
   }
   const model = $("#chat-model").value.trim() || undefined;
+  const tier = $("#chat-tier").value;
   const sendBtn = $("#chat-send");
   sendBtn.disabled = true;
   addMsg("user", esc(prompt));
@@ -293,7 +294,7 @@ async function sendChat(prompt) {
   try {
     const body = await api(`/souls/${encodeURIComponent(state.active)}/chat`, {
       method: "POST",
-      body: JSON.stringify({ prompt, model }),
+      body: JSON.stringify({ prompt, model, tier }),
     });
     chatLog.removeChild(chatLog.lastChild);
     const meta = `tier: ${esc(body.tier)} · model: ${esc(body.model)} · code: ${body.code}${body.timedOut ? " · timedOut" : ""} · ${esc(body.routerReason || "")}`;

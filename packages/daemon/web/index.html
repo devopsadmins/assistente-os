@@ -141,6 +141,14 @@
         <label class="model-field">modelo
           <input id="chat-model" type="text" placeholder="ex.: nemotron-3-ultra-free" />
         </label>
+        <label class="model-field" style="display:block;margin-top:6px;">
+          tier
+          <select id="chat-tier">
+            <option value="local">local</option>
+            <option value="zen">zen</option>
+            <option value="soul">soul</option>
+          </select>
+        </label>
         <button id="chat-buffer" type="button" title="Inspecionar o buffer da soul (contexto montado)">Ver buffer</button>
         <div id="voice-controls" class="voice-controls">
           <button id="voice-toggle" type="button" class="voice-btn" title="Iniciar/Parar voz">
