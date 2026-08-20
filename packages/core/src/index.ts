@@ -12,3 +12,7 @@ export * from "./sessions.js";
 export * from "./monitors.js";
 export * from "./logger.js";
 export * from "./ado.js";
+export * from "./types/agent.js";
+export * from "./security/temp-vault.js";
+export * from "./security/content-filter.js";
+export * from "./governance/audit-trail.js";

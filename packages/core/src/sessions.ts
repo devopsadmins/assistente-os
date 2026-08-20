@@ -112,6 +112,11 @@ export async function listExecutions(pool: Pool, soul?: string, limit = 20): Pro
   return rows.map(rowToExecution);
 }
 
+export async function countSessions(pool: Pool): Promise<number> {
+  const { rows } = await pool.query<{ n: string }>("SELECT COUNT(*) AS n FROM sessions");
+  return Number(rows[0]?.n ?? 0);
+}
+
 function rowToSession(row: Record<string, unknown>): SessionRecord {
   return {
     id: Number(row.id),

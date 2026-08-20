@@ -42,7 +42,13 @@ export async function processPendingEvents(options: EventConsumerOptions): Promi
       const session = await openSession(pool, soul.id, config.defaultMaxTurns);
       await bumpSessionPrompt(pool, session.id);
       const startedAt = Date.now();
-      const result = await run(built.fullPrompt, { cwd: soul.dir, model: decision.target.model, timeoutSeconds: 120 });
+      const result = await run(built.fullPrompt, {
+        cwd: soul.dir,
+        model: decision.target.model,
+        timeoutSeconds: 120,
+        agent: soul.config.agent ? soul.id : undefined,
+        soulId: soul.id,
+      });
       await recordCostCall(pool, {
         soul: soul.id,
         provider: decision.target.provider,

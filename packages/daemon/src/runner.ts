@@ -27,6 +27,10 @@ export interface OpenCodeRunOptions {
   /** Segundos máximos de execução. Padrão: 300. */
   timeoutSeconds?: number;
   env?: Record<string, string>;
+  /** Nome do agente opencode a utilizar (mapeado de soul.config.agent). */
+  agent?: string;
+  /** ID da soul ativa — propagado via env var para o MCP server. */
+  soulId?: string;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
 }
@@ -51,13 +55,17 @@ export function runOpenCode(prompt: string, options: OpenCodeRunOptions): Promis
     }
     const args = ["run", "--format", "json", "--print-logs"];
     if (options.model) args.push("--model", options.model);
+    if (options.agent) args.push("--agent", options.agent);
     args.push(prompt);
+
+    const spawnEnv: Record<string, string> = { ...process.env as Record<string, string>, ...(options.env ?? {}) };
+    if (options.soulId) spawnEnv.AGENT_SOUL_ID = options.soulId;
 
     let proc: ChildProcess;
     try {
       proc = spawn(resolveOpenCodeBin(), args, {
         cwd: options.cwd,
-        env: { ...process.env, ...(options.env ?? {}) },
+        env: spawnEnv,
         stdio: ["ignore", "pipe", "pipe"],
         shell: false,
         windowsHide: true,

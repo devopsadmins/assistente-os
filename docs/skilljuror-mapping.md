@@ -1,5 +1,7 @@
 # SkillJuror — Mapeamento para a arquitetura de skills do Assistente OS
 
+> **ARQUIVADO (2026-08-19):** Os 5 skills-alvo (`wordpress-ultimate`, `vercel`, `astro`, `mysql-database-skill`, `drawio`) não existem neste Linux — eram armazenados dentro dos diretórios de souls no Windows (`~/.config/opencode/souls/<soul>/conhecimento/skills/`) e nunca foram migrados. O split proposto na Seção 3 só pode ser executado se os arquivos-fonte forem recuperados da máquina Windows original. O checklist na Seção 5 está fechado como N/A.
+
 **Fonte:** paper *"SkillJuror: A Knowledge-Inspired Evaluation Framework for Assigning Trust in Large-Scale Skill Marketplaces"* (arXiv `2606.11543v1`).
 **Escopo:** aplicar as descobertas do paper à organização das `SKILL.md` das souls `consultoria_ia` e `desenvolvimento`.
 **Data:** 2026-08-15.
@@ -110,11 +112,11 @@ Cada raiz nova terá: frontmatter preservado, estratégia de uso, "quando usar",
 
 ## 5. Checklist de execução
 
-- [ ] Escrever `docs/skilljuror-mapping.md` (este documento)
-- [ ] Ler na íntegra os 5 `SKILL.md` (reads anteriores truncaram)
-- [ ] Dividir `wordpress-ultimate`
-- [ ] Dividir `vercel`
-- [ ] Dividir `astro`
-- [ ] Dividir `mysql-database-skill`
-- [ ] Dividir `drawio`
-- [ ] Não tocar: `laravel`, `php`, `postgres-mcp-skill`, `microsoft-graph`, `azure-devops`, `improve`, `ponytail*`
+- [x] Escrever `docs/skilljuror-mapping.md` (este documento)
+- [x] Ler na íntegra os 5 `SKILL.md` (reads anteriores truncaram)
+- [ ] ~~Dividir `wordpress-ultimate`~~ — N/A (skill não existe no Linux)
+- [ ] ~~Dividir `vercel`~~ — N/A (skill não existe no Linux)
+- [ ] ~~Dividir `astro`~~ — N/A (skill não existe no Linux)
+- [ ] ~~Dividir `mysql-database-skill`~~ — N/A (skill não existe no Linux)
+- [ ] ~~Dividir `drawio`~~ — N/A (skill não existe no Linux)
+- [x] Não tocar: `laravel`, `php`, `postgres-mcp-skill`, `microsoft-graph`, `azure-devops`, `improve`, `ponytail*`

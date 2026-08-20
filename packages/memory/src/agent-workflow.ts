@@ -1,128 +1,160 @@
 /**
- * Módulo de workflow do agente LangGraph para o Assistente OS.
+ * Workflow do agente LangGraph para o Assistente OS.
  *
- * Exporta funções utilitárias para criação e gestão de agentes com estado.
- * A integração completa com o StateGraph da LangGraph requer atenção às
- * definições de tipo da versão específica do pacote instalada.
- *
- * Funcionamento comprovado em runtime; ajustes de tipo podem ser necessários.
+ * Define o grafo de execução: retrieve → generate → (decide) → END ou tool.
+ * Compilado como StateGraph do LangGraph, suporta memória persistente via
+ * MemorySaver e checkpoints entre chamadas.
  */
+import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
+import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { StringOutputParser } from "@langchain/core/output_parsers";
 import { runRagChain } from "./rag-chain.js";
+import { AgentState, type AgentStateType } from "./agent-state.js";
 import type { Pool } from "@assistente-os/core";
 
-/**
- * Interface simplificada de estado do agente.
- * Pode ser expandida conforme necessária.
- */
-export interface AgentStateSimple {
-  soul: string;
-  messages: Array<{ role: string; content: string }>;
-  context: string;
-  lastToolResult?: string;
-  iterationCount: number;
-  maxIterations: number;
+export type { AgentStateType };
+
+function createLLM() {
+  const baseUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434/v1";
+  const modelName = process.env.OLLAMA_MODEL || "qwen2.5:latest";
+  return new ChatOpenAI({
+    modelName,
+    configuration: { baseURL: baseUrl },
+    temperature: 0,
+    maxTokens: 1024,
+  });
+}
+
+function toLangChainMessages(msgs: AgentStateType["messages"]) {
+  return msgs.map((m) => {
+    switch (m.role) {
+      case "system": return new SystemMessage(m.content);
+      case "user": return new HumanMessage(m.content);
+      case "assistant": return new AIMessage(m.content);
+      default: return new HumanMessage(m.content);
+    }
+  });
+}
+
+function buildRetrieveNode(pool: Pool) {
+  return async (state: AgentStateType): Promise<Partial<AgentStateType>> => {
+    const lastUser = [...state.messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return {};
+
+    const result = await runRagChain(pool, state.soul, lastUser.content, 5);
+    return { context: result.answer };
+  };
+}
+
+function buildGenerateNode() {
+  return async (state: AgentStateType): Promise<Partial<AgentStateType>> => {
+    const llm = createLLM();
+
+    const prompt = ChatPromptTemplate.fromMessages([
+      ["system", "Você é o assistente do Assistente OS. Use o contexto fornecido para responder. Se não tiver informação suficiente, diga que não sabe."],
+      new MessagesPlaceholder("history"),
+      ["human", "Contexto do grafo de memória:\n{context}\n\nPergunta: {question}"],
+    ]);
+
+    const lastUser = [...state.messages].reverse().find((m) => m.role === "user");
+    const question = lastUser?.content ?? "";
+    const history = toLangChainMessages(state.messages);
+
+    const chain = RunnableSequence.from([
+      async () => ({ context: state.context || "Sem contexto disponível.", question, history }),
+      prompt,
+      llm,
+      new StringOutputParser(),
+    ]);
+
+    const answer = await chain.invoke({});
+
+    return {
+      messages: [{ role: "assistant", content: answer }],
+      iterationCount: state.iterationCount + 1,
+    };
+  };
+}
+
+function shouldContinue(state: AgentStateType): string {
+  if (state.iterationCount >= state.maxIterations) {
+    return "__end__";
+  }
+  return "generate";
+}
+
+import { RunnableSequence } from "@langchain/core/runnables";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let compiledGraph: any = null;
+
+function buildGraph(pool: Pool) {
+  if (compiledGraph) return compiledGraph;
+
+  const graph = new StateGraph(AgentState)
+    .addNode("retrieve", buildRetrieveNode(pool))
+    .addNode("generate", buildGenerateNode())
+    .addEdge(START, "retrieve")
+    .addEdge("retrieve", "generate")
+    .addConditionalEdges("generate", shouldContinue, {
+      generate: "generate",
+      [END]: END,
+    });
+
+  const memory = new MemorySaver();
+  compiledGraph = graph.compile({ checkpointer: memory });
+  return compiledGraph;
 }
 
 /**
- * Cria estado inicial para o agente.
+ * Executa o agente LangGraph com o estado inicial e uma mensagem do usuário.
+ * Retorna o estado final após todas as iterações.
  */
-export function createInitialAgentState(soul: string): AgentStateSimple {
-  return {
+export async function runAgent(
+  pool: Pool,
+  soul: string,
+  userMessage: string,
+  threadId?: string
+): Promise<AgentStateType> {
+  const graph = buildGraph(pool);
+
+  const initialState: AgentStateType = {
     soul,
     messages: [
       {
         role: "system",
         content:
-          "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário.",
+          "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
+          "Você tem acesso a um grafo de memória com entidades, relações e observações.",
       },
+      { role: "user", content: userMessage },
     ],
     context: "",
     lastToolResult: undefined,
+    entities: undefined,
+    relations: undefined,
     iterationCount: 0,
     maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
   };
+
+  const config = { configurable: { thread_id: threadId ?? `soul-${soul}` } };
+  return await graph.invoke(initialState, config);
 }
 
 /**
- * Atualiza estado com mensagem do usuário.
+ * Re-exporta funções auxiliares para retrocompatibilidade.
  */
-export function addUserMessage(
-  state: AgentStateSimple,
-  message: string
-): AgentStateSimple {
-  return {
-    ...state,
-    messages: [...state.messages, { role: "user", content: message }],
-  };
-}
+export {
+  addUserMessage,
+  addToolResult,
+  checkMaxIterations,
+  nextIteration,
+  executeRagChain,
+  decideNextStep,
+} from "./agent-workflow-legacy.js";
 
-/**
- * Atualiza estado com resultado de tool.
- */
-export function addToolResult(
-  state: AgentStateSimple,
-  result: string
-): AgentStateSimple {
-  return {
-    ...state,
-    messages: [...state.messages, { role: "tool", content: result }],
-    lastToolResult: result,
-  };
-}
-
-/**
- * Verifica se atingiu limite de iterações.
- */
-export function checkMaxIterations(state: AgentStateSimple): boolean {
-  return state.iterationCount >= state.maxIterations;
-}
-
-/**
- * Incrementa contador de iterações.
- */
-export function nextIteration(state: AgentStateSimple): AgentStateSimple {
-  return { ...state, iterationCount: state.iterationCount + 1 };
-}
-
-/**
- * Executa a chain RAG com o estado atual.
- * Esta é a função central que conecta o agente ao RAG.
- */
-export async function executeRagChain(
-  pool: Pool,
-  soul: string,
-  query: string
-): Promise<{
-  answer: string;
-  sources: Array<{ doc: string; snippet: string; score: number }>;
-  model: string;
-}> {
-  return await runRagChain(pool, soul, query, 5);
-}
-
-/**
- * Decide o próximo passo do agente baseado no estado atual.
- * Retorna o nome do próximo nó ou END.
- *
- * @param state Estado atual do agente
- * @returns Próximo passo: "__end__" | "generate" | "execute_tool"
- */
-export function decideNextStep(
-  state: AgentStateSimple
-): "__end__" | "generate" | "execute_tool" {
-  if (state.iterationCount >= (state.maxIterations || 5)) {
-    return "__end__";
-  }
-  if (state.lastToolResult) {
-    return "generate";
-  }
-  return "generate";
-}
-
-/**
- * Re-exporta as prompt templates com aliases voltados ao agente RAG.
- * (applyTemplate já é exportado direto por prompt-templates via index.)
- */
 export {
   defaultTemplate as ragDefaultTemplate,
   codeTemplate as ragCodeTemplate,

@@ -16,8 +16,7 @@
   "dependencies": {
     "@assistente-os/core": "*",
     "@assistente-os/daemon": "*",
-    "@assistente-os/memory": "*",
-    "@google/stitch-sdk": "^0.3.5"
+    "@assistente-os/memory": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

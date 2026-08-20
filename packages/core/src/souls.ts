@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { AgentConfig } from "./types/agent.js";
 
 export interface SoulConfig {
   name: string;
@@ -14,6 +15,8 @@ export interface SoulConfig {
   dailyLimit?: number;
   /** Limite de turnos (prompts) por sessão aberta, se aplicável. */
   maxTurns?: number;
+  /** Configuração de agente: permissões de tools, skills e guardrails. */
+  agent?: AgentConfig;
 }
 
 export interface Soul {

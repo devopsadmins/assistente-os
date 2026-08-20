@@ -245,7 +245,7 @@ export async function indexSoul(
 
         // 2. Extrair entidades e relações do conteúdo
         // Patterns simples de extração
-        const entityPatterns = content.match(/[A-Z][a-z]+(?:[A-Z][a-z]+)*/g) || [];
+        const entityPatterns: string[] = content.match(/[A-Z][a-z]+(?:[A-Z][a-z]+)*/g) || [];
         const uniqueEntities = [...new Set(entityPatterns.filter(w => w.length > 3 && !STOPWORDS_PT.has(w.toLowerCase())))];
 
         // 3. Inserir entidades no grafo

@@ -186,8 +186,8 @@ async function loadDashboard() {
 
   // Preenche top cards
   $("#cnc-almas").textContent = state.souls.length;
-  // TODO: Buscar sessões reais do acervo (usando dummy para ilustrar)
-  $("#cnc-sessoes").textContent = state.souls.length * 12 + 5;
+  const sessStats = await api("/sessions/stats").catch(() => null);
+  $("#cnc-sessoes").textContent = sessStats?.total ?? "—";
   $("#cnc-ativa").textContent = state.active || "—";
   $("#cnc-motor").textContent = state.tier;
 
@@ -503,12 +503,58 @@ async function loadObservability() {
 
   const mon = infra?.monitors ?? [];
   const ollamaOk = !!(infra && infra.ollama && infra.ollama.ok);
-  $("#infra-cards").innerHTML = `
-    <div class="stat-card"><div class="label">${ic("pulse")} Daemon</div><div class="value">${infra ? esc(infra.service) : "offline"}</div><div class="sub">${infra ? `${infra.souls.total} souls` : "fora do ar"}</div></div>
-    <div class="stat-card"><div class="label">${ic("graph")} Ollama</div><div class="value" style="color:${ollamaOk ? "#00ff9d" : "#ff2a2a"}">${ollamaOk ? "online" : "offline"}</div><div class="sub">${infra && infra.ollama ? `${infra.ollama.models} modelos · ${infra.ollama.latencyMs}ms` : "sem resposta /api/tags"}</div></div>
-    <div class="stat-card"><div class="label">${ic("memory")} kernel.db</div><div class="value">${infra ? fmtBytes(infra.databases.kernelBytes) : "—"}</div><div class="sub">memory.db: ${infra ? fmtBytes(infra.databases.memoryBytes) : "—"}</div></div>
-    <div class="stat-card"><div class="label">${ic("dashboard")} Eventos</div><div class="value">${infra ? infra.events.pending + infra.events.processing : "—"}</div><div class="sub">${infra ? `${infra.events.completed} ok · ${infra.events.failed} falhas` : ""}</div></div>
-    <div class="stat-card"><div class="label">${ic("pulse")} Sites</div><div class="value">${mon.length}</div><div class="sub">${mon.filter((m) => m.status === "up").length} up · ${mon.filter((m) => m.status === "down").length} down</div></div>`;
+  const sys = infra?.system;
+  const pg = infra?.postgres;
+  const dbs = infra?.databases;
+  const rag = infra?.rag;
+
+  /* --- cards infra --- */
+  let cards = "";
+
+  /* Daemon */
+  cards += `<div class="stat-card"><div class="label">${ic("pulse")} Daemon</div><div class="value">${infra ? esc(infra.service) : "offline"}</div><div class="sub">${infra ? `${infra.souls.total} souls` : "fora do ar"}</div></div>`;
+
+  /* Ollama */
+  cards += `<div class="stat-card"><div class="label">${ic("graph")} Ollama</div><div class="value" style="color:${ollamaOk ? "#00ff9d" : "#ff2a2a"}">${ollamaOk ? "online" : "offline"}</div><div class="sub">${infra && infra.ollama ? `${infra.ollama.models} modelos · ${infra.ollama.latencyMs}ms` : "sem resposta /api/tags"}</div></div>`;
+
+  /* Sistema (Linux) */
+  if (sys) {
+    const ramPct = sys.ramTotal > 0 ? Math.round((sys.ramUsed / sys.ramTotal) * 100) : 0;
+    const diskPct = sys.diskTotal > 0 ? Math.round((sys.diskUsed / sys.diskTotal) * 100) : 0;
+    const uptimeH = Math.floor(sys.uptime / 3600);
+    const uptimeM = Math.floor((sys.uptime % 3600) / 60);
+    cards += `<div class="stat-card"><div class="label">${ic("dashboard")} Sistema</div><div class="value" style="color:${sys.cpuPercent > 80 ? "#ff2a2a" : sys.cpuPercent > 50 ? "#ffb800" : "#00ff9d"}">${sys.cpuPercent}% CPU</div><div class="sub">${sys.cpuCount}x ${esc(sys.cpuModel.slice(0, 30))} · load ${sys.loadAvg[0]}</div></div>`;
+    cards += `<div class="stat-card"><div class="label">${ic("memory")} RAM</div><div class="value" style="color:${ramPct > 85 ? "#ff2a2a" : ramPct > 60 ? "#ffb800" : "#00ff9d"}">${ramPct}%</div><div class="sub">${fmtBytes(sys.ramUsed)} / ${fmtBytes(sys.ramTotal)}</div></div>`;
+    if (sys.diskTotal > 0) {
+      cards += `<div class="stat-card"><div class="label">${ic("dashboard")} Disco</div><div class="value" style="color:${diskPct > 90 ? "#ff2a2a" : diskPct > 75 ? "#ffb800" : "#00ff9d"}">${diskPct}%</div><div class="sub">${fmtBytes(sys.diskUsed)} / ${fmtBytes(sys.diskTotal)}</div></div>`;
+    }
+    cards += `<div class="stat-card"><div class="label">${ic("pulse")} Uptime</div><div class="value">${uptimeH}h ${uptimeM}m</div><div class="sub">${esc(sys.platform)} ${esc(sys.arch)}</div></div>`;
+  }
+
+  /* Postgres */
+  if (pg) {
+    cards += `<div class="stat-card"><div class="label">${ic("graph")} Postgres</div><div class="value">${pg.tables} tabelas</div><div class="sub">${pg.connections} conexões ativas · ${pg.version.slice(0, 40)}</div></div>`;
+  }
+
+  /* kernel.db / memory.db */
+  if (dbs) {
+    cards += `<div class="stat-card"><div class="label">${ic("memory")} kernel.db</div><div class="value">${fmtBytes(dbs.kernelBytes)}</div><div class="sub">memory.db: ${fmtBytes(dbs.memoryBytes)}</div></div>`;
+  }
+
+  /* RAG */
+  if (rag) {
+    cards += `<div class="stat-card"><div class="label">${ic("graph")} RAG</div><div class="value">${rag.chunks} chunks</div><div class="sub">embedder + grafo no Postgres</div></div>`;
+  }
+
+  /* Eventos */
+  if (infra?.events) {
+    cards += `<div class="stat-card"><div class="label">${ic("dashboard")} Eventos</div><div class="value">${infra.events.pending + infra.events.processing}</div><div class="sub">${infra.events.completed} ok · ${infra.events.failed} falhas</div></div>`;
+  }
+
+  /* Sites */
+  cards += `<div class="stat-card"><div class="label">${ic("pulse")} Sites</div><div class="value">${mon.length}</div><div class="sub">${mon.filter((m) => m.status === "up").length} up · ${mon.filter((m) => m.status === "down").length} down</div></div>`;
+
+  $("#infra-cards").innerHTML = cards;
 
   const eventsBox = $("#events-box");
   if (events) {

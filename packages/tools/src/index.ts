@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg } from "@assistente-os/core";
+import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode } from "@assistente-os/daemon";
+import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -24,6 +24,42 @@ export function relevanceRule(configHome: string): RelevanceRule {
     min_score: Number(process.env.ASSISTENTE_OS_RELEVANCE_MIN_SCORE) || 0.35,
     min_term_matches: Number(process.env.ASSISTENTE_OS_RELEVANCE_MIN_TERMS) || 1,
   };
+}
+
+// ── Agent Authorization (Zero Trust Allowlist) ──────────────────────────
+
+/** Tools que exigem soul_id e passam pela verificação de allowlist. */
+const SOUL_SCOPED_TOOLS = new Set([
+  "memory_search", "memory_index", "memory_status",
+  "graph_list", "observation_add",
+  "soul_context", "soul_chat",
+  "soul_anotar", "soul_licao", "soul_decidir",
+  "action_execute",
+  "browser_navigate", "browser_click", "browser_extract_text",
+  "browser_screenshot", "browser_close",
+]);
+
+/**
+ * Verifica se a soul tem permissão para usar a tool.
+ * Lança erro se negado; registra violação no audit trail.
+ */
+function authorizeTool(configHome: string, soulId: string, toolName: string): void {
+  const soul = getSoul(configHome, soulId);
+  const patterns = resolveAllowedTools(soul?.config?.agent);
+  if (!isToolAllowed(patterns, toolName)) {
+    logFullAuditEntry({
+      ts: new Date().toISOString(),
+      sessionId: "mcp-guard",
+      soulId,
+      intention: `BLOQUEIO: tentativa de usar '${toolName}'`,
+      toolsCalled: [toolName],
+      params: { denied: true, allowedPatterns: patterns },
+    });
+    throw new Error(
+      `[Security 42001] Soul '${soulId}' não tem permissão para executar '${toolName}'. ` +
+      `Tools permitidas: ${patterns.join(", ")}`,
+    );
+  }
 }
 
 interface Tool {
@@ -338,6 +374,63 @@ const TOOLS: Tool[] = [
       required: ["project", "repositoryId", "sourceRefName", "targetRefName", "title"],
     },
   },
+  // Browser Automation Tools (Flow OS)
+  {
+    name: "browser_navigate",
+    description: "Abre uma URL em um navegador headless. Retorna título e status HTTP. Cada tarefa tem uma sessão isolada.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "URL completa para navegar" },
+        taskId: { type: "string", description: "ID da tarefa (opcional, default: 'default')" },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "browser_click",
+    description: "Clica em um elemento CSS na página do navegador da tarefa.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "Seletor CSS do elemento" },
+        taskId: { type: "string", description: "ID da tarefa (opcional)" },
+      },
+      required: ["selector"],
+    },
+  },
+  {
+    name: "browser_extract_text",
+    description: "Extrai texto estruturado da página. Use 'table' ou 'tables' para extrair tabelas como JSON/Markdown. Use 'body' ou omita para texto completo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "Seletor CSS ('body', 'table', 'tables', ou qualquer seletor)", default: "body" },
+        taskId: { type: "string", description: "ID da tarefa (opcional)" },
+      },
+    },
+  },
+  {
+    name: "browser_screenshot",
+    description: "Captura screenshot da página como PNG (base64). Útil para auditoria multimodal.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "ID da tarefa (opcional)" },
+        fullPage: { type: "boolean", description: "Screenshot da página inteira (default: false)", default: false },
+      },
+    },
+  },
+  {
+    name: "browser_close",
+    description: "Fecha a sessão do navegador da tarefa e libera recursos.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "ID da tarefa (opcional)" },
+      },
+    },
+  },
 ];
 
 interface McpServerOptions {
@@ -383,8 +476,15 @@ export class McpServer {
         case "ping":
           return respond({});
 
-        case "tools/list":
-          return respond({ tools: TOOLS });
+        case "tools/list": {
+          const agentSoulId = process.env.AGENT_SOUL_ID;
+          const soul = agentSoulId ? getSoul(this.config.home, agentSoulId) : null;
+          const patterns = soul ? resolveAllowedTools(soul.config?.agent) : null;
+          const filtered = patterns
+            ? TOOLS.filter((t) => isToolAllowed(patterns, t.name))
+            : TOOLS;
+          return respond({ tools: filtered });
+        }
 
         case "tools/call":
           return await this.handleToolCall(req, respond);
@@ -425,6 +525,7 @@ export class McpServer {
       case "soul_context": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const files = ["perfil.md", "contexto.md", "licoes.md", "pessoas.md", "soul.md"];
         const parts: string[] = [];
         for (const f of files) {
@@ -437,6 +538,7 @@ export class McpServer {
       case "soul_chat": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const prompt = typeof args.prompt === "string" && args.prompt.trim() ? args.prompt : null;
         if (!prompt) throw new Error("parâmetro prompt é obrigatório");
         const model = typeof args.model === "string" && args.model ? args.model : undefined;
@@ -450,12 +552,15 @@ export class McpServer {
             return "";
           }
         });
-        return { ok: result.code === 0 && !result.timedOut, code: result.code, timedOut: result.timedOut, text: textLines.filter(Boolean).join("\n"), stderr: result.stderr.slice(-1000) };
+        const rawText = textLines.filter(Boolean).join("\n");
+        const sanitized = sanitizeLLMResponse(rawText);
+        return { ok: result.code === 0 && !result.timedOut, code: result.code, timedOut: result.timedOut, text: sanitized.sanitized, stderr: result.stderr.slice(-1000), contentFilter: sanitized.count > 0 ? { detected: sanitized.count } : undefined };
       }
 
       case "memory_search": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const query = typeof args.query === "string" && args.query.trim() ? args.query : null;
         if (!query) throw new Error("parâmetro query é obrigatório");
         const limit = typeof args.limit === "number" ? Math.max(1, Math.min(20, args.limit)) : 5;
@@ -473,14 +578,16 @@ export class McpServer {
       case "memory_index": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const pool = getPool(this.config.databaseUrl);
-        await indexDirectory(pool, soul.id, join(this.config.home, "souls", soul.id), getEmbedder());
+        const n = await indexDirectory(pool, soul.id, join(this.config.home, "souls", soul.id), getEmbedder());
         return { indexed: n };
       }
 
       case "memory_status": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const pool = getPool(this.config.databaseUrl);
         return { chunks: await indexStats(pool, soul.id), graph: await graphStats(pool, soul.id) };
       }
@@ -488,6 +595,7 @@ export class McpServer {
       case "graph_list": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const pool = getPool(this.config.databaseUrl);
         return {
           entities: await listEntities(pool, soul.id),
@@ -509,6 +617,7 @@ export class McpServer {
       case "observation_add": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const entity_name = typeof args.entity_name === "string" && args.entity_name.trim() ? args.entity_name : null;
         const body = typeof args.body === "string" && args.body.trim() ? args.body : null;
         const source = typeof args.source === "string" ? args.source : null;
@@ -522,6 +631,7 @@ export class McpServer {
       case "action_execute": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const title = typeof args.title === "string" && args.title.trim() ? args.title : null;
         const body = typeof args.body === "string" && args.body.trim() ? args.body : null;
         const model = typeof args.model === "string" && args.model ? args.model : "nemotron-3-ultra-free";
@@ -562,6 +672,7 @@ export class McpServer {
       case "soul_anotar": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const texto = typeof args.texto === "string" && args.texto.trim() ? args.texto.trim() : null;
         if (!texto) throw new Error("parâmetro texto é obrigatório");
         const dir = join(this.config.home, "souls", soul.id);
@@ -572,6 +683,7 @@ export class McpServer {
       case "soul_licao": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const texto = typeof args.texto === "string" && args.texto.trim() ? args.texto.trim() : null;
         if (!texto) throw new Error("parâmetro texto é obrigatório");
         const dir = join(this.config.home, "souls", soul.id);
@@ -582,6 +694,7 @@ export class McpServer {
       case "soul_decidir": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const titulo = typeof args.titulo === "string" && args.titulo.trim() ? args.titulo.trim() : null;
         if (!titulo) throw new Error("parâmetro titulo é obrigatório");
         const dir = join(this.config.home, "souls", soul.id);
@@ -892,6 +1005,48 @@ export class McpServer {
           url: pr.url,
           isDraft: pr.isDraft,
         };
+      }
+
+      // Browser Automation Tools (Flow OS)
+      case "browser_navigate": {
+        const url = typeof args.url === "string" && args.url.trim() ? args.url.trim() : null;
+        if (!url) throw new Error("parâmetro url é obrigatório");
+        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
+        const agentSoulId = process.env.AGENT_SOUL_ID;
+        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        return await browserNavigate(url, taskId);
+      }
+
+      case "browser_click": {
+        const selector = typeof args.selector === "string" && args.selector.trim() ? args.selector.trim() : null;
+        if (!selector) throw new Error("parâmetro selector é obrigatório");
+        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
+        const agentSoulId = process.env.AGENT_SOUL_ID;
+        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        return await browserClick(selector, taskId);
+      }
+
+      case "browser_extract_text": {
+        const selector = typeof args.selector === "string" ? args.selector.trim() : "body";
+        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
+        const agentSoulId = process.env.AGENT_SOUL_ID;
+        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        return await browserExtractText(selector, taskId);
+      }
+
+      case "browser_screenshot": {
+        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
+        const fullPage = typeof args.fullPage === "boolean" ? args.fullPage : false;
+        const agentSoulId = process.env.AGENT_SOUL_ID;
+        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        return await browserScreenshot(taskId, fullPage);
+      }
+
+      case "browser_close": {
+        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
+        const agentSoulId = process.env.AGENT_SOUL_ID;
+        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        return await browserClose(taskId);
       }
 
       default:

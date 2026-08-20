@@ -15,7 +15,8 @@
     "@assistente-os/memory": "*",
     "@assistente-os/voice": "*",
     "adm-zip": "^0.6.0",
-    "busboy": "^1.6.0"
+    "busboy": "^1.6.0",
+    "playwright-core": "^1.62.0"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",

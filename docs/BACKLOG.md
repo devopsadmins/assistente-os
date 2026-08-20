@@ -65,6 +65,17 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 - **Achado importante:** apesar de `@langchain/core`, `@langchain/community` e `@langchain/langgraph` estarem instalados, **nenhum código os importa** — a "integração LangChain/LangGraph" é nominal (wrapper fino sobre o `OllamaEmbedder` + funções puras de estado). A alegação "graph.invoke testado no LangGraph" não corresponde a nada no repo. Decidir: usar os pacotes de verdade ou removê-los do `package.json`.
 - Testes por pacote (com `DATABASE_URL` do `.env`): core 17/17, memory 15/15, voice ok; **2 falhas pré-existentes** (ver pendências).
 
+### F5.1 — Permissões por soul (concluída, 2026-08-19)
+
+- **Zero Trust allowlist**: souls sem `agent` no config.json não acesso a tools (negado por padrão). Wildcards: `"memory:*"`, `"ado_list_*"`, `"*"`.
+- **Schema unificado** (`core/src/types/agent.ts`): `AgentPermissions` (allow/deny/conditions), `AgentGuardrails` (maxTurns, maxLoops, maxTokens, ragThreshold, timeout), `matchesToolPattern()`, `isToolAllowed()`, `resolveAllowedTools()`.
+- **MCP enforcement** (`tools/src/index.ts`): `authorizeTool()` em 16 tools; `tools/list` filtrado via `AGENT_SOUL_ID`; `SOUL_SCOPED_TOOLS` define quais tools exigem autorização; `sanitizeLLMResponse` em `soul_chat`.
+- **Daemon integration** (`daemon/src/runner.ts`, `server.ts`): `--agent` flag, `AGENT_SOUL_ID` env var, `maxTurns` enforcement, sanitização de prompt (input) e resposta (output) com `contentFilter`.
+- **Content filter** (`core/src/security/content-filter.ts`): 12 padrões de detecção de secrets (OpenAI, Anthropic, Azure PAT, GitHub, AWS, private keys, passwords, tokens, DB URLs, env vars). Generic token com negative lookahead para não mascarar tokens específicos.
+- **Soul configs (cohort 1)**: `desenvolvimento` (browser+ado+memory, maxTurns=15), `investimentos` (browser read-only, maxTurns=12, ragThreshold=0.75), `consultoria_ia` (ado+memory, maxTurns=12). `main` usa defaults.
+- **13 agent markdown files** criados em `.opencode/agents/` — verificados via `opencode agent list`.
+- **Testes**: 28 passando (15 agent + 13 content-filter). Zero Trust, patterns, guardrails, cohort configs.
+
 ### Decisões descartadas
 
 - **Bytebot como executor de ações de UI (F3)** — avaliado (2026-08-15) e descartado (2026-08-17): agente desktop self-hosted (Docker, Ubuntu+XFCE, `bytebotd` porta 9990, agent NestJS 9991, MCP SSE em `/mcp`, LiteLLM proxy). Conflita com o princípio "sem Docker" do projeto (ARCHITECTURE.md:3); não entra como dependência do núcleo. Se a necessidade de automação de UI (forms, 2FA, extração de arquivos) voltar, avaliar alternativa sem container.
@@ -73,12 +84,23 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 ## Pendências de decisão
 
 - [ ] **Mapear soul → provider Zen** ("a quem pertence"). Decisão adiada pelo usuário. Chaves identificadas até agora: `iecsjc` (auth.json do opencode) e `sousa` (default do SLC-OS). As demais 5 chaves ficam registradas sem uso.
-- [ ] **Completar OAuth dos MCPs Google** — reiniciar o opencode para disparar o fluxo de autorização do `stitch` remoto e reautorizar gmail/drive/docs (todos retornaram `Unauthorized` com o mesmo client OAuth). Agora mais urgente para o `stitch`: a entrada em `opencode.jsonc` está sem credencial (bearer token estático removido na limpeza acima) até isso ser feito.
-- [ ] **MCP `standards` com caminho Windows quebrado** — `opencode.json` do repo aponta `D:/Projetos/projeto0/...`, inexistente nesta máquina Linux. Corrigir o caminho ou desabilitar a entrada (gera erro/latência a cada run do opencode no repo).
+- [ ] **Completar OAuth dos MCPs Google** — criar projeto GCP, habilitar Stitch API, gerar `GOOGLE_MCP_CLIENT_ID`/`GOOGLE_MCP_CLIENT_SECRET`. Configurar em `~/.config/opencode/opencode.jsonc` (template em `docs/MCPS.md`). O `@google/stitch-sdk` foi removido do `packages/tools` (dependência morta).
+- [x] **MCP `standards` com caminho Windows quebrado** — Resolvido: entrada removida do `opencode.json`; `SKILL.md` do `spec-manager` reescrito para usar apenas recursos locais (ADRs, templates, `analyze_specs.py`). O binário `standards-mcp-server` não existe neste Linux.
 - [ ] **Autenticação do `@azure-devops/mcp`** — confirmar `az login` ou PAT disponível para o daemon/opencode; sem isso as ferramentas aparecem mas falham ao chamar.
 - [ ] **Teardown dos testes do `tools` falha** — "Cannot use a pool after calling end on the pool" em `pgTestHelper.cleanup` (13/13 testes reais passam; só o after do arquivo quebra). Provável `closePool()` sem args fechando o `adminPool` compartilhado antes do `DROP SCHEMA`.
-- [ ] **Teste de backup da CLI falha sem `pg_dump`** — `backup.test.ts` espera que o manifest registre a falha do dump (`/"database"/`), mas quando o binário não existe no host (caso desta máquina) o manifest omite a chave. Instalar `postgresql-client` ou tratar ENOENT no código de backup.
+- [x] **Teste de backup da CLI falha sem `pg_dump`** — Resolvido: o código atual (`backup.ts`) trata ENOENT de `pg_dump` com graceful degradation — o manifest sempre inclui `"database": { ok: false, error: "..." }`. O teste (`backup.test.ts`) valida exatamente esse cenário. Documentação de backup/recovery adicionada em `QUICKSTART.md`.
 - [ ] **Suíte `daemon.test.ts` chama o Ollama real e trava** — os 2 testes de chat desatualizados (já documentados acima) agora aguardam a inferência real em CPU (>1h de suíte; foi preciso matar o processo). Urgente: apontar `OLLAMA_URL` para porta sem listener ou mockar `ollamaChat` nesses testes.
+
+### Ações para completar F4 (em ordem de prioridade)
+
+1. [x] **pm2 startup no VPS** — `pm2 save` feito; `pm2 startup` requer sudo interativo (senha não disponível). Daemon sobrevive `pm2 restart` mas não sobrevive reboot completo.
+2. [ ] **Google OAuth** — criar projeto GCP → habilitar Stitch API → criar OAuth 2.0 client → adicionar `GOOGLE_MCP_CLIENT_ID`/`GOOGLE_MCP_CLIENT_SECRET` ao `~/.config/opencode/.env` → configurar stitch/gmail/drive/docs no `opencode.jsonc` (template em `docs/MCPS.md`).
+3. [x] **Cloudflare tunnel no VPS** — tunnel registrado e conectado (`assistente-os.coderstudio.club`). Ingress aponta para `daemon:4310` (resolvido via `--add-host`). Cloudflare Access ativo (302 → login). **Pendência:** criar service token no dashboard Cloudflare para bypass programático, OU configurar Access policy para aceitar o daemon token.
+4. [x] **Migrar souls para VPS** — 13 souls já migradas (cidadeplaza, consultoria_ia, desenvolvimento, escrita, gestaoobrigacoes, investimentos, iso, kinetiswan, main, ministro_louvor, segundo-cerebro, slcia, suriel).
+5. [ ] **Caddy** — reverse proxy com TLS automático (Let's Encrypt) na porta 4310. Opcional: Cloudflare Access já fornece TLS.
+6. [ ] **CI/CD** — GitHub Actions: `npm ci` → typecheck → test → deploy via SSH → pm2 restart.
+7. [ ] **Sentry** — error tracking (pode ser F6).
+8. [ ] **Prometheus/Grafana** — métricas (pode ser F6).
 
 ## Roadmap por fases
 
@@ -87,8 +109,8 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 | **F1** | Núcleo, memória, migração, daemon, CLI, MCP | Concluída |
 | **F2** | Agendador: tabela `agenda` no `kernel.db` + dispatch de `opencode run` | Concluída (2026-08-18) |
 | **F3** | Ferramentas do agente (busca, memória, ação) | Concluída (2026-08-18) |
-| **F4** | Hosting + Stitch MCP em produção | Parcial (MCP já validado) |
-| **F5** | Plataforma de agentes (visão: superar o OpenClaw) | Planejada (2026-08-18) |
+| **F4** | Hosting + Stitch MCP em produção | ~60% (PM2+Docker+Tunnel+Souls prontos; OAuth, CI/CD, Sentry pendentes) |
+| **F5** | Plataforma de agentes (visão: superar o OpenClaw) | F5.1 concluída (per-soul permissions); F5.2-F5.4 planejadas |
 
 ### F5 — plataforma de agentes (visão: superar o OpenClaw)
 

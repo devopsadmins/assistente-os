@@ -2,7 +2,9 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { statSync, readFileSync, existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
 import {
@@ -45,6 +47,7 @@ import { processDueAgenda } from "./agenda.js";
 import { checkMonitors } from "./monitors.js";
 import { relevanceRule } from "./relevance.js";
 import { VoiceHandler } from "./voice.js";
+import { sanitizeUserPrompt, sanitizeLLMResponse } from "@assistente-os/core";
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
@@ -417,6 +420,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     return;
   }
 
+  if (req.method === "GET" && path === "/sessions/stats") {
+    const { loadConfig, countSessions } = await import("@assistente-os/core");
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    sendJson(res, 200, { total: await countSessions(pool) });
+    return;
+  }
+
   const soulMatch = path.match(/^\/souls\/([^/]+)$/);
   if (soulMatch && req.method === "GET") {
     const { getSoul } = await import("@assistente-os/core");
@@ -485,19 +496,25 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     {
       // ---- Limites: teto diário de custo e turnos por sessão ----
       const dailyLimit = soul.config.dailyLimit;
-      const maxTurns = soul.config.maxTurns ?? config.defaultMaxTurns;
+      const maxTurns = soul.config.agent?.guardrails?.maxTurns ?? soul.config.maxTurns ?? config.defaultMaxTurns;
       const spentToday = await sumCostBySoul(pool, soul.id, todayISODate());
       if (dailyLimit !== undefined && spentToday >= dailyLimit) {
         return sendJson(res, 429, { error: "teto diário de gastos atingido", limit: dailyLimit, spent: spentToday });
       }
       const session = await openSession(pool, soul.id, maxTurns, dailyLimit);
-      // if (session.promptCount >= session.maxTurns) {
-      //   return sendJson(res, 429, { error: "limite de turnos da sessão atingido", maxTurns: session.maxTurns, prompts: session.promptCount });
-      // }
+      if (session.promptCount >= session.maxTurns) {
+        return sendJson(res, 429, { error: "limite de turnos da sessão atingido", maxTurns: session.maxTurns, prompts: session.promptCount });
+      }
       const promptsUsed = await bumpSessionPrompt(pool, session.id);
 
+      // ---- Sanitização de secrets no prompt do usuário ----
+      const promptSanitized = sanitizeUserPrompt(prompt, { taskId: String(session.id), soulId: soul.id });
+      if (promptSanitized.count > 0) {
+        logger.warn(`[content-filter] ${promptSanitized.count} secret(s) detectado(s) no prompt da soul ${soul.id}`);
+      }
+
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
-      const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule() });
+      const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, relevance: relevanceRule() });
 
       // route() sonda cada degrau (sem executar o prompt) e cai para o próximo se o
       // degrau local não responder; a execução real acontece uma única vez, abaixo,
@@ -528,7 +545,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         );
       } else {
         const env = { ...(process.env as Record<string, string>) };
-        result = await run!(built.fullPrompt, { cwd: soul.dir, model, timeoutSeconds, env });
+        result = await run!(built.fullPrompt, {
+          cwd: soul.dir,
+          model,
+          timeoutSeconds,
+          agent: soul.config.agent ? soul.id : undefined,
+          soulId: soul.id,
+          env,
+        });
       }
       await recordCostCall(pool, {
         soul: soul.id,
@@ -572,6 +596,13 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         }
       }
 
+      // ---- Sanitização de secrets na resposta do LLM ----
+      const responseSanitized = sanitizeLLMResponse(result.stdout, { taskId: String(session.id), soulId: soul.id });
+      if (responseSanitized.count > 0) {
+        logger.warn(`[content-filter] ${responseSanitized.count} secret(s) detectado(s) na resposta da soul ${soul.id}`);
+      }
+      const sanitizedStdout = responseSanitized.sanitized;
+
       sendJson(res, 200, {
         ok: result.code === 0 && !result.timedOut,
         soul: soul.id,
@@ -579,12 +610,13 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         tier: tier,
         code: result.code,
         timedOut: result.timedOut,
-        stdout: result.stdout.slice(-2000),
+        stdout: sanitizedStdout.slice(-2000),
         stderr: result.stderr.slice(-1000),
         routerReason: decision.reason,
         ragVerdict: built.verdict,
         memorizado,
         limit: { dailyLimit: dailyLimit ?? null, spentToday, maxTurns, prompts: promptsUsed },
+        contentFilter: responseSanitized.count > 0 ? { detected: responseSanitized.count } : undefined,
       });
     }
     return;
@@ -747,6 +779,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     const pool = getPool(config.databaseUrl);
     const { listSouls } = await import("@assistente-os/core");
     const souls = listSouls(home).map((s) => s.id);
+
+    /* --- Ollama --- */
     let ollamaOk = false;
     let ollamaLatencyMs: number | null = null;
     let ollamaModels = 0;
@@ -762,7 +796,73 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     } catch {
       ollamaOk = false;
     }
+
+    /* --- Postgres --- */
     const { rows: sizeRows } = await pool.query<{ bytes: string }>("SELECT pg_database_size(current_database()) AS bytes");
+    const pgKernelBytes = Number(sizeRows[0]?.bytes ?? 0);
+    let pgVersion = "";
+    let pgTables = 0;
+    let pgConnections = 0;
+    try {
+      const [verRows, tblRows, connRows] = await Promise.all([
+        pool.query<{ version: string }>("SELECT version() AS version"),
+        pool.query<{ count: string }>("SELECT count(*) AS count FROM information_schema.tables WHERE table_schema = 'public'"),
+        pool.query<{ count: string }>("SELECT count(*) AS count FROM pg_stat_activity WHERE state = 'active'"),
+      ]);
+      pgVersion = verRows.rows[0]?.version ?? "";
+      pgTables = Number(tblRows.rows[0]?.count ?? 0);
+      pgConnections = Number(connRows.rows[0]?.count ?? 0);
+    } catch {
+      /* best-effort */
+    }
+
+    /* --- memory.db (SQLite fallback file) --- */
+    let memoryBytes = 0;
+    try {
+      const sqlitePath = join(home, "memory.db");
+      if (existsSync(sqlitePath)) {
+        const st = await stat(sqlitePath);
+        memoryBytes = st.size;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    /* --- Linux / sistema --- */
+    const cpus = os.cpus();
+    const cpuCount = cpus.length;
+    const cpuModel = cpus[0]?.model ?? "unknown";
+    const loadAvg = os.loadavg(); // [1min, 5min, 15min]
+    const ramTotal = os.totalmem();
+    const ramFree = os.freemem();
+    const ramUsed = ramTotal - ramFree;
+    const cpuPercent = cpuCount > 0 ? Math.round(((loadAvg[0] ?? 0) / cpuCount) * 1000) / 10 : 0;
+    let diskUsed = 0;
+    let diskTotal = 0;
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      const { stdout } = await execFileAsync("df", ["-B1", "/"]);
+      const lines = stdout.trim().split("\n");
+      if (lines.length >= 2) {
+        const parts = lines[1]!.trim().split(/\s+/);
+        diskTotal = Number(parts[1]) || 0;
+        diskUsed = Number(parts[2]) || 0;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    /* --- RAG --- */
+    let ragChunks = 0;
+    try {
+      const { rows: chunkRows } = await pool.query<{ count: string }>("SELECT count(*) AS count FROM chunks");
+      ragChunks = Number(chunkRows[0]?.count ?? 0);
+    } catch {
+      /* chunks table may not exist yet */
+    }
+
     sendJson(res, 200, {
       ok: true,
       service: "assistente-os",
@@ -770,7 +870,22 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       daemon: { tier: "local" },
       souls: { total: souls.length, ids: souls },
       ollama: { ok: ollamaOk, url: config.ollamaUrl, latencyMs: ollamaLatencyMs, models: ollamaModels },
-      database: { bytes: Number(sizeRows[0]?.bytes ?? 0) },
+      databases: { kernelBytes: pgKernelBytes, memoryBytes },
+      postgres: { version: pgVersion, tables: pgTables, connections: pgConnections },
+      system: {
+        platform: os.platform(),
+        arch: os.arch(),
+        uptime: Math.round(os.uptime()),
+        cpuModel,
+        cpuCount,
+        cpuPercent,
+        loadAvg: loadAvg.map((v) => Math.round(v * 100) / 100),
+        ramUsed,
+        ramTotal,
+        diskUsed,
+        diskTotal,
+      },
+      rag: { chunks: ragChunks },
       router: { tiers: config.routerTiers },
       events: await eventStats(pool),
       monitors: await listMonitors(pool),
@@ -992,7 +1107,13 @@ const embedder = getEmbedder();
           const pool = getPool(config.databaseUrl);
           const decision = await route(pool, config, soul, makeLocalFallbackProbe(config.ollamaUrl), config.routerTiers);
           const model = soul.config.models?.chat ?? decision.target.model ?? "local";
-          const result = await run!(built.fullPrompt, { cwd: soul.dir, model, timeoutSeconds: 120 });
+          const result = await run!(built.fullPrompt, {
+            cwd: soul.dir,
+            model,
+            timeoutSeconds: 120,
+            agent: soul.config.agent ? soul.id : undefined,
+            soulId: soul.id,
+          });
           return result.stdout || "(sem resposta)";
         });
       }
@@ -1022,6 +1143,143 @@ const embedder = getEmbedder();
     return;
   }
 
+  // ── WhatsApp Webhook Human-in-the-Loop ──────────────────────────────
+  if (req.method === "POST" && path === "/api/webhooks/whatsapp") {
+    try {
+      const { processWhatsAppPayload, registerWhatsAppRoutes } = await import(
+        "./adapters/whatsapp.js"
+      );
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const payload: any = JSON.parse(body);
+          const result = await processWhatsAppPayload(payload);
+          if (result.requires_approval) {
+            sendJson(res, 200, {
+              status: "pending_approval",
+              requires_approval: true,
+              draft: result.draft,
+              session_path: result.session_path,
+            });
+          } else {
+            // Auto-approve: already persisted by processWhatsAppPayload
+            sendJson(res, 200, {
+              status: "approved",
+              message: "Resposta disparada automaticamente",
+              session_path: result.session_path,
+            });
+          }
+        } catch (err) {
+          console.error("WhatsApp webhook error:", err);
+          sendJson(res, 500, { error: "Internal processing error" });
+        }
+      });
+      // O handler de 'end' é assíncrono; precisamos bloquear o retorno
+      // Como este é um servidor HTTP simples, enviamos OK imediatamente
+      // e a lógica completa termina no callback 'end'. Para simplificar,
+      // retornamos 202 Accepted indicando que o processamento começou.
+      sendJson(res, 202, { status: "queued", message: "Payload recebido para processamento" });
+    } catch (err) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && path === "/api/webhooks/whatsapp/approve") {
+    try {
+      const { anotar } = await import("@assistente-os/core");
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const payload: any = JSON.parse(body);
+          // O payload deve conter: session_path e a aprovação do draft
+          const { session_path, draft, contato } = payload;
+          if (!session_path) {
+            return sendJson(res, 400, { error: "session_path é obrigatório" });
+          }
+          // Persistir aprovação no log de sessão
+          const approvalEntry = `🟢 Aprovação humana confirmada em ${new Date().toISOString()}\nContato: ${contato || "desconhecido"}\nRascunho aprovado:\n${draft || ""}`;
+          const file = anotar(
+            session_path.split(`/sessoes/${session_path.split(`/sessoes/`)[1]}`)[0],
+            approvalEntry
+          );
+          sendJson(res, 200, { ok: true, arquivo: file, message: "Aprovação registrada" });
+        } catch (err) {
+          console.error("WhatsApp approve error:", err);
+          sendJson(res, 500, { error: "Internal processing error" });
+        }
+      });
+      // Retornar imediatamente; o 'end' callback completará o processamento
+      sendJson(res, 202, { status: "approval_queued", message: "Aprovação recebida para processamento" });
+    } catch (err) {
+      sendJson(res, 400, { error: "Invalid JSON payload" });
+    }
+    return;
+  }
+
+  // ── Email → Knowledge Pipeline ───────────────────────────────────────
+  if (req.method === "POST" && path === "/api/pipelines/email-ingest") {
+    try {
+      const { emailIngestPipeline } = await import("./pipelines/email-ingest.js");
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const { rawEmailBody } = JSON.parse(body);
+          const result = await emailIngestPipeline(rawEmailBody);
+          sendJson(res, 200, {
+            status: "completed",
+            conhecimentoPath: result.conhecimentoPath,
+            topicos: result.extractionResult.topicos.length,
+            decisoes: result.extractionResult.decisoes.length,
+            acoes: result.extractionResult.acoes.length,
+            lições: result.extractionResult.licoes?.length || 0,
+          });
+        } catch (err) {
+          console.error("Email ingest error:", err);
+          sendJson(res, 500, { error: "Pipeline failed" });
+        }
+      });
+      sendJson(res, 202, { status: "queued", message: "Pipeline email iniciada" });
+    } catch (err) {
+      sendJson(res, 400, { error: "Invalid request" });
+    }
+    return;
+  }
+
+  // ── Meeting Ingest Pipeline ──────────────────────────────────────────
+  if (req.method === "POST" && path === "/api/pipelines/meeting-ingest") {
+    try {
+      const { meetingIngestPipeline } = await import("./pipelines/meeting-ingest.js");
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const { filePath } = JSON.parse(body);
+          const result = await meetingIngestPipeline(filePath);
+          sendJson(res, 200, {
+            status: "completed",
+            meetingPath: result.meetingPath,
+            decisoes: result.meetingPayload.decisoes.length,
+            acoes: result.meetingPayload.acoes.length,
+            objeccoes: result.meetingPayload.objeccoes.length,
+            resumo: result.meetingPayload.resumo.slice(0, 60) + "...",
+          });
+        } catch (err) {
+          console.error("Meeting ingest error:", err);
+          sendJson(res, 500, { error: "Pipeline failed" });
+        }
+      });
+      sendJson(res, 202, { status: "queued", message: "Pipeline meeting iniciada" });
+    } catch (err) {
+      sendJson(res, 400, { error: "Invalid request" });
+    }
+    return;
+  }
+
+  // Fallback original
   sendJson(res, 404, { error: `rota não encontrada: ${req.method} ${path}` });
 }
 

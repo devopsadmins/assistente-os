@@ -467,7 +467,10 @@ test("daemon: GET /infra/status expõe souls, ollama, banco, eventos e execution
       service: string;
       souls: { total: number };
       ollama: { ok: boolean };
-      database: { bytes: number };
+      databases: { kernelBytes: number; memoryBytes: number };
+      postgres: { version: string; tables: number; connections: number };
+      system: { platform: string; arch: string; cpuCount: number; ramTotal: number; ramUsed: number };
+      rag: { chunks: number };
       events: { pending: number };
       monitors: unknown[];
       executions: unknown[];
@@ -475,7 +478,14 @@ test("daemon: GET /infra/status expõe souls, ollama, banco, eventos e execution
     assert.equal(body.service, "assistente-os");
     assert.equal(body.souls.total, 1);
     assert.equal(typeof body.ollama.ok, "boolean");
-    assert.ok(body.database.bytes > 0);
+    assert.ok(body.databases.kernelBytes >= 0);
+    assert.ok(typeof body.databases.memoryBytes === "number");
+    assert.ok(body.postgres.version.length > 0);
+    assert.ok(body.postgres.tables >= 0);
+    assert.ok(typeof body.postgres.connections === "number");
+    assert.ok(body.system.cpuCount > 0);
+    assert.ok(body.system.ramTotal > 0);
+    assert.ok(typeof body.rag.chunks === "number");
     assert.ok(Array.isArray(body.monitors));
     assert.ok(Array.isArray(body.executions));
   } finally {
