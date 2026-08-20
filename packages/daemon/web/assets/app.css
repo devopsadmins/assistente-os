@@ -678,6 +678,88 @@ button:disabled::before { display: none; }
 }
 
 /* ---------- Responsivo ---------- */
+/* ---------- tool calls ---------- */
+.tool-calls {
+  margin-bottom: 8px;
+  border: 1px solid rgba(255,0,160,0.3);
+  border-radius: var(--r-md);
+  background: rgba(255,0,160,0.04);
+  padding: 8px;
+}
+.tool-calls-header {
+  font-size: 0.65rem;
+  color: var(--neon-magenta);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.tool-call {
+  border-bottom: 1px solid rgba(255,0,160,0.15);
+  padding: 6px 0;
+}
+.tool-call:last-child { border-bottom: none; }
+.tool-name {
+  color: var(--neon-magenta) !important;
+  border-color: rgba(255,0,160,0.4) !important;
+  box-shadow: inset 0 0 6px rgba(255,0,160,0.08) !important;
+  font-size: 0.65rem !important;
+}
+.tool-call details {
+  margin-top: 4px;
+}
+.tool-call summary {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tool-call summary:hover { color: var(--neon-magenta); }
+.tool-call pre {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-sm);
+  padding: 6px;
+  margin-top: 4px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.costs-section { margin-top: 12px; }
+.costs-section h3 {
+  font-size: 0.75rem;
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.costs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+}
+.costs-table th {
+  text-align: left;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.6rem;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-base);
+}
+.costs-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-base);
+  color: var(--text-secondary);
+}
+.costs-table tr:last-child td { border-bottom: none; }
+
 @media (max-width: 900px) {
   body { overflow: hidden; }
   .mobile-header {

@@ -13,12 +13,19 @@ import { createAgentTools } from "./langgraph-tools.js";
 import { loadConfig } from "@assistente-os/core";
 import { join } from "node:path";
 
+export interface LangGraphToolCallSummary {
+  name: string;
+  args: Record<string, unknown>;
+  result: string;
+}
+
 export interface LangGraphRunnerResult {
   code: number;
   stdout: string;
   stderr: string;
   timedOut: boolean;
   state?: AgentStateType;
+  toolCalls?: LangGraphToolCallSummary[];
 }
 
 export interface LangGraphRunnerOptions {
@@ -66,12 +73,25 @@ export async function runLangGraphAgent(
 
     const stdout = lastAssistant?.content ?? "(sem resposta)";
 
+    const toolCalls: LangGraphToolCallSummary[] = state.messages
+      .filter((m) => m.role === "assistant" && m.toolCalls?.length)
+      .flatMap((m) =>
+        m.toolCalls!.map((tc) => ({
+          name: tc.name,
+          args: tc.args,
+          result: state.messages
+            .find((r) => r.role === "tool" && r.toolCallId === tc.id)
+            ?.content?.slice(0, 500) ?? "(sem resultado)",
+        })),
+      );
+
     return {
       code: 0,
       stdout,
       stderr: "",
       timedOut: false,
       state,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
     };
   } catch (err) {
     const elapsed = Date.now() - startedAt;

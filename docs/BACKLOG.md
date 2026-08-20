@@ -115,6 +115,11 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
     - Thread persistence: turn 1 memoriza "42" → turn 2 recall do mesmo `threadId` → "O número secreto é 42" (MemorySaver checkpointing funcional).
   - **Testes unitários**: 3/10 passam sem DB (mock-free); 7/10 precisam PostgreSQL (testadas em pipeline CI futura).
   - **REST testes** (`langgraph-tools-rest.test.ts`): 13 cenários criados (health, tools, threads, auth, erros).
+- **Interface web atualizada**:
+  - **Dropdown de tier**: `langgraph` adicionado ao seletor de tier no Chat.
+  - **Tool calls visíveis**: respostas do LangGraph agora mostram quais tools foram executadas, com args e resultados expandíveis.
+  - **Tab MCP dinâmica**: 12 tools LangChain categorizadas (Memória, Grafo, Soul, Agenda, Custos).
+  - **Custos na Telemetria**: seção de custos por soul + chamadas recentes na aba Telemetria.
 
 ### Decisões descartadas
 
@@ -156,7 +161,7 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 
 Visão do usuário (2026-08-18): centralizar várias coisas no assistente-os até ele ser uma plataforma de agentes melhor que o OpenClaw. Os diferenciais já existentes são a orquestração (router local-first com custos/teto por soul, memória RAG+grafo por soul, servidor MCP próprio, observabilidade) — a briga não se ganha no modelo local (hardware é o gargalo; Ollama é fallback, não protagonista). Itens em ordem de impacto:
 
-1. [ ] **Tool-calling no chat da interface.** Hoje o chat é só texto no tier `local`/`zen`/`soul`; o tier `langgraph` agora tem tool-calling funcional (12 tools via LangChain). Pendências: (a) campo `tier` no body de `POST /souls/:id/chat` + dropdown na UI para forçar tiers; (b) subir o maxTurns da sessão para permitir multi-turno com tools.
+1. [x] **Tool-calling no chat da interface.** Dropdown `langgraph` adicionado ao seletor de tier. Tool calls visualizáveis (args + resultados expandíveis). Tab MCP dinâmica com 12 tools. Custos na Telemetria.
 2. [ ] **Canais de entrada (WhatsApp/Telegram/e-mail).** Pendurar um gateway de canais no `POST /events` (HMAC já existe; cloudflared já roda na máquina para expor webhook). É o coração do OpenClaw — aqui entra como produtor de eventos, reaproveitando o loop claim/finish existente.
 3. [ ] **Sessões multi-turno reais no chat.** Hoje cada prompt é um tiro isolado (a tabela `sessions` só conta turnos). Persistir histórico de mensagens por sessão e injetá-lo no prompt (com orçamento de tokens — lembrar que o contexto default do Ollama é 2048).
 4. [ ] **Skills por soul.** Instruções/ferramentas declarativas que cada soul carrega (estilo skills do opencode/Claude Code), versionadas na pasta da soul.

@@ -299,7 +299,24 @@ async function sendChat(prompt) {
     chatLog.removeChild(chatLog.lastChild);
     const meta = `tier: ${esc(body.tier)} · model: ${esc(body.model)} · code: ${body.code}${body.timedOut ? " · timedOut" : ""} · ${esc(body.routerReason || "")}`;
     if (body.ok) {
-      addMsg("soul", `<div class="meta-row">${esc(meta)}</div>${esc(body.stdout || "(sem saída)")}`);
+      let soulHtml = "";
+      if (body.toolCalls?.length) {
+        const toolsHtml = body.toolCalls.map((tc) => `
+          <div class="tool-call">
+            <span class="tool-name chip">${esc(tc.name)}</span>
+            <details>
+              <summary>args</summary>
+              <pre>${esc(JSON.stringify(tc.args, null, 2))}</pre>
+            </details>
+            <details>
+              <summary>resultado</summary>
+              <pre>${esc(tc.result)}</pre>
+            </details>
+          </div>`).join("");
+        soulHtml += `<div class="tool-calls"><div class="tool-calls-header">Tools executadas (${body.toolCalls.length})</div>${toolsHtml}</div>`;
+      }
+      soulHtml += esc(body.stdout || "(sem saída)");
+      addMsg("soul", `<div class="meta-row">${esc(meta)}</div>${soulHtml}`);
     } else {
       addMsg("soul", `<div class="meta-row">${esc(meta)}</div><pre class="mono" style="white-space:pre-wrap">${esc(body.stderr || body.stdout || "falha sem detalhes")}</pre>`);
     }
@@ -496,9 +513,10 @@ async function loadGraph() {
 
 /* ---------- observabilidade ---------- */
 async function loadObservability() {
-  const [infra, events] = await Promise.all([
+  const [infra, events, costs] = await Promise.all([
     api("/infra/status").catch(() => null),
     api("/events").catch(() => null),
+    api("/costs").catch(() => null),
   ]);
 
   const mon = infra?.monitors ?? [];
@@ -601,6 +619,33 @@ async function loadObservability() {
         .join("")
     : `<span class="muted">nenhuma execução registrada ainda</span>`;
 
+  /* --- Custos --- */
+  const costsBox = $("#costs-box");
+  if (costsBox && costs) {
+    const bySoul = costs.bySoul ?? {};
+    const recent = costs.recent ?? [];
+    const soulEntries = Object.entries(bySoul).sort((a, b) => b[1] - a[1]);
+    costsBox.innerHTML = `
+      <div class="costs-section">
+        <h3>Custo por soul</h3>
+        ${soulEntries.length
+          ? `<table class="costs-table">
+              <thead><tr><th>Soul</th><th>Gasto</th></tr></thead>
+              <tbody>${soulEntries.map(([s, v]) => `<tr><td>${esc(s)}</td><td>$${v.toFixed(4)}</td></tr>`).join("")}</tbody>
+            </table>`
+          : `<span class="muted">nenhum custo registrado</span>`}
+      </div>
+      <div class="costs-section">
+        <h3>Chamadas recentes</h3>
+        ${recent.length
+          ? `<table class="costs-table">
+              <thead><tr><th>Soul</th><th>Tier</th><th>Status</th><th>Data</th></tr></thead>
+              <tbody>${recent.map((c) => `<tr><td>${esc(c.soul)}</td><td>${esc(c.provider ?? "—")}</td><td><span class="chip ${c.status === "ok" ? "ok" : "fail"}">${esc(c.status)}</span></td><td>${fmtTs(c.ts)}</td></tr>`).join("")}</tbody>
+            </table>`
+          : `<span class="muted">nenhuma chamada registrada</span>`}
+      </div>`;
+  }
+
   await renderMonitors();
 }
 
@@ -696,25 +741,33 @@ async function loadLlm() {
 
 async function loadMcp() {
   const box = $("#mcp-list");
-  box.innerHTML = `
-    <div class="result-item">
-       <div class="result-head"><span class="chip ok">nativo</span><span class="mono">soul_anotar</span></div>
-       <div class="result-body">Adiciona nota cronológica à memória persistente.</div>
-    </div>
-    <div class="result-item">
-       <div class="result-head"><span class="chip ok">nativo</span><span class="mono">soul_licao</span></div>
-       <div class="result-body">Registra lição aprendida da soul.</div>
-    </div>
-    <div class="result-item">
-       <div class="result-head"><span class="chip ok">nativo</span><span class="mono">soul_decidir</span></div>
-       <div class="result-body">Gera um ADR (Decisão Arquitetural) para a soul.</div>
-    </div>
-    <div class="result-item">
-       <div class="result-head"><span class="chip ok">nativo</span><span class="mono">memory_search</span></div>
-       <div class="result-body">Busca vetorial na memória com gate de relevância.</div>
-    </div>
-    <div class="muted" style="margin-top:10px">Servidores MCP externos são carregados via tools package.</div>
-  `;
+  const tools = [
+    { name: "memory_search", cat: "Memória", desc: "Busca vetorial na memória da soul com gate de relevância." },
+    { name: "memory_index", cat: "Memória", desc: "Indexa (idempotente) a pasta da soul no memory.db." },
+    { name: "memory_status", cat: "Memória", desc: "Contagem de chunks e grafo (entidades/relações/observações) da soul." },
+    { name: "graph_list", cat: "Grafo", desc: "Lista entidades, relações e observações do grafo da soul." },
+    { name: "observation_add", cat: "Grafo", desc: "Adiciona uma observação ao grafo da soul." },
+    { name: "soul_anotar", cat: "Soul", desc: "Anota um item cronológico na sessão do dia da soul." },
+    { name: "soul_licao", cat: "Soul", desc: "Registra uma lição aprendida em licoes.md da soul." },
+    { name: "soul_decidir", cat: "Soul", desc: "Grava uma decisão no formato ADR em decisoes/<data>-<slug>.md da soul." },
+    { name: "agenda_add", cat: "Agenda", desc: "Agenda uma tarefa para o daemon despachar." },
+    { name: "agenda_list", cat: "Agenda", desc: "Lista itens da agenda por status." },
+    { name: "costs_summary", cat: "Custos", desc: "Resumo de custos por soul e últimas chamadas do kernel.db." },
+  ];
+  const grouped = {};
+  for (const t of tools) {
+    (grouped[t.cat] ??= []).push(t);
+  }
+  const cats = Object.keys(grouped);
+  box.innerHTML = cats.map((cat) => `
+    <div style="margin-bottom:10px">
+      <div style="font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${esc(cat)}</div>
+      ${grouped[cat].map((t) => `
+        <div class="result-item">
+          <div class="result-head"><span class="chip ok">langgraph</span><span class="mono">${esc(t.name)}</span></div>
+          <div class="result-body">${esc(t.desc)}</div>
+        </div>`).join("")}
+    </div>`).join("") + `<div class="muted" style="margin-top:10px">12 tools LangChain disponíveis via tier langgraph.</div>`;
 }
 
 /* ---------- status pill ---------- */

@@ -524,7 +524,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       const model = requestedModel ?? decision.target.model;
     const tier = requestedTier ?? decision.target.tier;
       const startedAt = Date.now();
-      let result: { code: number; stdout: string; stderr: string; timedOut: boolean };
+      let result: { code: number; stdout: string; stderr: string; timedOut: boolean; toolCalls?: Array<{ name: string; args: Record<string, unknown>; result: string }> };
       if (decision.target.provider === "ollama") {
         let baseUrl = config.ollamaUrl;
         if (baseUrl.includes("host.docker.internal")) {
@@ -624,6 +624,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         memorizado,
         limit: { dailyLimit: dailyLimit ?? null, spentToday, maxTurns, prompts: promptsUsed },
         contentFilter: responseSanitized.count > 0 ? { detected: responseSanitized.count } : undefined,
+        toolCalls: result.toolCalls?.length ? result.toolCalls : undefined,
       });
     }
     return;
