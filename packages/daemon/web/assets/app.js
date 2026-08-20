@@ -508,6 +508,58 @@ async function loadGraph() {
 }
 
 /* ---------- langgraph ---------- */
+function renderLangGraphSvg() {
+  const svg = $("#langgraph-svg");
+  svg.setAttribute("viewBox", "0 0 520 260");
+  const nodes = [
+    { id: "start", label: "START", x: 30, y: 120, w: 70, h: 36, color: "#6b7280" },
+    { id: "retrieve", label: "retrieve", x: 140, y: 120, w: 90, h: 36, color: "#3b82f6" },
+    { id: "generate", label: "generate", x: 270, y: 120, w: 90, h: 36, color: "#8b5cf6" },
+    { id: "tools", label: "tools", x: 270, y: 30, w: 80, h: 36, color: "#f59e0b" },
+    { id: "end", label: "END", x: 420, y: 120, w: 70, h: 36, color: "#6b7280" },
+  ];
+  const edges = [
+    { from: "start", to: "retrieve" },
+    { from: "retrieve", to: "generate" },
+    { from: "generate", to: "end", label: "done" },
+    { from: "generate", to: "tools", label: "tool_calls" },
+    { from: "tools", to: "generate" },
+  ];
+  const nodeMap = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+  let html = `<defs>
+    <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9ca3af"/>
+    </marker>
+  </defs>`;
+
+  for (const e of edges) {
+    const f = nodeMap[e.from], t = nodeMap[e.to];
+    const fx = f.x + f.w, fy = f.y + f.h / 2;
+    const tx = t.x, ty = t.y + t.h / 2;
+    let path;
+    if (e.from === "generate" && e.to === "tools") {
+      path = `M${fx - 20},${fy} L${tx + t.w / 2},${ty + t.h / 2}`;
+    } else if (e.from === "tools" && e.to === "generate") {
+      path = `M${tx + t.w / 2},${ty - t.h / 2} L${fx - 20},${fy}`;
+    } else {
+      path = `M${fx},${fy} L${tx},${ty}`;
+    }
+    html += `<path d="${path}" fill="none" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#arrow)"/>`;
+    if (e.label) {
+      const mx = (fx + tx) / 2, my = (fy + ty) / 2 - 6;
+      html += `<text x="${mx}" y="${my}" text-anchor="middle" fill="#9ca3af" font-size="10">${e.label}</text>`;
+    }
+  }
+
+  for (const n of nodes) {
+    html += `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="6" fill="${n.color}" opacity="0.9"/>`;
+    html += `<text x="${n.x + n.w / 2}" y="${n.y + n.h / 2 + 4}" text-anchor="middle" fill="#fff" font-size="12" font-family="monospace">${n.label}</text>`;
+  }
+
+  svg.innerHTML = html;
+}
+
 async function loadLangGraph() {
   if (!state.active) {
     ["#langgraph-svg", "#lg-steps", "#lg-tools"].forEach((sel) => ($(sel).innerHTML = ""));
@@ -517,10 +569,13 @@ async function loadLangGraph() {
   const g = await api(`/souls/${encodeURIComponent(state.active)}/langgraph/status`).catch(() => null);
   if (!g) {
     $("#langgraph-status").textContent = "Status indisponível";
+    $("#langgraph-loading").style.display = "none";
     return;
   }
   $("#langgraph-status").textContent = g.ollamaAvailable ? "Ollama disponível" : "Ollama indisponível";
-  $("#langgraph-mode").value = "full";
+  $("#langgraph-mode").value = g.mode || "full";
+  $("#langgraph-loading").style.display = "none";
+  renderLangGraphSvg();
 }
 
 function renderLangGraphStep(msg) {
