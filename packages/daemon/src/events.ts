@@ -7,6 +7,8 @@ export interface EventConsumerOptions {
   home: string;
   run?: (prompt: string, options: Parameters<typeof runOpenCode>[1]) => Promise<OpenCodeRunResult>;
   onDone?: (event: { id: number; type: string; soul: string | null; status: string }) => void;
+  /** Callback chamado com stdout quando evento é de canal externo (ex: whatsapp.message). */
+  onResponse?: (eventId: number, stdout: string) => void;
 }
 
 /**
@@ -15,7 +17,7 @@ export interface EventConsumerOptions {
  * custo + execution_log. Eventos falhos viram status "failed" (não saem da fila).
  */
 export async function processPendingEvents(options: EventConsumerOptions): Promise<number> {
-  const { home, onDone } = options;
+  const { home, onDone, onResponse } = options;
   const run = options.run ?? runOpenCode;
   const config = loadConfig({ home });
   const pool = getPool(config.databaseUrl);
@@ -74,6 +76,9 @@ export async function processPendingEvents(options: EventConsumerOptions): Promi
       const status = result.code === 0 && !result.timedOut ? "completed" : "failed";
       await finishEvent(pool, ev.id, status);
       onDone?.({ id: ev.id, type: ev.type, soul: ev.soul, status });
+      if (status === "completed" && onResponse && ev.type === "whatsapp.message") {
+        onResponse(ev.id, result.stdout ?? "");
+      }
     } catch (err) {
       await finishEvent(pool, ev.id, "failed", err instanceof Error ? err.message : String(err));
       onDone?.({ id: ev.id, type: ev.type, soul: ev.soul, status: "failed" });

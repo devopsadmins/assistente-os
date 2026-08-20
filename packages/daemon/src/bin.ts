@@ -12,7 +12,8 @@ const daemon = await startDaemon({
   host, 
   home: config.home, 
   token: process.env.ASSISTENTE_OS_DAEMON_TOKEN,
-  voiceEnabled: process.env.VOICE_ENABLED === "true"
+  voiceEnabled: process.env.VOICE_ENABLED === "true",
+  whatsappEnabled: process.env.WHATSAPP_ENABLED === "true",
 });
 
 logger.info(`[assistente-os] daemon ouvindo em http://${host}:${daemon.port} (home: ${config.home})`);

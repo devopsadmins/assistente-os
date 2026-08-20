@@ -118,6 +118,21 @@ function connectWs() {
       if (msg.type === "graph.step") {
         renderLangGraphStep(msg);
       }
+      if (msg.type === "whatsapp.qr") {
+        renderWhatsAppQR(msg.qr);
+      }
+      if (msg.type === "whatsapp.pairing_code") {
+        renderWhatsAppPairingCode(msg.code);
+      }
+      if (msg.type === "whatsapp.connected") {
+        updateWhatsAppStatus("conectado", msg.phone);
+      }
+      if (msg.type === "whatsapp.disconnected") {
+        updateWhatsAppStatus("desconectado", null);
+      }
+      if (msg.type === "whatsapp.message") {
+        appendWhatsAppLog(msg);
+      }
     } catch {
       /* ignora frames inválidos */
     }
@@ -1056,4 +1071,60 @@ async function boot() {
     };
   }
 }
+
+/* ---------- WhatsApp ---------- */
+function renderWhatsAppQR(qr) {
+  const wrap = $("#wa-qr-wrap");
+  const container = $("#wa-qr-container");
+  const hint = $("#wa-qr-hint");
+  if (!wrap || !container) return;
+  wrap.style.display = "block";
+  if (hint) hint.textContent = "Escaneie com o WhatsApp";
+  if (typeof QRCode === "undefined") {
+    if (hint) hint.textContent = "Biblioteca QR não carregada";
+    return;
+  }
+  try {
+    container.innerHTML = "";
+    new QRCode(container, { text: qr, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M });
+  } catch {
+    if (hint) hint.textContent = "Erro ao gerar QR";
+  }
+  updateWhatsAppStatus("aguardando scan…", null);
+}
+
+function renderWhatsAppPairingCode(code) {
+  const wrap = $("#wa-qr-wrap");
+  const codeEl = $("#wa-pairing-code");
+  const codeValue = $("#wa-pairing-code-value");
+  if (wrap) wrap.style.display = "block";
+  if (codeEl) codeEl.style.display = "block";
+  if (codeValue) codeValue.textContent = code;
+}
+
+function updateWhatsAppStatus(status, phone) {
+  const el = $("#wa-status");
+  const phoneEl = $("#wa-phone");
+  if (el) {
+    el.textContent = status;
+    el.style.color = status === "conectado" ? "var(--neon-green)" : "var(--text-muted)";
+  }
+  if (phoneEl) phoneEl.textContent = phone ?? "—";
+  if (status === "conectado") {
+    const wrap = $("#wa-qr-wrap");
+    if (wrap) wrap.style.display = "none";
+  }
+}
+
+function appendWhatsAppLog(msg) {
+  const log = $("#wa-log");
+  if (!log) return;
+  const line = document.createElement("div");
+  line.style.cssText = "padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;";
+  const ts = new Date().toLocaleTimeString("pt-BR");
+  line.innerHTML = `<span style="color:var(--text-muted)">[${ts}]</span> <b>${esc(msg.from)}</b> → <span style="color:var(--text-secondary)">${esc(msg.body)}</span> <span style="color:var(--neon-cyan);font-size:10px">soul:${esc(msg.soul)}</span>`;
+  log.prepend(line);
+  if (log.children.length > 50) log.lastChild?.remove();
+}
+
 boot();

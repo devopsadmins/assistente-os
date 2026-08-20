@@ -47,6 +47,7 @@ import { processDueAgenda } from "./agenda.js";
 import { checkMonitors } from "./monitors.js";
 import { relevanceRule } from "./relevance.js";
 import { VoiceHandler } from "./voice.js";
+import { WhatsAppChannel } from "./channels/whatsapp.js";
 import { sanitizeUserPrompt, sanitizeLLMResponse } from "@assistente-os/core";
 import { runLangGraphAgent, runLangGraphAgentStream, probeLangGraph } from "./langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "./orchestrator/router.js";
@@ -131,12 +132,15 @@ export interface DaemonOptions {
   webDir?: string;
   /** Habilita o módulo de voz (padrão: false). */
   voiceEnabled?: boolean;
+  /** Habilita o canal WhatsApp via Baileys (padrão: false). */
+  whatsappEnabled?: boolean;
 }
 
 export interface DaemonHandle {
   port: number;
   hub: WsHub;
   voice?: VoiceHandler;
+  whatsapp?: WhatsAppChannel;
   close: () => Promise<void>;
 }
 
@@ -163,7 +167,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
   const webDir = options.webDir ?? defaultWebDir();
   const server = createServer(async (req, res) => {
     try {
-      await handle(req, res, { home, token, run: options.run ?? runOpenCode, hub, webDir, onEventDone, onAgendaDone, voiceHandler });
+      await handle(req, res, { home, token, run: options.run ?? runOpenCode, hub, webDir, onEventDone, onAgendaDone, voiceHandler, whatsappChannel });
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
@@ -180,6 +184,9 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     });
   }
 
+  // WhatsApp channel (opcional)
+  let whatsappChannel: WhatsAppChannel | undefined;
+
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {
@@ -194,6 +201,25 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
   }
   const actualPort = address.port;
   const runFn = options.run ?? runOpenCode;
+
+  // WhatsApp channel (inicializado após server listen)
+  if (options.whatsappEnabled) {
+    logger.info("WhatsApp habilitado — inicializando canal Baileys");
+    const config = loadConfig({ home });
+    whatsappChannel = new WhatsAppChannel({
+      home,
+      hub,
+      pool: getPool(config.databaseUrl),
+      defaultSoul: config.whatsappDefaultSoul,
+      soulMap: config.whatsappSoulMap,
+      addEvent: (input) => addEvent(getPool(config.databaseUrl), input),
+      phoneNumber: process.env.WHATSAPP_PHONE ?? undefined,
+    });
+    void whatsappChannel.start().catch((err) => {
+      logger.error({ err }, "falha ao iniciar canal WhatsApp");
+    });
+  }
+
   const onEventDone = (event: { id: number; type: string; soul: string | null; status: string }) => {
     try {
       hub.broadcast({ type: "event.processed", event });
@@ -222,7 +248,14 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
   }, 60_000);
   monitorTimer.unref?.();
   const eventTimer = setInterval(() => {
-    void processPendingEvents({ home, run: runFn, onDone: onEventDone }).catch(() => {});
+    void processPendingEvents({
+      home,
+      run: runFn,
+      onDone: onEventDone,
+      onResponse: whatsappChannel
+        ? (eventId, stdout) => void whatsappChannel!.processResponse(eventId, stdout)
+        : undefined,
+    }).catch(() => {});
   }, 30_000);
   eventTimer.unref?.();
   const agendaTimer = setInterval(() => {
@@ -233,12 +266,14 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     port: actualPort,
     hub,
     voice: voiceHandler,
+    whatsapp: whatsappChannel,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(monitorTimer);
         clearInterval(eventTimer);
         clearInterval(agendaTimer);
         voiceHandler?.stop();
+        void whatsappChannel?.stop();
         server.close(() => resolve());
       }),
   };
@@ -340,6 +375,7 @@ interface RequestContext {
   onEventDone: (event: { id: number; type: string; soul: string | null; status: string }) => void;
   onAgendaDone: (item: { id: number; title: string; soul: string | null; status: string }) => void;
   voiceHandler?: VoiceHandler;
+  whatsappChannel?: WhatsAppChannel;
 }
 
 const MIME: Record<string, string> = {

@@ -23,6 +23,12 @@ export interface AssistenteOsConfig {
   adoPat?: string;
   /** Azure DevOps authentication type: 'pat' | 'interactive' | 'azcli' */
   adoAuthType?: 'pat' | 'interactive' | 'azcli';
+  /** Habilita o canal WhatsApp via Baileys (env WHATSAPP_ENABLED). */
+  whatsappEnabled: boolean;
+  /** Soul padrão para mensagens WhatsApp (env WHATSAPP_DEFAULT_SOUL). */
+  whatsappDefaultSoul: string;
+  /** Mapa JID→soul para WhatsApp (env WHATSAPP_SOUL_MAP, JSON). */
+  whatsappSoulMap: Record<string, string>;
 }
 
 export function resolveHome(): string {
@@ -67,5 +73,14 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
     adoOrg: overrides.adoOrg ?? process.env.AZURE_DEVOPS_ORG ?? process.env.ADO_ORG,
     adoPat: overrides.adoPat ?? process.env.AZURE_DEVOPS_PAT ?? process.env.ADO_PAT,
     adoAuthType: (overrides.adoAuthType ?? process.env.AZURE_DEVOPS_AUTH_TYPE ?? process.env.ADO_AUTH_TYPE) as 'pat' | 'interactive' | 'azcli' | undefined,
+    whatsappEnabled: overrides.whatsappEnabled ?? process.env.WHATSAPP_ENABLED === "true",
+    whatsappDefaultSoul: overrides.whatsappDefaultSoul || process.env.WHATSAPP_DEFAULT_SOUL || "main",
+    whatsappSoulMap: overrides.whatsappSoulMap ?? (() => {
+      try {
+        return process.env.WHATSAPP_SOUL_MAP ? JSON.parse(process.env.WHATSAPP_SOUL_MAP) : {};
+      } catch {
+        return {};
+      }
+    })(),
   };
 }
