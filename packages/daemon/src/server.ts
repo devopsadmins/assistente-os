@@ -489,6 +489,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     const requestedModel = body && typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined;
     const requestedTier = body && typeof body.tier === "string" && body.tier.trim() ? body.tier.trim() : undefined;
     const explicitMode: ExecutionMode | undefined = body?.mode === "fast" || body?.mode === "pro" ? body.mode : undefined;
+    const langgraphMode: string | undefined = typeof body?.langgraphMode === "string" ? body.langgraphMode : undefined;
     const memorizar = body && body.memorizar === true;
     const soul = getSoul(home, decodeURIComponent(chatMatch[1]!));
     if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
@@ -551,6 +552,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
           soul: soul.id,
           prompt: promptSanitized.sanitized,
           timeoutSeconds,
+          useTools: langgraphMode !== "generate",
           onStep: (step: { node: string; iterationCount: number; messageCount: number; lastContent?: string; toolCalls?: any[] }) => {
             try {
               hub.broadcast({

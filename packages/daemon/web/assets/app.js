@@ -274,6 +274,7 @@ async function sendChat(prompt) {
   }
   const model = $("#chat-model").value.trim() || undefined;
   const tier = $("#chat-tier").value;
+  const langgraphMode = tier === "langgraph" ? $("#langgraph-mode").value : undefined;
   const sendBtn = $("#chat-send");
   sendBtn.disabled = true;
   addMsg("user", esc(prompt));
@@ -281,7 +282,7 @@ async function sendChat(prompt) {
   try {
     const body = await api(`/souls/${encodeURIComponent(state.active)}/chat`, {
       method: "POST",
-      body: JSON.stringify({ prompt, model, tier, mode: currentMode === "auto" ? undefined : currentMode }),
+      body: JSON.stringify({ prompt, model, tier, mode: currentMode === "auto" ? undefined : currentMode, langgraphMode }),
     });
     chatLog.removeChild(chatLog.lastChild);
     const meta = `tier: ${esc(body.tier)} · mode: ${esc(body.mode || "auto")} · model: ${esc(body.model)} · code: ${body.code}${body.timedOut ? " · timedOut" : ""} · ${esc(body.routerReason || "")}`;
@@ -508,23 +509,48 @@ async function loadGraph() {
 }
 
 /* ---------- langgraph ---------- */
-function renderLangGraphSvg() {
+let lgActiveNode = null;
+
+const LG_GRAPH_TOPOLOGIES = {
+  generate: {
+    nodes: [
+      { id: "start", label: "START", x: 30, y: 120, w: 70, h: 36, color: "#6b7280" },
+      { id: "retrieve", label: "retrieve", x: 140, y: 120, w: 90, h: 36, color: "#3b82f6" },
+      { id: "generate", label: "generate", x: 280, y: 120, w: 90, h: 36, color: "#8b5cf6" },
+      { id: "end", label: "END", x: 420, y: 120, w: 70, h: 36, color: "#6b7280" },
+    ],
+    edges: [
+      { from: "start", to: "retrieve" },
+      { from: "retrieve", to: "generate" },
+      { from: "generate", to: "end", label: "done" },
+    ],
+  },
+  tools: {
+    nodes: [
+      { id: "start", label: "START", x: 30, y: 120, w: 70, h: 36, color: "#6b7280" },
+      { id: "retrieve", label: "retrieve", x: 140, y: 120, w: 90, h: 36, color: "#3b82f6" },
+      { id: "generate", label: "generate", x: 270, y: 120, w: 90, h: 36, color: "#8b5cf6" },
+      { id: "tools", label: "tools", x: 270, y: 30, w: 80, h: 36, color: "#f59e0b" },
+      { id: "end", label: "END", x: 420, y: 120, w: 70, h: 36, color: "#6b7280" },
+    ],
+    edges: [
+      { from: "start", to: "retrieve" },
+      { from: "retrieve", to: "generate" },
+      { from: "generate", to: "end", label: "done" },
+      { from: "generate", to: "tools", label: "tool_calls" },
+      { from: "tools", to: "generate" },
+    ],
+  },
+};
+LG_GRAPH_TOPOLOGIES.full = LG_GRAPH_TOPOLOGIES.tools;
+LG_GRAPH_TOPOLOGIES.retrieve = LG_GRAPH_TOPOLOGIES.generate;
+
+function renderLangGraphSvg(mode, activeNode) {
   const svg = $("#langgraph-svg");
+  const topo = LG_GRAPH_TOPOLOGIES[mode] || LG_GRAPH_TOPOLOGIES.full;
+  const nodes = topo.nodes;
+  const edges = topo.edges;
   svg.setAttribute("viewBox", "0 0 520 260");
-  const nodes = [
-    { id: "start", label: "START", x: 30, y: 120, w: 70, h: 36, color: "#6b7280" },
-    { id: "retrieve", label: "retrieve", x: 140, y: 120, w: 90, h: 36, color: "#3b82f6" },
-    { id: "generate", label: "generate", x: 270, y: 120, w: 90, h: 36, color: "#8b5cf6" },
-    { id: "tools", label: "tools", x: 270, y: 30, w: 80, h: 36, color: "#f59e0b" },
-    { id: "end", label: "END", x: 420, y: 120, w: 70, h: 36, color: "#6b7280" },
-  ];
-  const edges = [
-    { from: "start", to: "retrieve" },
-    { from: "retrieve", to: "generate" },
-    { from: "generate", to: "end", label: "done" },
-    { from: "generate", to: "tools", label: "tool_calls" },
-    { from: "tools", to: "generate" },
-  ];
   const nodeMap = Object.fromEntries(nodes.map((n) => [n.id, n]));
 
   let html = `<defs>
@@ -535,6 +561,7 @@ function renderLangGraphSvg() {
 
   for (const e of edges) {
     const f = nodeMap[e.from], t = nodeMap[e.to];
+    if (!f || !t) continue;
     const fx = f.x + f.w, fy = f.y + f.h / 2;
     const tx = t.x, ty = t.y + t.h / 2;
     let path;
@@ -553,7 +580,11 @@ function renderLangGraphSvg() {
   }
 
   for (const n of nodes) {
-    html += `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="6" fill="${n.color}" opacity="0.9"/>`;
+    const isActive = activeNode === n.id;
+    const fill = isActive ? "#22c55e" : n.color;
+    const stroke = isActive ? "#16a34a" : "none";
+    const sw = isActive ? 2 : 0;
+    html += `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="6" fill="${fill}" opacity="0.9" stroke="${stroke}" stroke-width="${sw}"/>`;
     html += `<text x="${n.x + n.w / 2}" y="${n.y + n.h / 2 + 4}" text-anchor="middle" fill="#fff" font-size="12" font-family="monospace">${n.label}</text>`;
   }
 
@@ -573,10 +604,16 @@ async function loadLangGraph() {
     return;
   }
   $("#langgraph-status").textContent = g.ollamaAvailable ? "Ollama disponível" : "Ollama indisponível";
-  $("#langgraph-mode").value = g.mode || "full";
+  const mode = $("#langgraph-mode").value;
   $("#langgraph-loading").style.display = "none";
-  renderLangGraphSvg();
+  renderLangGraphSvg(mode);
 }
+
+$("#langgraph-mode").addEventListener("change", () => {
+  const mode = $("#langgraph-mode").value;
+  $("#chat-tier").value = "langgraph";
+  renderLangGraphSvg(mode);
+});
 
 function renderLangGraphStep(msg) {
   const node = msg.node || "unknown";
@@ -622,6 +659,9 @@ function renderLangGraphStep(msg) {
   } else {
     toolsEl.textContent = "Nenhuma ferramenta executada";
   }
+
+  lgActiveNode = node === "start" || node === "end" ? null : node;
+  renderLangGraphSvg($("#langgraph-mode").value, lgActiveNode);
 }
 
 /* ---------- observabilidade ---------- */
