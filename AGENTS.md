@@ -42,6 +42,10 @@ Monorepo using **npm workspaces** (`packages/*`). TypeScript with ESM (`"type": 
 - **PM2 deployment:** `ecosystem.config.cjs` is the process config. It deliberately does NOT set env vars — they come from `~/.assistant-os/.env` loaded by `loadDotEnv()`.
 - **`ASSISTENTE_OS_HOME`** env var overrides the default `~/.assistant-os` home directory.
 - **Daemon binds `127.0.0.1` by default** — set `AOS_HOST` and `ASSISTENTE_OS_DAEMON_TOKEN` for remote access.
+- **LangGraph integration** — `packages/memory/src/agent-workflow.ts` (StateGraph, runAgent, runAgentStream), `packages/daemon/src/langgraph-runner.ts` (runLangGraphAgent, runLangGraphAgentStream), `packages/daemon/src/orchestrator/router.ts` (routeFromPrompt, selectExecutionMode). Modes: fast/auto/pro.
+- **LangGraph UI** — aba `tab-langgraph` em `packages/daemon/web/index.html` com SVG do grafo, step tracker, mode toggle (auto/fast/pro) no chat.
+- **LangGraph tests** — unit: `packages/memory/src/test/agent-workflow.test.ts` (14), `packages/daemon/src/test/orchestrator-router.test.ts` (17). Integration: `packages/daemon/src/test/langgraph-rest-full.test.ts`, `packages/daemon/src/test/langgraph-stream.test.ts`. Shell: `packages/daemon/src/test/test-langgraph-stream.sh`.
+- **LangGraph docs** — `docs/LANGGRAPH.md`, `docs/adr/ADR-AI-004.md`.
 
 ## Language
 

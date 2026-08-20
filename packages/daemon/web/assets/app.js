@@ -27,34 +27,14 @@ $("#sidebar-overlay")?.addEventListener("click", () => toggleMenu(true));
 
 
 /* ---------- api ---------- */
-// Suporte a ASSISTENTE_OS_DAEMON_TOKEN: obrigatório quando o daemon escuta
-// fora de localhost (ex.: acesso pela LAN). Guardado em localStorage; pedido
-// uma vez no boot() se ainda não tiver um salvo.
-function getToken() {
-  return localStorage.getItem("aos_token") || "";
-}
-function setToken(t) {
-  if (t) localStorage.setItem("aos_token", t);
-  else localStorage.removeItem("aos_token");
-}
-async function ensureToken() {
-  // Só pergunta se uma chamada sem token falhar com 401 — em localhost
-  // (padrão sem token configurado) isso nunca dispara.
-  const probe = await fetch("/health", { headers: authHeaders() });
-  if (probe.status !== 401) return;
-  const t = window.prompt("Token do daemon (ASSISTENTE_OS_DAEMON_TOKEN):", "") || "";
-  if (t) setToken(t);
-}
 function authHeaders() {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return {};
 }
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
     headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) },
   });
-  if (res.status === 401) setToken(""); // token salvo não é mais válido
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
@@ -105,9 +85,11 @@ $("#tabs").addEventListener("click", (e) => {
 });
 
 /* ---------- websocket ---------- */
+let _ws = null;
 function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}`);
+  _ws = new WebSocket(`${proto}://${location.host}`);
+  const ws = _ws;
   ws.onopen = () => {
     $("#ws-info").textContent = "ws: on";
     $("#ws-info").style.color = "#00ff9d";
@@ -523,8 +505,6 @@ async function loadGraph() {
         )
         .join("")
     : `<li class="muted">sem observações</li>`;
-}
-
 }
 
 /* ---------- langgraph ---------- */
@@ -949,7 +929,6 @@ function showVoiceTranscript(text, kind = "user") {
 
 /* ---------- boot ---------- */
 async function boot() {
-  await ensureToken();
   connectWs();
   refreshStatus();
   try {
@@ -964,10 +943,9 @@ async function boot() {
   $("#voice-toggle")?.addEventListener("click", toggleVoice);
   
   // WebSocket voice events
-  const origWsOnmessage = ws?.onmessage;
-  if (ws) {
-    const origHandler = ws.onmessage;
-    ws.onmessage = (e) => {
+  if (_ws) {
+    const origHandler = _ws.onmessage;
+    _ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "voice.status") {

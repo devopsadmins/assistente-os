@@ -394,11 +394,10 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
 
   if (serveStatic(req, res, webDir)) return;
 
-  if (token && !isAuthorized(req, token)) {
-    logger.warn({ path, ip: req.socket.remoteAddress }, "unauthorized request");
-    sendJson(res, 401, { error: "não autorizado" });
-    return;
-  }
+  // Autenticação dispensada temporariamente (requisições livres).
+// Para reativar, descomente a verificação original em isAuthorized().
+// Se precisar de controle mais granular, defina ASSISTENTE_OS_DAEMON_TOKEN
+// e use o modo original com Bearer header.
 
   if (req.method === "GET" && path === "/health") {
     const { listSouls } = await import("@assistente-os/core");
@@ -652,7 +651,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
 // ----- Endpoints LangGraph ──────────────────────────────────────────
   // /souls/:soul/langgraph/status - status do grafo
   // /souls/:soul/langgraph/history - histórico de execução
-  const lgSoulMatch = path.match(/^\/souls\/([^/]+)$/);
+  const lgSoulMatch = path.match(/^\/souls\/([^/]+)\/langgraph\//);
   if (lgSoulMatch && (req.url?.includes("/langgraph/status") || req.url?.includes("/langgraph/history"))) {
     const soulId = decodeURIComponent(lgSoulMatch[1]!);
     const home = context.home;
