@@ -1217,7 +1217,7 @@ function buildWaMsgEl(msg) {
   }
   el.innerHTML = `
     <div class="wa-msg-bubble">
-      <div class="wa-msg-text">${esc(p.body || "")}</div>
+      <div class="wa-msg-text">${esc(p.body || "")}${p.transcription && p.body !== p.transcription ? `<div class="wa-msg-transcription" style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border);font-style:italic;font-size:12px;color:var(--text-secondary);">${esc(p.transcription)}</div>` : ""}</div>
       ${mediaHtml}
       <div class="wa-msg-footer">
         <span class="wa-msg-time">${ts}</span>
@@ -1226,7 +1226,7 @@ function buildWaMsgEl(msg) {
       ${!isSent ? `<div class="wa-msg-actions">
         <button class="wa-btn" onclick="waReply(${msg.id}, '${esc(p.jid || "")}')">Responder</button>
         <button class="wa-btn" onclick="waAddKnowledge(${msg.id})">Adicionar à alma</button>
-        ${p.mediaType === "audio" ? `<button class="wa-btn" onclick="waTranscribe(${msg.id})">Transcrever</button>` : ""}
+        ${p.mediaType === "audio" && !p.transcription ? `<button class="wa-btn" onclick="waTranscribe(${msg.id})">Transcrever</button>` : ""}
       </div>` : ""}
     </div>`;
   return el;
@@ -1280,8 +1280,15 @@ window.waTranscribe = async function (eventId) {
   try {
     const data = await api("/api/whatsapp/transcribe", { method: "POST", body: JSON.stringify({ eventId }) });
     if (data.transcription) {
-      const el = document.querySelector(`[data-event-id="${eventId}"] .wa-msg-text`);
-      if (el) el.textContent += `\n\nTranscrição: ${data.transcription}`;
+      const idx = waAllMessages.findIndex((m) => m.id === eventId);
+      if (idx !== -1) {
+        const p = typeof waAllMessages[idx].payload === "string" ? JSON.parse(waAllMessages[idx].payload) : (waAllMessages[idx].payload || {});
+        p.transcription = data.transcription;
+        if (!p.body || p.body === "[audio]") p.body = data.transcription;
+        waAllMessages[idx].payload = p;
+        waCacheSave(waAllMessages);
+      }
+      refreshWhatsAppView();
     } else {
       alert(data.error || "Transcrição indisponível");
     }

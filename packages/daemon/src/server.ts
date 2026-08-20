@@ -979,6 +979,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       await stt.load();
       const result = await stt.transcribe(pcm, 16000);
       try { unlinkSync(wavPath); } catch {}
+      payload.transcription = result;
+      if (!payload.body || payload.body === "[audio]") payload.body = result;
+      await pool.query("UPDATE events SET payload = $1 WHERE id = $2", [JSON.stringify(payload), eventId]);
       sendJson(res, 200, { transcription: result });
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
