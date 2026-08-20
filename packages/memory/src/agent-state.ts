@@ -6,9 +6,17 @@
  */
 import { Annotation } from "@langchain/langgraph";
 
+export interface AgentToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
 export interface AgentMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  toolCalls?: AgentToolCall[];
+  toolCallId?: string;
 }
 
 export const AgentState = Annotation.Root({

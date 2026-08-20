@@ -48,6 +48,7 @@ import { checkMonitors } from "./monitors.js";
 import { relevanceRule } from "./relevance.js";
 import { VoiceHandler } from "./voice.js";
 import { sanitizeUserPrompt, sanitizeLLMResponse } from "@assistente-os/core";
+import { runLangGraphAgent, probeLangGraph } from "./langgraph-runner.js";
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
@@ -543,6 +544,12 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
           },
           timeoutSeconds * 1000,
         );
+      } else if (decision.target.provider === "langgraph") {
+        result = await runLangGraphAgent(pool, {
+          soul: soul.id,
+          prompt: promptSanitized.sanitized,
+          timeoutSeconds,
+        });
       } else {
         const env = { ...(process.env as Record<string, string>) };
         result = await run!(built.fullPrompt, {

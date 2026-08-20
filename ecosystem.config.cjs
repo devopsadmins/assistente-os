@@ -12,7 +12,7 @@ module.exports = {
       // processo rodar) e reverteria silenciosamente a cada `pm2 restart`.
       autorestart: true,
       watch: false,
-      max_memory_restart: "1G",
+      max_memory_restart: "2G",
       args: "daemon",
       out_file: "logs/daemon-out.log",
       error_file: "logs/daemon-err.log",

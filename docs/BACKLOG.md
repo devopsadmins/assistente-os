@@ -82,10 +82,39 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 - **`@langchain/*` como dependências reais**: `@langchain/core`, `@langchain/openai`, `@langchain/langgraph` adicionados ao `packages/memory/package.json`.
 - **Módulo `langchain-rag.ts`**: integração RAG com LangChain LCEL (RunnableSequence, ChatPromptTemplate, StringOutputParser). Funções: `retrieveContext()`, `buildRagChain()`, `runRagChain()`.
 - **Daemon atualizado**: `buildPrompt()` em `context.ts` usa `retrieveContext()` do LangChain em vez de `searchWithVerdict()` manual.
+- **LangGraph integrado**: novo tier `langgraph` no roteador. `langgraph-runner.ts` executa o agente LangGraph com memória persistente via thread ID. Disponível via `POST /souls/:id/chat` com `"tier": "langgraph"`.
 - **Fix `createLLM()`**: adicionado `apiKey: "ollama"` fallback em todos os arquivos que usam `ChatOpenAI` (rag-chain.ts, agent-workflow.ts, langchain-rag.ts) — `ChatOpenAI` exige `apiKey` mesmo com `baseURL` customizado.
 - **Agent workflow corrigido**: `compiledGraph` tipado como `any` (era `MemorySaver["compile"]` que não existe).
 - **Testes**: 5 novos testes em `langchain-rag.test.ts` (retrieveContext, buildRagChain, runRagChain). Teste de LLM pula automaticamente quando Ollama indisponível.
 - **Total de testes**: 88 (core 55 + memory 20 + tools 13). Zero erros.
+
+### LangGraph com tool-calling integrado e deploy (concluído, 2026-08-20)
+
+- **Tools LangChain**: novo módulo `langgraph-tools.ts` no daemon que wrapa 12 ferramentas do Assistente OS como `DynamicStructuredTool` do LangChain:
+  - Memory: `memory_search`, `memory_index`, `memory_status`
+  - Graph: `graph_list`, `observation_add`
+  - Soul: `soul_anotar`, `soul_licao`, `soul_decidir`
+  - Agenda: `agenda_add`, `agenda_list`
+  - Costs: `costs_summary`
+- **Agent workflow atualizado** (`agent-workflow.ts`):
+  - Import de `ToolNode` de `@langchain/langgraph/prebuilt`
+  - `createLLM()` aceita array de tools e usa `bindTools()` quando tools disponíveis
+  - Novo nó `tools` no grafo que executa as ferramentas via `ToolNode`
+  - `shouldContinue()` verifica `toolCalls` na última mensagem para decidir se chama tools ou termina
+  - Grafo separado com/som tools (dois `compiledGraph` independentes)
+- **Agent state atualizado** (`agent-state.ts`): campos `toolCalls` e `toolCallId` na interface `AgentMessage`
+- **LangGraph runner atualizado** (`langgraph-runner.ts`): `useTools` flag (default: `true`), cria tools via `createAgentTools()` e passa para `runAgent()`
+- **Exports atualizados** (`daemon/src/index.ts`): `langgraph-runner` e `langgraph-tools` exportados
+- **Fluxo completo**: User → retrieveContext (RAG) → generate (LLM com tools) → ToolNode executa → generate (LLM com resultado) → END
+- **Deploy no VPS (server-01)**:
+  - `ecosystem.config.cjs`: `max_memory_restart` aumentado de 1G → 2G (LangGraph + Xenova embeddings excediam 1G).
+  - PM2 daemon online e persistente (restart automático via `pm2-support.service` no systemd).
+  - **Testes validados em runtime**:
+    - LangGraph tier simples: `POST /souls/main/chat {"tier":"langgraph"}` → resposta em ~4s.
+    - Tool-calling: `memory_status`, `soul_anotar` executadas com sucesso via Ollama `qwen2.5-coder:3b`.
+    - Thread persistence: turn 1 memoriza "42" → turn 2 recall do mesmo `threadId` → "O número secreto é 42" (MemorySaver checkpointing funcional).
+  - **Testes unitários**: 3/10 passam sem DB (mock-free); 7/10 precisam PostgreSQL (testadas em pipeline CI futura).
+  - **REST testes** (`langgraph-tools-rest.test.ts`): 13 cenários criados (health, tools, threads, auth, erros).
 
 ### Decisões descartadas
 
@@ -121,13 +150,13 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 | **F2** | Agendador: tabela `agenda` no `kernel.db` + dispatch de `opencode run` | Concluída (2026-08-18) |
 | **F3** | Ferramentas do agente (busca, memória, ação) | Concluída (2026-08-18) |
 | **F4** | Hosting + Stitch MCP em produção | ~60% (PM2+Docker+Tunnel+Souls prontos; OAuth, CI/CD, Sentry pendentes) |
-| **F5** | Plataforma de agentes (visão: superar o OpenClaw) | F5.1 concluída (per-soul permissions); F5.2-F5.4 planejadas |
+| **F5** | Plataforma de agentes (visão: superar o OpenClaw) | F5.1 concluída (per-soul permissions); LangChain/LangGraph integrados + deploy; F5.2-F5.4 planejadas |
 
 ### F5 — plataforma de agentes (visão: superar o OpenClaw)
 
 Visão do usuário (2026-08-18): centralizar várias coisas no assistente-os até ele ser uma plataforma de agentes melhor que o OpenClaw. Os diferenciais já existentes são a orquestração (router local-first com custos/teto por soul, memória RAG+grafo por soul, servidor MCP próprio, observabilidade) — a briga não se ganha no modelo local (hardware é o gargalo; Ollama é fallback, não protagonista). Itens em ordem de impacto:
 
-1. [ ] **Tool-calling no chat da interface.** Hoje o chat é só texto em todos os tiers: `local` chama o Ollama direto (sem tools) e `zen`/`soul` rodam opencode na pasta da soul, que não enxerga os MCPs do `opencode.json` do repo. Fazer: (a) mover/registrar MCPs úteis na config global `~/.config/opencode/opencode.jsonc`; (b) campo `tier` no body de `POST /souls/:id/chat` + dropdown na UI para forçar `zen`/`soul` quando a tarefa precisa de ferramentas.
+1. [ ] **Tool-calling no chat da interface.** Hoje o chat é só texto no tier `local`/`zen`/`soul`; o tier `langgraph` agora tem tool-calling funcional (12 tools via LangChain). Pendências: (a) campo `tier` no body de `POST /souls/:id/chat` + dropdown na UI para forçar tiers; (b) subir o maxTurns da sessão para permitir multi-turno com tools.
 2. [ ] **Canais de entrada (WhatsApp/Telegram/e-mail).** Pendurar um gateway de canais no `POST /events` (HMAC já existe; cloudflared já roda na máquina para expor webhook). É o coração do OpenClaw — aqui entra como produtor de eventos, reaproveitando o loop claim/finish existente.
 3. [ ] **Sessões multi-turno reais no chat.** Hoje cada prompt é um tiro isolado (a tabela `sessions` só conta turnos). Persistir histórico de mensagens por sessão e injetá-lo no prompt (com orçamento de tokens — lembrar que o contexto default do Ollama é 2048).
 4. [ ] **Skills por soul.** Instruções/ferramentas declarativas que cada soul carrega (estilo skills do opencode/Claude Code), versionadas na pasta da soul.
