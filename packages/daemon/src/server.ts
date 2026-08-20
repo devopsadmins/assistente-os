@@ -855,6 +855,127 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     return;
   }
 
+  // ── WhatsApp: histórico de mensagens ─────────────────────────────────
+  if (req.method === "GET" && path === "/api/whatsapp/messages") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const limit = Math.min(Number(new URL(req.url!, `http://${req.headers.host}`).searchParams.get("limit")) || 100, 500);
+    const { rows } = await pool.query(
+      "SELECT id, ts, payload, soul, status FROM events WHERE type = 'whatsapp.message' ORDER BY id DESC LIMIT $1",
+      [limit],
+    );
+    sendJson(res, 200, rows.map((r) => ({
+      id: Number(r.id),
+      ts: String(r.ts),
+      payload: r.payload,
+      soul: r.soul,
+      status: r.status,
+    })));
+    return;
+  }
+
+  // ── WhatsApp: status do canal ────────────────────────────────────────
+  if (req.method === "GET" && path === "/api/whatsapp/status") {
+    if (!context.whatsappChannel) {
+      sendJson(res, 200, { connected: false, phone: null, jid: null });
+      return;
+    }
+    sendJson(res, 200, context.whatsappChannel.getStatus());
+    return;
+  }
+
+  // ── WhatsApp: enviar mensagem ────────────────────────────────────────
+  if (req.method === "POST" && path === "/api/whatsapp/send") {
+    if (!context.whatsappChannel) {
+      sendJson(res, 503, { error: "canal WhatsApp não habilitado" });
+      return;
+    }
+    const { body } = await readJson(req);
+    const jid = body?.jid as string | undefined;
+    const text = body?.text as string | undefined;
+    if (!jid || !text) {
+      sendJson(res, 400, { error: "jid e text obrigatórios" });
+      return;
+    }
+    const ok = await context.whatsappChannel.sendMessage(jid, text);
+    sendJson(res, ok ? 200 : 500, { ok });
+    return;
+  }
+
+  // ── WhatsApp: servir mídia ──────────────────────────────────────────
+  if (req.method === "GET" && path.startsWith("/api/whatsapp/media/")) {
+    const filename = path.slice("/api/whatsapp/media/".length);
+    if (!filename || filename.includes("..")) {
+      sendJson(res, 400, { error: "filename inválido" });
+      return;
+    }
+    const config = loadConfig({ home });
+    const mediaPath = join(config.home, "media", "whatsapp", normalize(filename));
+    if (!existsSync(mediaPath)) {
+      sendJson(res, 404, { error: "mídia não encontrada" });
+      return;
+    }
+    const s = statSync(mediaPath);
+    const ext = extname(mediaPath).toLowerCase();
+    const types: Record<string, string> = {
+      ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+      ".gif": "image/gif", ".webp": "image/webp", ".ogg": "audio/ogg",
+      ".opus": "audio/ogg", ".mp4": "video/mp4", ".pdf": "application/pdf",
+    };
+    res.writeHead(200, {
+      "Content-Type": types[ext] ?? "application/octet-stream",
+      "Content-Length": s.size,
+      "Cache-Control": "public, max-age=3600",
+    });
+    const { createReadStream } = await import("node:fs");
+    createReadStream(mediaPath).pipe(res);
+    return;
+  }
+
+  // ── WhatsApp: transcrever áudio ────────────────────────────────────
+  if (req.method === "POST" && path === "/api/whatsapp/transcribe") {
+    const { body } = await readJson(req);
+    const eventId = body?.eventId as number | undefined;
+    if (!eventId) {
+      sendJson(res, 400, { error: "eventId obrigatório" });
+      return;
+    }
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("which ffmpeg", { stdio: "ignore" });
+    } catch {
+      sendJson(res, 501, { error: "ffmpeg não instalado — apt install ffmpeg" });
+      return;
+    }
+    try {
+      const { execSync } = await import("node:child_process");
+      const config = loadConfig({ home });
+      const pool = getPool(config.databaseUrl);
+      const { rows } = await pool.query(
+        "SELECT payload FROM events WHERE id = $1",
+        [eventId],
+      );
+      if (!rows.length) { sendJson(res, 404, { error: "evento não encontrado" }); return; }
+      const payload = typeof rows[0].payload === "string" ? JSON.parse(rows[0].payload as string) : rows[0].payload as Record<string, unknown>;
+      if (payload.mediaType !== "audio" || !payload.mediaFile) {
+        sendJson(res, 400, { error: "evento não é áudio" }); return;
+      }
+      const oggPath = join(config.home, "media", "whatsapp", payload.mediaFile as string);
+      const wavPath = oggPath.replace(/\.\w+$/, ".wav");
+      execSync(`ffmpeg -y -i "${oggPath}" -ar 16000 -ac 1 -f f32le "${wavPath}" 2>/dev/null`);
+      const { readFileSync } = await import("node:fs");
+      const pcm = readFileSync(wavPath);
+      const { SpeechToText } = await import("@assistente-os/voice");
+      const stt = new SpeechToText({ model: "base", language: "pt" });
+      await stt.load();
+      const result = await stt.transcribe(pcm, 16000);
+      sendJson(res, 200, { transcription: result });
+    } catch (err) {
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return;
+  }
+
   // ----- Observabilidade: sites monitorados (up/down configurável na UI) -----
   if (req.method === "GET" && path === "/monitors") {
     const config = loadConfig({ home });

@@ -938,8 +938,57 @@ button:disabled::before { display: none; }
     flex-wrap: wrap;
     padding-bottom: 0;
   }
-  .tab {
+    .tab {
     flex: 1 1 auto;
     justify-content: center;
   }
 }
+
+/* ---------- WhatsApp contacts ---------- */
+.wa-contact {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.wa-contact:hover { background: var(--bg-hover); }
+.wa-contact-active { background: var(--bg-active, var(--bg-hover)); border-left: 3px solid var(--neon-cyan); }
+.wa-contact-name { font-weight: 600; font-size: 13px; color: var(--text-primary); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-contact-preview { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-contact-meta { display: flex; gap: 6px; font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.wa-contact-count { background: var(--neon-cyan); color: #000; border-radius: 8px; padding: 0 5px; font-weight: 700; font-size: 9px; }
+
+/* ---------- WhatsApp messages ---------- */
+.wa-msg { margin-bottom: 6px; }
+.wa-msg-bubble {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  max-width: 85%;
+}
+.wa-msg-text { font-size: 13px; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; margin-bottom: 4px; }
+.wa-msg-media { margin-bottom: 6px; }
+.wa-msg-media img, .wa-msg-media video { display: block; }
+.wa-msg-caption { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; font-style: italic; }
+.wa-msg-footer { display: flex; gap: 8px; font-size: 10px; color: var(--text-muted); margin-bottom: 6px; }
+.wa-msg-soul { color: var(--neon-cyan); }
+.wa-msg-actions { display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 6px; }
+.wa-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.wa-btn:hover { background: var(--bg-hover); border-color: var(--neon-cyan); }
+.wa-btn-primary { background: var(--neon-cyan); color: #000; border-color: var(--neon-cyan); font-weight: 600; }
+.wa-btn-primary:hover { opacity: 0.85; }
+
+/* ---------- WhatsApp modal ---------- */
+#wa-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; display:none; align-items:center; justify-content:center; }
+#wa-modal-overlay.open { display:flex; }
+#wa-modal-emojis button { background:none; border:1px solid transparent; border-radius:4px; font-size:18px; padding:2px 4px; cursor:pointer; line-height:1; }
+#wa-modal-emojis button:hover { border-color:var(--neon-cyan); background:var(--bg-hover); }

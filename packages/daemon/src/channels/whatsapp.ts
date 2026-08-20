@@ -17,6 +17,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  downloadMediaMessage,
   type WASocket,
   type proto,
 } from "baileys";
@@ -30,6 +31,9 @@ import { buscarFamiliaPorTelefone } from "@assistente-os/core";
 
 const QR_TERMINAL_MODULE = "qrcode-terminal" as string;
 const MAX_CONSECUTIVE_FAILURES = 5;
+const PING_INTERVAL_MS = 30_000;
+const RECONNECT_BASE_MS = 3_000;
+const RECONNECT_MAX_MS = 30_000;
 
 export interface WhatsAppChannelConfig {
   home: string;
@@ -69,13 +73,17 @@ export class WhatsAppChannel extends EventEmitter {
     pairingCode: null,
   };
   private authDir: string;
+  private mediaDir: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
   private consecutiveFailures = 0;
+  private reconnectAttempts = 0;
 
   constructor(config: WhatsAppChannelConfig) {
     super();
     this.config = config;
     this.authDir = join(config.home, "sessions", "whatsapp");
+    this.mediaDir = join(config.home, "media", "whatsapp");
   }
 
   async start(): Promise<void> {
@@ -131,6 +139,7 @@ export class WhatsAppChannel extends EventEmitter {
         this.status.connected = false;
         this.status.phone = null;
         this.status.jid = null;
+        this.stopPing();
 
         const statusCode =
           lastDisconnect?.error instanceof Boom
@@ -139,18 +148,17 @@ export class WhatsAppChannel extends EventEmitter {
 
         this.consecutiveFailures++;
 
-        // Após pairing, 515 é esperado — credenciais são salvas
         if (statusCode === 515) {
           console.log("[whatsapp] Pairing stream reiniciado (515) — aguardando reconexão");
           this.scheduleReconnect(5000);
           return;
         }
 
-        // Após muitas falhas 401, credenciais estão corrompidas — limpa e volta ao QR
         if (statusCode === 401 && this.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
           console.log(`[whatsapp] ${this.consecutiveFailures} falhas 401 — limpando auth state`);
           this.cleanAuthState();
           this.consecutiveFailures = 0;
+          this.reconnectAttempts = 0;
           this.config.hub.broadcast({
             type: "whatsapp.disconnected",
             reason: statusCode,
@@ -163,16 +171,26 @@ export class WhatsAppChannel extends EventEmitter {
 
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-        this.config.hub.broadcast({
-          type: "whatsapp.disconnected",
-          reason: statusCode,
-          reconnect: shouldReconnect,
-        });
-        this.emit("disconnected", statusCode);
-
-        if (shouldReconnect) {
-          this.scheduleReconnect();
+        if (!shouldReconnect) {
+          this.config.hub.broadcast({
+            type: "whatsapp.disconnected",
+            reason: statusCode,
+            reconnect: false,
+          });
+          this.emit("disconnected", statusCode);
+          return;
         }
+
+        if (this.consecutiveFailures >= 2) {
+          this.config.hub.broadcast({
+            type: "whatsapp.disconnected",
+            reason: statusCode,
+            reconnect: true,
+          });
+        }
+
+        this.emit("disconnected", statusCode);
+        this.scheduleReconnect();
       }
 
       if (connection === "open") {
@@ -180,9 +198,11 @@ export class WhatsAppChannel extends EventEmitter {
         this.status.qr = null;
         this.status.pairingCode = null;
         this.consecutiveFailures = 0;
+        this.reconnectAttempts = 0;
         this.status.jid = this.sock?.user?.id ?? null;
         this.status.phone = this.sock?.user?.id?.replace(/:.*@/, "@") ?? null;
 
+        this.startPing();
         this.config.hub.broadcast({
           type: "whatsapp.connected",
           phone: this.status.phone,
@@ -206,12 +226,14 @@ export class WhatsAppChannel extends EventEmitter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.stopPing();
     if (this.sock) {
       this.sock.end(undefined);
       this.sock = null;
     }
     this.status = { connected: false, phone: null, qr: null, jid: null, pairingCode: null };
     this.consecutiveFailures = 0;
+    this.reconnectAttempts = 0;
   }
 
   getStatus(): WhatsAppChannelStatus {
@@ -235,30 +257,43 @@ export class WhatsAppChannel extends EventEmitter {
     const jid = msg.key.remoteJid;
     if (jid === "status@broadcast") return;
 
+    const m = msg.message;
     const body =
-      msg.message.conversation ??
-      msg.message.extendedTextMessage?.text ??
-      msg.message.buttonsResponseMessage?.selectedButtonId ??
-      msg.message.listResponseMessage?.singleSelectReply?.selectedRowId ??
+      m.conversation ??
+      m.extendedTextMessage?.text ??
+      m.buttonsResponseMessage?.selectedButtonId ??
+      m.listResponseMessage?.singleSelectReply?.selectedRowId ??
       "";
-
-    if (!body.trim()) return;
 
     const soulId = await this.resolveSoul(jid);
     const from = msg.pushName ?? jid;
+    const mediaInfo = this.extractMedia(m);
+    const eventBody = body || mediaInfo?.caption || `[${mediaInfo?.type ?? "mensagem"}]`;
 
     this.config.hub.broadcast({
       type: "whatsapp.message",
       from,
       jid,
-      body: body.slice(0, 500),
+      body: eventBody.slice(0, 500),
       soul: soulId,
+      mediaType: mediaInfo?.type ?? null,
     });
 
     try {
+      const payload: Record<string, unknown> = { from, jid, body: eventBody, timestamp: msg.messageTimestamp };
+      if (mediaInfo) {
+        const saved = await this.saveMedia(msg, mediaInfo);
+        if (saved) {
+          payload.mediaType = mediaInfo.type;
+          payload.mediaFile = saved;
+          payload.mediaMime = mediaInfo.mimetype;
+          if (mediaInfo.caption) payload.caption = mediaInfo.caption;
+        }
+      }
+
       const event = await this.config.addEvent({
         type: "whatsapp.message",
-        payload: { from, jid, body, timestamp: msg.messageTimestamp },
+        payload,
         soul: soulId,
       });
 
@@ -272,6 +307,43 @@ export class WhatsAppChannel extends EventEmitter {
         jid,
       });
     }
+  }
+
+  private extractMedia(m: proto.IMessage): { type: string; mimetype: string; caption?: string } | null {
+    if (m.imageMessage) return { type: "image", mimetype: m.imageMessage.mimetype ?? "image/jpeg", caption: m.imageMessage.caption ?? undefined };
+    if (m.audioMessage) return { type: "audio", mimetype: m.audioMessage.mimetype ?? "audio/ogg" };
+    if (m.videoMessage) return { type: "video", mimetype: m.videoMessage.mimetype ?? "video/mp4", caption: m.videoMessage.caption ?? undefined };
+    if (m.documentMessage) return { type: "document", mimetype: m.documentMessage.mimetype ?? "application/octet-stream", caption: m.documentMessage.fileName ?? undefined };
+    return null;
+  }
+
+  private async saveMedia(msg: proto.IWebMessageInfo, info: { type: string; mimetype: string }): Promise<string | null> {
+    try {
+      mkdirSync(this.mediaDir, { recursive: true });
+      const ext = this.extFromMime(info.mimetype);
+      const filename = `${msg.key?.id ?? Date.now()}${ext}`;
+      const filePath = join(this.mediaDir, filename);
+      const buffer = await downloadMediaMessage(msg as any, "buffer", {});
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(filePath, buffer);
+      return filename;
+    } catch (err) {
+      console.error("[whatsapp] Erro ao salvar mídia:", err);
+      return null;
+    }
+  }
+
+  private extFromMime(mime: string): string {
+    if (mime.includes("jpeg") || mime.includes("jpg")) return ".jpg";
+    if (mime.includes("png")) return ".png";
+    if (mime.includes("gif")) return ".gif";
+    if (mime.includes("webp")) return ".webp";
+    if (mime.includes("ogg")) return ".ogg";
+    if (mime.includes("opus")) return ".opus";
+    if (mime.includes("mp4")) return ".mp4";
+    if (mime.includes("pdf")) return ".pdf";
+    if (mime.includes("zip")) return ".zip";
+    return "";
   }
 
   private pendingResponses = new Map<number, string>();
@@ -326,12 +398,32 @@ export class WhatsAppChannel extends EventEmitter {
     }
   }
 
-  private scheduleReconnect(delayMs = 10000): void {
+  private scheduleReconnect(delayMs?: number): void {
     if (this.reconnectTimer) return;
+    const delay = delayMs ?? Math.min(RECONNECT_BASE_MS * Math.pow(2, this.reconnectAttempts), RECONNECT_MAX_MS);
+    this.reconnectAttempts++;
+    console.log(`[whatsapp] reconectando em ${delay}ms (tentativa ${this.reconnectAttempts})`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.sock = null;
       void this.start().catch(() => {});
-    }, delayMs);
+    }, delay);
+  }
+
+  private startPing(): void {
+    this.stopPing();
+    this.pingTimer = setInterval(() => {
+      if (this.sock && this.status.connected) {
+        try { (this.sock.ws as any).ping?.(); } catch { /* ignora */ }
+      }
+    }, PING_INTERVAL_MS);
+    if (this.pingTimer.unref) this.pingTimer.unref();
+  }
+
+  private stopPing(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 }

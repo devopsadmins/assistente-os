@@ -82,10 +82,12 @@ $("#tabs").addEventListener("click", (e) => {
   if (btn.dataset.tab === "buffer") loadBuffer();
   if (btn.dataset.tab === "llm") loadLlm();
   if (btn.dataset.tab === "mcp") loadMcp();
+  if (btn.dataset.tab === "whatsapp") loadWhatsAppMessages();
 });
 
 /* ---------- websocket ---------- */
 let _ws = null;
+let _wsReconnectDelay = 1000;
 function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   _ws = new WebSocket(`${proto}://${location.host}`);
@@ -93,11 +95,16 @@ function connectWs() {
   ws.onopen = () => {
     $("#ws-info").textContent = "ws: on";
     $("#ws-info").style.color = "#00ff9d";
+    _wsReconnectDelay = 1000;
+    api("/api/whatsapp/status").then((s) => {
+      updateWhatsAppStatus(s.connected ? "conectado" : "desconectado", s.phone);
+    }).catch(() => {});
   };
   ws.onclose = () => {
     $("#ws-info").textContent = "ws: off";
     $("#ws-info").style.color = "";
-    setTimeout(connectWs, 3000);
+    setTimeout(connectWs, _wsReconnectDelay);
+    _wsReconnectDelay = Math.min(_wsReconnectDelay * 2, 30000);
   };
   ws.onmessage = (e) => {
     try {
@@ -1048,6 +1055,7 @@ async function boot() {
     /* souls indisponíveis; sidebar continua vazia */
   }
   loadDashboard();
+  loadWhatsAppMessages();
   
   // Voice toggle button
   $("#voice-toggle")?.addEventListener("click", toggleVoice);
@@ -1073,6 +1081,243 @@ async function boot() {
 }
 
 /* ---------- WhatsApp ---------- */
+const WA_STORAGE_KEY = "aos_whatsapp_messages";
+const WA_MAX_CACHED = 200;
+
+function waCacheLoad() {
+  try { return JSON.parse(localStorage.getItem(WA_STORAGE_KEY) || "[]"); } catch { return []; }
+}
+function waCacheSave(msgs) {
+  try { localStorage.setItem(WA_STORAGE_KEY, JSON.stringify(msgs.slice(0, WA_MAX_CACHED))); } catch {}
+}
+function waCacheAdd(msg) {
+  const msgs = waCacheLoad();
+  if (!msgs.find((m) => m.id === msg.id)) { msgs.unshift(msg); waCacheSave(msgs); }
+}
+
+let waSelectedJid = null;
+let waAllMessages = [];
+
+function groupByJid(msgs) {
+  const groups = {};
+  for (const m of msgs) {
+    const p = typeof m.payload === "string" ? JSON.parse(m.payload) : (m.payload || {});
+    const jid = p.jid || "unknown";
+    if (!groups[jid]) groups[jid] = { jid, name: p.from || jid, messages: [], lastTs: 0 };
+    groups[jid].messages.push({ ...m, payload: p });
+    const t = new Date(m.ts).getTime();
+    if (t > groups[jid].lastTs) groups[jid].lastTs = t;
+  }
+  return Object.values(groups).sort((a, b) => b.lastTs - a.lastTs);
+}
+
+function renderContacts(groups) {
+  const el = $("#wa-contacts");
+  if (!el) return;
+  el.innerHTML = "";
+  for (const g of groups) {
+    const item = document.createElement("div");
+    item.className = "wa-contact" + (g.jid === waSelectedJid ? " wa-contact-active" : "");
+    const preview = g.messages[0]?.payload?.body?.slice(0, 40) || "[mídia]";
+    const ts = g.lastTs ? new Date(g.lastTs).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+    item.innerHTML = `
+      <div class="wa-contact-name">${esc(g.name)}</div>
+      <div class="wa-contact-preview">${esc(preview)}</div>
+      <div class="wa-contact-meta"><span class="wa-contact-count">${g.messages.length}</span> <span class="wa-contact-time">${ts}</span></div>`;
+    item.onclick = () => selectConversation(g.jid);
+    el.appendChild(item);
+  }
+}
+
+function selectConversation(jid) {
+  waSelectedJid = jid;
+  const groups = groupByJid(waAllMessages);
+  renderContacts(groups);
+  const g = groups.find((x) => x.jid === jid);
+  if (!g) return;
+  $("#wa-chat-header").textContent = g.name;
+  renderMessages(g.messages);
+  $("#wa-reply-bar").style.display = "flex";
+  setupReplySend(jid);
+}
+
+function renderMessages(msgs) {
+  const el = $("#wa-messages");
+  if (!el) return;
+  el.innerHTML = "";
+  const sorted = [...msgs].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  for (const m of sorted) el.appendChild(buildWaMsgEl(m));
+  el.scrollTop = el.scrollHeight;
+}
+
+function setupReplySend(jid) {
+  const input = $("#wa-reply-input");
+  const btn = $("#wa-reply-send");
+  if (!input || !btn) return;
+  input.placeholder = "Escreva uma mensagem... (Ctrl+Enter)";
+  const handler = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    try {
+      await api("/api/whatsapp/send", { method: "POST", body: JSON.stringify({ jid, text }) });
+      waCacheAdd({ id: Date.now(), ts: new Date().toISOString(), payload: { from: "eu", jid, body: text }, soul: "main" });
+      waAllMessages = waCacheLoad();
+      const g = groupByJid(waAllMessages).find((x) => x.jid === jid);
+      if (g) renderMessages(g.messages);
+    } catch {}
+  };
+  btn.onclick = handler;
+  input.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handler(); };
+}
+
+async function loadWhatsAppMessages() {
+  const cached = waCacheLoad();
+  waAllMessages = cached.length ? cached : [];
+  refreshWhatsAppView();
+  try {
+    const fresh = await api("/api/whatsapp/messages?limit=200");
+    if (fresh.length) { waAllMessages = fresh; waCacheSave(fresh); refreshWhatsAppView(); }
+  } catch {}
+}
+
+function refreshWhatsAppView() {
+  const groups = groupByJid(waAllMessages);
+  renderContacts(groups);
+  if (waSelectedJid) {
+    const g = groups.find((x) => x.jid === waSelectedJid);
+    if (g) renderMessages(g.messages);
+  }
+}
+
+function appendWhatsAppLog(msg) {
+  waCacheAdd({ id: msg.id || Date.now(), ts: new Date().toISOString(), payload: { from: msg.from, jid: msg.jid, body: msg.body }, soul: msg.soul });
+  waAllMessages = waCacheLoad();
+  refreshWhatsAppView();
+}
+
+function buildWaMsgEl(msg) {
+  const p = typeof msg.payload === "string" ? JSON.parse(msg.payload) : (msg.payload || {});
+  const el = document.createElement("div");
+  el.className = "wa-msg";
+  el.dataset.eventId = msg.id;
+  const ts = msg.ts ? new Date(msg.ts).toLocaleTimeString("pt-BR") : "";
+  let mediaHtml = "";
+  if (p.mediaType === "image" && p.mediaFile) {
+    mediaHtml = `<div class="wa-msg-media"><img src="/api/whatsapp/media/${esc(p.mediaFile)}" loading="lazy" onclick="window.open(this.src)" style="max-width:200px;max-height:200px;border-radius:4px;cursor:pointer;" /></div>`;
+    if (p.caption) mediaHtml += `<div class="wa-msg-caption">${esc(p.caption)}</div>`;
+  } else if (p.mediaType === "audio" && p.mediaFile) {
+    mediaHtml = `<div class="wa-msg-media"><audio controls preload="none" src="/api/whatsapp/media/${esc(p.mediaFile)}" style="height:32px;max-width:260px;"></audio></div>`;
+  } else if (p.mediaType === "video" && p.mediaFile) {
+    mediaHtml = `<div class="wa-msg-media"><video controls preload="none" src="/api/whatsapp/media/${esc(p.mediaFile)}" style="max-width:260px;border-radius:4px;"></video></div>`;
+    if (p.caption) mediaHtml += `<div class="wa-msg-caption">${esc(p.caption)}</div>`;
+  } else if (p.mediaType === "document" && p.mediaFile) {
+    mediaHtml = `<div class="wa-msg-media"><a href="/api/whatsapp/media/${esc(p.mediaFile)}" target="_blank" class="wa-btn">📄 ${esc(p.caption || p.mediaFile)}</a></div>`;
+  }
+  el.innerHTML = `
+    <div class="wa-msg-bubble">
+      <div class="wa-msg-text">${esc(p.body || "")}</div>
+      ${mediaHtml}
+      <div class="wa-msg-footer">
+        <span class="wa-msg-time">${ts}</span>
+        <span class="wa-msg-soul">soul:${esc(msg.soul || "main")}</span>
+      </div>
+      <div class="wa-msg-actions">
+        <button class="wa-btn" onclick="waReply(${msg.id}, '${esc(p.jid || "")}')">Responder</button>
+        <button class="wa-btn" onclick="waAddKnowledge(${msg.id})">Adicionar à alma</button>
+        ${p.mediaType === "audio" ? `<button class="wa-btn" onclick="waTranscribe(${msg.id})">Transcrever</button>` : ""}
+      </div>
+    </div>`;
+  return el;
+}
+
+window.waReply = function (eventId, jid) {
+  if (!jid) return;
+  const overlay = $("#wa-modal-overlay");
+  const title = $("#wa-modal-title");
+  const context = $("#wa-modal-context");
+  const textarea = $("#wa-modal-text");
+  const emojiBar = $("#wa-modal-emojis");
+  if (!overlay || !textarea) return;
+  const p = waAllMessages.find((m) => m.id === eventId);
+  const payload = p ? (typeof p.payload === "string" ? JSON.parse(p.payload) : (p.payload || {})) : {};
+  if (title) title.textContent = `Responder para ${payload.from || jid}`;
+  if (context) context.textContent = payload.body || "";
+  textarea.value = "";
+  textarea.focus();
+  if (!emojiBar.dataset.loaded) {
+    const emojis = ["😀","😂","😍","🥰","😎","🤩","😢","😤","🙏","👍","👎","❤️","🔥","✨","🎉","💪","🤝","😊","🙄","😅","🥳","😇","🤗","😋","🤔","🤫","🫡","💪","🚀","⭐","🎵","☕","🎂"];
+    emojiBar.innerHTML = "";
+    for (const e of emojis) {
+      const btn = document.createElement("button");
+      btn.textContent = e;
+      btn.onclick = () => { textarea.value += e; textarea.focus(); };
+      emojiBar.appendChild(btn);
+    }
+    emojiBar.dataset.loaded = "1";
+  }
+  const sendHandler = async () => {
+    const text = textarea.value.trim();
+    if (!text) return;
+    overlay.classList.remove("open");
+    try {
+      await api("/api/whatsapp/send", { method: "POST", body: JSON.stringify({ jid, text }) });
+      waCacheAdd({ id: Date.now(), ts: new Date().toISOString(), payload: { from: "eu", jid, body: text }, soul: "main" });
+      waAllMessages = waCacheLoad();
+      refreshWhatsAppView();
+    } catch {}
+  };
+  $("#wa-modal-send").onclick = sendHandler;
+  textarea.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendHandler(); };
+  $("#wa-modal-cancel").onclick = () => overlay.classList.remove("open");
+  $("#wa-modal-close").onclick = () => overlay.classList.remove("open");
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove("open"); };
+  overlay.classList.add("open");
+};
+
+window.waTranscribe = async function (eventId) {
+  try {
+    const data = await api("/api/whatsapp/transcribe", { method: "POST", body: JSON.stringify({ eventId }) });
+    if (data.transcription) {
+      const el = document.querySelector(`[data-event-id="${eventId}"] .wa-msg-text`);
+      if (el) el.textContent += `\n\nTranscrição: ${data.transcription}`;
+    } else {
+      alert(data.error || "Transcrição indisponível");
+    }
+  } catch (e) {
+    alert("Erro ao transcrever: " + e.message);
+  }
+};
+
+async function waAddKnowledge(eventId) {
+  const overlay = $("#wa-modal-overlay");
+  const title = $("#wa-modal-title");
+  const context = $("#wa-modal-context");
+  const textarea = $("#wa-modal-text");
+  if (!overlay || !textarea) return;
+  if (title) title.textContent = "Adicionar à alma";
+  const p = waAllMessages.find((m) => m.id === eventId);
+  const payload = p ? (typeof p.payload === "string" ? JSON.parse(p.payload) : (p.payload || {})) : {};
+  if (context) context.textContent = payload.body || "";
+  textarea.value = "";
+  textarea.placeholder = "Observação para adicionar ao grafo...";
+  textarea.focus();
+  const sendHandler = async () => {
+    const body = textarea.value.trim();
+    if (!body) return;
+    const soul = state.active || "main";
+    const entity = "whatsapp";
+    overlay.classList.remove("open");
+    try { await api(`/souls/${encodeURIComponent(soul)}/graph/observation`, { method: "POST", body: JSON.stringify({ entity, body }) }); alert("Adicionado!"); } catch { alert("Erro ao adicionar."); }
+  };
+  $("#wa-modal-send").onclick = sendHandler;
+  textarea.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendHandler(); };
+  $("#wa-modal-cancel").onclick = () => overlay.classList.remove("open");
+  $("#wa-modal-close").onclick = () => overlay.classList.remove("open");
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove("open"); };
+  overlay.classList.add("open");
+}
+
 function renderWhatsAppQR(qr) {
   const wrap = $("#wa-qr-wrap");
   const container = $("#wa-qr-container");
@@ -1114,17 +1359,6 @@ function updateWhatsAppStatus(status, phone) {
     const wrap = $("#wa-qr-wrap");
     if (wrap) wrap.style.display = "none";
   }
-}
-
-function appendWhatsAppLog(msg) {
-  const log = $("#wa-log");
-  if (!log) return;
-  const line = document.createElement("div");
-  line.style.cssText = "padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;";
-  const ts = new Date().toLocaleTimeString("pt-BR");
-  line.innerHTML = `<span style="color:var(--text-muted)">[${ts}]</span> <b>${esc(msg.from)}</b> → <span style="color:var(--text-secondary)">${esc(msg.body)}</span> <span style="color:var(--neon-cyan);font-size:10px">soul:${esc(msg.soul)}</span>`;
-  log.prepend(line);
-  if (log.children.length > 50) log.lastChild?.remove();
 }
 
 boot();
