@@ -38,6 +38,10 @@ import {
   type MonitorRecord,
   type AgendaItem,
   type RouterProbe,
+  listarFamilias,
+  buscarFamiliaPorId,
+  criarFamilia,
+  contarFamiliasAtivas,
 } from "@assistente-os/core";
 import { indexFile, indexStats, search, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, getEmbedder } from "@assistente-os/memory";
 import { handleUpload } from "./upload.js";
@@ -462,6 +466,63 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
     sendJson(res, 200, { total: await countSessions(pool) });
+    return;
+  }
+
+  if (req.method === "GET" && path === "/familias") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const statusFilter = new URL(req.url ?? "", "http://localhost").searchParams.get("status") ?? undefined;
+    const familias = await listarFamilias(pool, statusFilter);
+    const ativas = await contarFamiliasAtivas(pool);
+    sendJson(res, 200, { total: familias.length, ativas, familias });
+    return;
+  }
+
+  const familiaMatch = path.match(/^\/familias\/(\d+)$/);
+  if (familiaMatch && req.method === "GET") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const id = Number(familiaMatch[1]);
+    const familia = await buscarFamiliaPorId(pool, id);
+    if (!familia) return sendJson(res, 404, { error: "família não encontrada" });
+    sendJson(res, 200, familia);
+    return;
+  }
+
+  if (req.method === "POST" && path === "/familias") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    let rawBody = "";
+    req.on("data", (chunk) => (rawBody += chunk));
+    req.on("end", async () => {
+      try {
+        const { telefone, nomeFamilia, nomeCrianca } = JSON.parse(rawBody) as {
+          telefone?: string;
+          nomeFamilia?: string;
+          nomeCrianca?: string;
+        };
+        if (!telefone || !nomeFamilia) {
+          return sendJson(res, 400, { error: "telefone e nomeFamilia são obrigatórios" });
+        }
+        const ativas = await contarFamiliasAtivas(pool);
+        if (ativas >= 10) {
+          return sendJson(res, 429, { error: "limite de famílias atingido", limite: 10, ativas });
+        }
+        try {
+          const familia = await criarFamilia(pool, telefone, nomeFamilia, nomeCrianca);
+          sendJson(res, 201, familia);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("unique")) {
+            return sendJson(res, 409, { error: "telefone já cadastrado" });
+          }
+          throw err;
+        }
+      } catch (err) {
+        sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      }
+    });
     return;
   }
 

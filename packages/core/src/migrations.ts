@@ -173,4 +173,22 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_chunks_embedding_hnsw ON chunks USING hnsw (embedding vector_cosine_ops);
     `,
   },
+  {
+    id: "0004_familias",
+    sql: `
+      CREATE TABLE IF NOT EXISTS familias (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        telefone TEXT NOT NULL UNIQUE,
+        nome_familia TEXT NOT NULL,
+        nome_crianca TEXT,
+        soul_id TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        anamnese_phase INTEGER NOT NULL DEFAULT 0,
+        questionnaire_data JSONB NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_familias_telefone ON familias (telefone);
+    `,
+  },
 ];

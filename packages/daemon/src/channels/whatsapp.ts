@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import type { WsHub } from "../server.js";
 import type { EventRecord, Pool } from "@assistente-os/core";
+import { buscarFamiliaPorTelefone } from "@assistente-os/core";
 
 const QR_TERMINAL_MODULE = "qrcode-terminal" as string;
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -241,7 +242,7 @@ export class WhatsAppChannel extends EventEmitter {
 
     if (!body.trim()) return;
 
-    const soulId = this.resolveSoul(jid);
+    const soulId = await this.resolveSoul(jid);
     const from = msg.pushName ?? jid;
 
     this.config.hub.broadcast({
@@ -282,11 +283,15 @@ export class WhatsAppChannel extends EventEmitter {
     }
   }
 
-  private resolveSoul(jid: string): string {
+  private async resolveSoul(jid: string): Promise<string> {
+    const telefone = jid.replace(/@.*$/, "");
+    const familia = await buscarFamiliaPorTelefone(this.config.pool, telefone);
+    if (familia) return familia.soulId;
+
     const map = this.config.soulMap ?? {};
     if (map[jid]) return map[jid];
-    const number = jid.replace(/@.*$/, "");
-    if (map[number]) return map[number];
+    if (map[telefone]) return map[telefone];
+
     return this.config.defaultSoul ?? "main";
   }
 
