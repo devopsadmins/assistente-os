@@ -37,7 +37,7 @@
     },
     "vercel": {
       "type": "local",
-      "command": ["npx", "-y", "vercel-platform-mcp-server"],
+      "command": ["bash", "-c", "set -a; source ~/.assistant-os/.env; set +a; exec npx -y vercel-platform-mcp-server"],
       "enabled": true
     },
     "pm2": {

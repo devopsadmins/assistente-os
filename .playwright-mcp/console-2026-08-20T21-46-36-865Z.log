@@ -12,3 +12,5 @@
 [ 1288238ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
 [ 1461327ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
 [ 1562955ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[ 2105033ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[ 2107039ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92

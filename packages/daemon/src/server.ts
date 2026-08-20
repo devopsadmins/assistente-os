@@ -1409,9 +1409,10 @@ const embedder = getEmbedder();
   }
 
   // ----- POST /souls/:soul/graph/observation — adiciona observação ao grafo -----
-  if (graphMatch && req.method === "POST") {
+  const obsMatch = path.match(/^\/souls\/([^/]+)\/graph\/observation$/);
+  if (obsMatch && req.method === "POST") {
     const { getSoul } = await import("@assistente-os/core");
-    const soul = getSoul(home, decodeURIComponent(graphMatch[1]!));
+    const soul = getSoul(home, decodeURIComponent(obsMatch[1]!));
     if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
     try {
       const parsed = await readJson(req);
