@@ -22,7 +22,7 @@ import makeWASocket, {
   type proto,
 } from "baileys";
 import { Boom } from "@hapi/boom";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import type { WsHub } from "../server.js";
@@ -250,13 +250,37 @@ export class WhatsAppChannel extends EventEmitter {
     }
   }
 
+  private async transcribeAudio(mediaFile: string): Promise<string | null> {
+    try {
+      const { execSync } = await import("node:child_process");
+      let ffmpegCmd = "ffmpeg";
+      try { execSync("which ffmpeg", { stdio: "ignore" }); } catch {
+        ffmpegCmd = "/home/support/bin/ffmpeg";
+        try { execSync(`${ffmpegCmd} -version`, { stdio: "ignore" }); } catch { return null; }
+      }
+      const oggPath = join(this.mediaDir, mediaFile);
+      const wavPath = oggPath.replace(/\.\w+$/, ".wav");
+      execSync(`${ffmpegCmd} -y -i "${oggPath}" -ar 16000 -ac 1 -f f32le "${wavPath}" 2>/dev/null`);
+      const pcm = readFileSync(wavPath);
+      try { unlinkSync(wavPath); } catch {}
+      const { SpeechToText } = await import("@assistente-os/voice");
+      const stt = new SpeechToText({ model: "base", language: "pt" });
+      await stt.load();
+      const result = await stt.transcribe(pcm, 16000);
+      return result?.trim() || null;
+    } catch (err) {
+      console.error("[whatsapp] Erro na transcrição automática:", err);
+      return null;
+    }
+  }
+
   private async handleMessage(msg: proto.IWebMessageInfo): Promise<void> {
-    if (msg.key?.fromMe) return;
     if (!msg.message || !msg.key?.remoteJid) return;
 
     const jid = msg.key.remoteJid;
     if (jid === "status@broadcast") return;
 
+    const isFromMe = !!msg.key.fromMe;
     const m = msg.message;
     const body =
       m.conversation ??
@@ -266,9 +290,21 @@ export class WhatsAppChannel extends EventEmitter {
       "";
 
     const soulId = await this.resolveSoul(jid);
-    const from = msg.pushName ?? jid;
+    const from = isFromMe ? "eu" : (msg.pushName ?? jid);
     const mediaInfo = this.extractMedia(m);
-    const eventBody = body || mediaInfo?.caption || `[${mediaInfo?.type ?? "mensagem"}]`;
+    let eventBody = body || mediaInfo?.caption || `[${mediaInfo?.type ?? "mensagem"}]`;
+
+    let savedFile: string | null = null;
+    if (mediaInfo) {
+      savedFile = await this.saveMedia(msg, mediaInfo);
+    }
+
+    if (!isFromMe && mediaInfo?.type === "audio" && savedFile) {
+      const transcription = await this.transcribeAudio(savedFile);
+      if (transcription) {
+        eventBody = transcription;
+      }
+    }
 
     this.config.hub.broadcast({
       type: "whatsapp.message",
@@ -277,18 +313,18 @@ export class WhatsAppChannel extends EventEmitter {
       body: eventBody.slice(0, 500),
       soul: soulId,
       mediaType: mediaInfo?.type ?? null,
+      fromMe: isFromMe,
     });
+
+    if (isFromMe) return;
 
     try {
       const payload: Record<string, unknown> = { from, jid, body: eventBody, timestamp: msg.messageTimestamp };
-      if (mediaInfo) {
-        const saved = await this.saveMedia(msg, mediaInfo);
-        if (saved) {
-          payload.mediaType = mediaInfo.type;
-          payload.mediaFile = saved;
-          payload.mediaMime = mediaInfo.mimetype;
-          if (mediaInfo.caption) payload.caption = mediaInfo.caption;
-        }
+      if (mediaInfo && savedFile) {
+        payload.mediaType = mediaInfo.type;
+        payload.mediaFile = savedFile;
+        payload.mediaMime = mediaInfo.mimetype;
+        if (mediaInfo.caption) payload.caption = mediaInfo.caption;
       }
 
       const event = await this.config.addEvent({

@@ -960,6 +960,8 @@ button:disabled::before { display: none; }
 
 /* ---------- WhatsApp messages ---------- */
 .wa-msg { margin-bottom: 6px; }
+.wa-msg-sent { display: flex; justify-content: flex-end; }
+.wa-msg-sent .wa-msg-bubble { background: #005c4b; border: 1px solid #007d63; max-width: 80%; margin-left: auto; }
 .wa-msg-bubble {
   border: 1px solid var(--border);
   border-radius: 8px;

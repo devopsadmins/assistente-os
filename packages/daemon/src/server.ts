@@ -43,7 +43,7 @@ import {
   criarFamilia,
   contarFamiliasAtivas,
 } from "@assistente-os/core";
-import { indexFile, indexStats, search, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, getEmbedder } from "@assistente-os/memory";
+import { indexFile, indexStats, search, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder } from "@assistente-os/memory";
 import { handleUpload } from "./upload.js";
 import { buildPrompt } from "./context.js";
 import { processPendingEvents } from "./events.js";
@@ -942,7 +942,12 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     }
     try {
       const { execSync } = await import("node:child_process");
-      execSync("which ffmpeg", { stdio: "ignore" });
+      try { execSync("which ffmpeg", { stdio: "ignore" }); } catch {
+        try { execSync("/home/support/bin/ffmpeg -version", { stdio: "ignore" }); } catch {
+          sendJson(res, 501, { error: "ffmpeg não instalado — apt install ffmpeg" });
+          return;
+        }
+      }
     } catch {
       sendJson(res, 501, { error: "ffmpeg não instalado — apt install ffmpeg" });
       return;
@@ -962,13 +967,18 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       }
       const oggPath = join(config.home, "media", "whatsapp", payload.mediaFile as string);
       const wavPath = oggPath.replace(/\.\w+$/, ".wav");
-      execSync(`ffmpeg -y -i "${oggPath}" -ar 16000 -ac 1 -f f32le "${wavPath}" 2>/dev/null`);
-      const { readFileSync } = await import("node:fs");
+      let ffmpegCmd = "ffmpeg";
+      try { require("node:child_process").execSync("which ffmpeg", { stdio: "ignore" }); } catch {
+        ffmpegCmd = "/home/support/bin/ffmpeg";
+      }
+      execSync(`${ffmpegCmd} -y -i "${oggPath}" -ar 16000 -ac 1 -f f32le "${wavPath}" 2>/dev/null`);
+      const { readFileSync, unlinkSync } = await import("node:fs");
       const pcm = readFileSync(wavPath);
       const { SpeechToText } = await import("@assistente-os/voice");
       const stt = new SpeechToText({ model: "base", language: "pt" });
       await stt.load();
       const result = await stt.transcribe(pcm, 16000);
+      try { unlinkSync(wavPath); } catch {}
       sendJson(res, 200, { transcription: result });
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
@@ -1395,6 +1405,28 @@ const embedder = getEmbedder();
       relations: await listRelations(pool, soul.id),
       observations: await listObservations(pool, soul.id),
     });
+    return;
+  }
+
+  // ----- POST /souls/:soul/graph/observation — adiciona observação ao grafo -----
+  if (graphMatch && req.method === "POST") {
+    const { getSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, decodeURIComponent(graphMatch[1]!));
+    if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
+    try {
+      const parsed = await readJson(req);
+      const b = parsed.body || {};
+      const entity: string = (b.entity as string) || "";
+      const body: string = (b.body as string) || "";
+      const source: string | undefined = (b.source as string) || undefined;
+      if (!entity || !body) return sendJson(res, 400, { error: "entity e body são obrigatórios" });
+      const config = loadConfig({ home });
+      const pool = getPool(config.databaseUrl);
+      await addObservation(pool, soul.id, entity, body, source);
+      sendJson(res, 200, { ok: true, soul: soul.id, entity });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
     return;
   }
 

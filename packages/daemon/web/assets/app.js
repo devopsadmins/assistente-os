@@ -1191,15 +1191,16 @@ function refreshWhatsAppView() {
 }
 
 function appendWhatsAppLog(msg) {
-  waCacheAdd({ id: msg.id || Date.now(), ts: new Date().toISOString(), payload: { from: msg.from, jid: msg.jid, body: msg.body }, soul: msg.soul });
+  waCacheAdd({ id: msg.id || Date.now(), ts: new Date().toISOString(), payload: { from: msg.from, jid: msg.jid, body: msg.body, fromMe: msg.fromMe }, soul: msg.soul });
   waAllMessages = waCacheLoad();
   refreshWhatsAppView();
 }
 
 function buildWaMsgEl(msg) {
   const p = typeof msg.payload === "string" ? JSON.parse(msg.payload) : (msg.payload || {});
+  const isSent = p.fromMe || p.from === "eu";
   const el = document.createElement("div");
-  el.className = "wa-msg";
+  el.className = isSent ? "wa-msg wa-msg-sent" : "wa-msg";
   el.dataset.eventId = msg.id;
   const ts = msg.ts ? new Date(msg.ts).toLocaleTimeString("pt-BR") : "";
   let mediaHtml = "";
@@ -1222,11 +1223,11 @@ function buildWaMsgEl(msg) {
         <span class="wa-msg-time">${ts}</span>
         <span class="wa-msg-soul">soul:${esc(msg.soul || "main")}</span>
       </div>
-      <div class="wa-msg-actions">
+      ${!isSent ? `<div class="wa-msg-actions">
         <button class="wa-btn" onclick="waReply(${msg.id}, '${esc(p.jid || "")}')">Responder</button>
         <button class="wa-btn" onclick="waAddKnowledge(${msg.id})">Adicionar à alma</button>
         ${p.mediaType === "audio" ? `<button class="wa-btn" onclick="waTranscribe(${msg.id})">Transcrever</button>` : ""}
-      </div>
+      </div>` : ""}
     </div>`;
   return el;
 }

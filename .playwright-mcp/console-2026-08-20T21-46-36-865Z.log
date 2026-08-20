@@ -6,3 +6,9 @@
 [     403ms] [ERROR] Manifest fetch from http://localhost:4310/manifest.json failed, code 404 @ http://localhost:4310/:0
 [  115263ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
 [  117266ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[  575369ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[  617821ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[ 1286232ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[ 1288238ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[ 1461327ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
+[ 1562955ms] [ERROR] WebSocket connection to 'ws://localhost:4310/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:4310/assets/app.js:92
