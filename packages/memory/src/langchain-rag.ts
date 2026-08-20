@@ -1,18 +1,19 @@
 /**
- * Chain RAG padronizada usando LCEL do LangChain.
+ * Integração RAG com LangChain para o Assistente OS.
  *
- * Fluxo: pergunta → retrieve → format context → ChatPromptTemplate → LLM → resposta.
+ * Fornece funções para:
+ * - Buscar contexto relevante via LangChain RAG
+ * - Construir prompts com templates LangChain
+ * - Executar chains RAG completas
  *
- * A chain é declarativa via RunnableSequence e pode ser composta com
- * outros runnables do LangChain (ex.: memória, tools, agentes LangGraph).
+ * Substitui a implementação manual em context.ts do daemon.
  */
 import { RunnableSequence, RunnableLambda } from "@langchain/core/runnables";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { ChatOpenAI } from "@langchain/openai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { Embedder } from "./embedders.js";
+import type { Embedder } from "./embedders.js";
 import { search } from "./indexer.js";
-import { langchainTemplates } from "./prompt-templates.js";
 import { getEmbedder } from "./embedder-provider.js";
 import type { Pool } from "@assistente-os/core";
 
@@ -30,6 +31,12 @@ export interface RagResult {
   model: string;
   query: string;
   tokensUsed?: number;
+}
+
+export interface RagContext {
+  context: string;
+  sources: RagChunk[];
+  hasRelevantDocs: boolean;
 }
 
 function createLLM() {
@@ -103,17 +110,38 @@ function formatContext(chunks: RagChunk[]): string {
   return parts.join("\n");
 }
 
-function extractAnswer(raw: string): string {
-  const marker = "AIMessage: ";
-  const idx = raw.indexOf(marker);
-  if (idx !== -1) {
-    const start = idx + marker.length;
-    const end = raw.indexOf("]", start);
-    if (end !== -1) {
-      return raw.slice(start, end);
-    }
+/**
+ * Busca contexto relevante para uma pergunta.
+ * Retorna o contexto formatado e as fontes encontradas.
+ */
+export async function retrieveContext(
+  pool: Pool,
+  soul: string,
+  query: string,
+  limit = 5
+): Promise<RagContext> {
+  const embedder: Embedder = getEmbedder();
+  const results = await search(pool, soul, query, embedder, limit);
+
+  let chunks: RagChunk[];
+  if (results.length > 0) {
+    chunks = results.map((r): RagChunk => ({
+      doc: r.docKey,
+      path: r.path,
+      score: r.score,
+      method: r.method === "vector" ? "semantic" : "literal",
+      snippet: r.body.slice(0, 200),
+    }));
+  } else {
+    chunks = await literalSearchFallback(pool, soul, query, limit);
   }
-  return raw;
+
+  const context = formatContext(chunks);
+  return {
+    context,
+    sources: chunks,
+    hasRelevantDocs: chunks.length > 0 && chunks[0].score > 0.5,
+  };
 }
 
 /**
@@ -129,7 +157,13 @@ export function buildRagChain(
 ) {
   const embedder: Embedder = getEmbedder();
   const llm = createLLM();
-  const prompt = langchainTemplates.default;
+  const prompt = ChatPromptTemplate.fromMessages([
+    ["system", "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo."],
+    [
+      "human",
+      `Contexto:\n{context}\n\nPergunta: {question}\n\nResposta:`,
+    ],
+  ]);
   const retriever = createRetriever(pool, soul, embedder, limit);
 
   return RunnableSequence.from([
@@ -142,9 +176,6 @@ export function buildRagChain(
 
 /**
  * Executa a chain RAG completa.
- *
- * Mantém a interface existente para retrocompatibilidade com advanced-rag.ts
- * e agent-workflow.ts.
  */
 export async function runRagChain(
   pool: Pool,
@@ -178,7 +209,13 @@ export async function runRagChain(
   }
 
   const context = formatContext(documents);
-  const prompt = langchainTemplates.default;
+  const prompt = ChatPromptTemplate.fromMessages([
+    ["system", "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo."],
+    [
+      "human",
+      `Contexto:\n{context}\n\nPergunta: {question}\n\nResposta:`,
+    ],
+  ]);
   const llm = createLLM();
 
   const chain = RunnableSequence.from([
@@ -196,4 +233,17 @@ export async function runRagChain(
     model: process.env.OLLAMA_MODEL || "qwen2.5:latest",
     query,
   };
+}
+
+function extractAnswer(raw: string): string {
+  const marker = "AIMessage: ";
+  const idx = raw.indexOf(marker);
+  if (idx !== -1) {
+    const start = idx + marker.length;
+    const end = raw.indexOf("]", start);
+    if (end !== -1) {
+      return raw.slice(start, end);
+    }
+  }
+  return raw;
 }

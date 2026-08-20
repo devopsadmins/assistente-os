@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { loadConfig, getPool, recordCostCall, selectRoute, getSoul, claimPendingEvents, finishEvent, openSession, bumpSessionPrompt, recordExecution } from "@assistente-os/core";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
 import { buildPrompt } from "./context.js";
-import { relevanceRule } from "./relevance.js";
 
 export interface EventConsumerOptions {
   home: string;
@@ -37,7 +36,7 @@ export async function processPendingEvents(options: EventConsumerOptions): Promi
         }
       }
       const prompt = `[evento ${ev.type}]${payloadText ? `\n${payloadText}` : ""}`;
-      const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule() });
+      const built = await buildPrompt({ home, soul, prompt, config });
       const decision = await selectRoute(pool, config, soul, config.routerTiers);
       const session = await openSession(pool, soul.id, config.defaultMaxTurns);
       await bumpSessionPrompt(pool, session.id);

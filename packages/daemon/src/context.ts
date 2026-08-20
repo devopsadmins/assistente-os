@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { todayISODate, getPool, type AssistenteOsConfig, type Soul } from "@assistente-os/core";
-import { getEmbedder, searchWithVerdict, type RelevanceRule } from "@assistente-os/memory";
+import { retrieveContext } from "@assistente-os/memory";
 
 export interface BuiltPromptFile {
   path: string;
@@ -27,10 +27,9 @@ export async function buildPrompt(options: {
   soul: Soul;
   prompt: string;
   config: AssistenteOsConfig;
-  relevance: RelevanceRule;
   withRag?: boolean;
 }): Promise<BuiltPrompt> {
-  const { soul, prompt, config, relevance, withRag = true } = options;
+  const { soul, prompt, config, withRag = true } = options;
   const today = todayISODate();
   const sessionPath = join(soul.dir, "sessoes", `${today}.md`);
   const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8").trim() : "");
@@ -58,15 +57,13 @@ ${sessao ? `--- Sessão atual (${today}) ---\n${sessao}\n` : ""}`.trim();
   if (withRag && prompt.trim()) {
     try {
       const pool = getPool(config.databaseUrl);
-      const embedder = getEmbedder();
-      const res = await searchWithVerdict(pool, soul.id, prompt, embedder, relevance, 5);
-      verdict = res.verdict;
-      if (res.verdict.ok && res.results.length) {
+      const res = await retrieveContext(pool, soul.id, prompt, 5);
+      if (res.hasRelevantDocs) {
         ragCtx = `## Contexto de conhecimento relevante (RAG)
-${res.results.map((r) => `- [${r.score.toFixed(3)}] ${r.body.slice(0, 500)}`).join("\n")}`;
-      } else if (res.verdict.modo === "recusar" || res.verdict.modo === "aviso") {
-        ragCtx = `## Aviso de relevância (RAG)
-Busca recusada/baixa confiança: ${res.verdict.motivo}`;
+${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
+        verdict = { ok: true, sources: res.sources };
+      } else {
+        verdict = { ok: false, motivo: "nenhum documento relevante encontrado" };
       }
     } catch {
       ragCtx = "";

@@ -460,7 +460,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
     const config = loadConfig({ home });
     const prompt = url.searchParams.get("prompt") ?? "";
-    const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule(), withRag: prompt.trim().length > 0 });
+    const built = await buildPrompt({ home, soul, prompt, config, withRag: prompt.trim().length > 0 });
     sendJson(res, 200, {
       soul: soul.id,
       builtAt: new Date().toISOString(),
@@ -514,7 +514,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       }
 
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
-      const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, relevance: relevanceRule() });
+      const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config });
 
       // route() sonda cada degrau (sem executar o prompt) e cai para o próximo se o
       // degrau local não responder; a execução real acontece uma única vez, abaixo,
@@ -1103,7 +1103,7 @@ const embedder = getEmbedder();
       if (soul) {
         voiceHandler.setOnChat(async (prompt: string) => {
           const config = loadConfig({ home });
-          const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule() });
+          const built = await buildPrompt({ home, soul, prompt, config });
           const pool = getPool(config.databaseUrl);
           const decision = await route(pool, config, soul, makeLocalFallbackProbe(config.ollamaUrl), config.routerTiers);
           const model = soul.config.models?.chat ?? decision.target.model ?? "local";

@@ -21,6 +21,7 @@ function createLLM() {
   const modelName = process.env.OLLAMA_MODEL || "qwen2.5:latest";
   return new ChatOpenAI({
     modelName,
+    apiKey: process.env.OPENAI_API_KEY || "ollama",
     configuration: { baseURL: baseUrl },
     temperature: 0,
     maxTokens: 1024,

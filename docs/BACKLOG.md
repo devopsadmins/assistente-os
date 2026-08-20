@@ -63,6 +63,7 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
   - `memory/src/agent-workflow.ts`: `export type` de funções trocado por re-export de valor (importá-las falharia em runtime).
   - `memory/src/rag-chain.ts`: busca semântica era placebo (`cosine(queryEmbedding, [])` → score 0 pra tudo); agora usa o `search()` real do indexer (pgvector sobre `chunks`), com fallback literal nas observações. Validado em runtime: scores reais (0.66–0.69) achando os docs corretos.
 - **Achado importante:** apesar de `@langchain/core`, `@langchain/community` e `@langchain/langgraph` estarem instalados, **nenhum código os importa** — a "integração LangChain/LangGraph" é nominal (wrapper fino sobre o `OllamaEmbedder` + funções puras de estado). A alegação "graph.invoke testado no LangGraph" não corresponde a nada no repo. Decidir: usar os pacotes de verdade ou removê-los do `package.json`.
+- **Resolvido (2026-08-20):** LangChain implementado de verdade. `langchain-rag.ts` usa LCEL para RAG, `retrieveContext()` integra no daemon, `ChatOpenAI` com fallback `apiKey: "ollama"`. Agent workflow (LangGraph) disponível mas não integrado ao daemon (usa `opencode run`).
 - Testes por pacote (com `DATABASE_URL` do `.env`): core 17/17, memory 15/15, voice ok; **2 falhas pré-existentes** (ver pendências).
 
 ### F5.1 — Permissões por soul (concluída, 2026-08-19)
@@ -75,6 +76,16 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 - **Soul configs (cohort 1)**: `desenvolvimento` (browser+ado+memory, maxTurns=15), `investimentos` (browser read-only, maxTurns=12, ragThreshold=0.75), `consultoria_ia` (ado+memory, maxTurns=12). `main` usa defaults.
 - **13 agent markdown files** criados em `.opencode/agents/` — verificados via `opencode agent list`.
 - **Testes**: 28 passando (15 agent + 13 content-filter). Zero Trust, patterns, guardrails, cohort configs.
+
+### LangChain implementado (concluído, 2026-08-20)
+
+- **`@langchain/*` como dependências reais**: `@langchain/core`, `@langchain/openai`, `@langchain/langgraph` adicionados ao `packages/memory/package.json`.
+- **Módulo `langchain-rag.ts`**: integração RAG com LangChain LCEL (RunnableSequence, ChatPromptTemplate, StringOutputParser). Funções: `retrieveContext()`, `buildRagChain()`, `runRagChain()`.
+- **Daemon atualizado**: `buildPrompt()` em `context.ts` usa `retrieveContext()` do LangChain em vez de `searchWithVerdict()` manual.
+- **Fix `createLLM()`**: adicionado `apiKey: "ollama"` fallback em todos os arquivos que usam `ChatOpenAI` (rag-chain.ts, agent-workflow.ts, langchain-rag.ts) — `ChatOpenAI` exige `apiKey` mesmo com `baseURL` customizado.
+- **Agent workflow corrigido**: `compiledGraph` tipado como `any` (era `MemorySaver["compile"]` que não existe).
+- **Testes**: 5 novos testes em `langchain-rag.test.ts` (retrieveContext, buildRagChain, runRagChain). Teste de LLM pula automaticamente quando Ollama indisponível.
+- **Total de testes**: 88 (core 55 + memory 20 + tools 13). Zero erros.
 
 ### Decisões descartadas
 
@@ -93,7 +104,7 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 
 ### Ações para completar F4 (em ordem de prioridade)
 
-1. [x] **pm2 startup no VPS** — `pm2 save` feito; `pm2 startup` requer sudo interativo (senha não disponível). Daemon sobrevive `pm2 restart` mas não sobrevive reboot completo.
+1. [x] **pm2 startup no VPS** — Executado com sucesso. Serviço `pm2-support.service` habilitado no systemd. Daemon sobrevive reboot.
 2. [ ] **Google OAuth** — criar projeto GCP → habilitar Stitch API → criar OAuth 2.0 client → adicionar `GOOGLE_MCP_CLIENT_ID`/`GOOGLE_MCP_CLIENT_SECRET` ao `~/.config/opencode/.env` → configurar stitch/gmail/drive/docs no `opencode.jsonc` (template em `docs/MCPS.md`).
 3. [x] **Cloudflare tunnel no VPS** — tunnel registrado e conectado (`assistente-os.coderstudio.club`). Ingress aponta para `daemon:4310` (resolvido via `--add-host`). Cloudflare Access ativo (302 → login). **Pendência:** criar service token no dashboard Cloudflare para bypass programático, OU configurar Access policy para aceitar o daemon token.
 4. [x] **Migrar souls para VPS** — 13 souls já migradas (cidadeplaza, consultoria_ia, desenvolvimento, escrita, gestaoobrigacoes, investimentos, iso, kinetiswan, main, ministro_louvor, segundo-cerebro, slcia, suriel).

@@ -13,7 +13,6 @@ import {
 } from "@assistente-os/core";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
 import { buildPrompt } from "./context.js";
-import { relevanceRule } from "./relevance.js";
 
 export interface AgendaConsumerOptions {
   home: string;
@@ -40,7 +39,7 @@ export async function processDueAgenda(options: AgendaConsumerOptions): Promise<
       const soul = getSoul(home, soulId);
       if (!soul) throw new Error(`soul ${soulId} não encontrada`);
       const prompt = `[agenda] ${item.title}${item.body ? `\n\n${item.body}` : ""}`;
-      const built = await buildPrompt({ home, soul, prompt, config, relevance: relevanceRule() });
+      const built = await buildPrompt({ home, soul, prompt, config });
       const decision = await selectRoute(pool, config, soul, config.routerTiers);
       const session = await openSession(pool, soul.id, config.defaultMaxTurns);
       await bumpSessionPrompt(pool, session.id);
