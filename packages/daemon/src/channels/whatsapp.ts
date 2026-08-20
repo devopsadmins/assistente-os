@@ -37,6 +37,8 @@ export interface WhatsAppChannelConfig {
   pool: Pool;
   defaultSoul?: string;
   soulMap?: Record<string, string>;
+  /** Quando true, resolve famílias por telefone via DB. Quando false, usa soulMap/defaultSoul. */
+  familiasEnabled?: boolean;
   addEvent: (input: {
     type: string;
     payload: unknown;
@@ -285,8 +287,11 @@ export class WhatsAppChannel extends EventEmitter {
 
   private async resolveSoul(jid: string): Promise<string> {
     const telefone = jid.replace(/@.*$/, "");
-    const familia = await buscarFamiliaPorTelefone(this.config.pool, telefone);
-    if (familia) return familia.soulId;
+
+    if (this.config.familiasEnabled) {
+      const familia = await buscarFamiliaPorTelefone(this.config.pool, telefone);
+      if (familia) return familia.soulId;
+    }
 
     const map = this.config.soulMap ?? {};
     if (map[jid]) return map[jid];

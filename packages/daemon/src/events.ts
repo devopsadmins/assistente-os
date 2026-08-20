@@ -42,7 +42,7 @@ export async function processPendingEvents(options: EventConsumerOptions): Promi
       let soulId = ev.soul ?? "main";
       let onboardingPhase = -1;
 
-      if (ev.type === "whatsapp.message") {
+      if (ev.type === "whatsapp.message" && config.whatsappFamiliasEnabled) {
         const resolved = await resolveFamilia(pool, home, ev, config);
         soulId = resolved.soulId;
         onboardingPhase = resolved.phase;

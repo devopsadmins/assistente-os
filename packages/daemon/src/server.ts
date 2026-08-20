@@ -216,6 +216,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
       pool: getPool(config.databaseUrl),
       defaultSoul: config.whatsappDefaultSoul,
       soulMap: config.whatsappSoulMap,
+      familiasEnabled: config.whatsappFamiliasEnabled,
       addEvent: (input) => addEvent(getPool(config.databaseUrl), input),
       phoneNumber: process.env.WHATSAPP_PHONE ?? undefined,
     });
@@ -522,6 +523,28 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       } catch (err) {
         sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
       }
+    });
+    return;
+  }
+
+  const onboardingMatch = path.match(/^\/familias\/(\d+)\/onboarding$/);
+  if (onboardingMatch && req.method === "GET") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const id = Number(onboardingMatch[1]);
+    const familia = await buscarFamiliaPorId(pool, id);
+    if (!familia) return sendJson(res, 404, { error: "família não encontrada" });
+    const phaseNames = ["infanto-juvenil", "psicoterapia-familiar"];
+    const currentPhase = familia.anamnesePhase;
+    const isComplete = currentPhase >= 2;
+    const { getSoul } = await import("@assistente-os/core");
+    const soul = getSoul(home, familia.soulId);
+    sendJson(res, 200, {
+      familia,
+      phase: currentPhase,
+      phaseName: phaseNames[currentPhase] ?? "concluido",
+      complete: isComplete,
+      soulExists: !!soul,
     });
     return;
   }

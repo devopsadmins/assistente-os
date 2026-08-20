@@ -29,6 +29,8 @@ export interface AssistenteOsConfig {
   whatsappDefaultSoul: string;
   /** Mapa JID→soul para WhatsApp (env WHATSAPP_SOUL_MAP, JSON). */
   whatsappSoulMap: Record<string, string>;
+  /** Habilita resolução de famílias por telefone no WhatsApp (env WHATSAPP_FAMILIAS_ENABLED). */
+  whatsappFamiliasEnabled: boolean;
 }
 
 export function resolveHome(): string {
@@ -82,5 +84,6 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
         return {};
       }
     })(),
+    whatsappFamiliasEnabled: overrides.whatsappFamiliasEnabled ?? process.env.WHATSAPP_FAMILIAS_ENABLED === "true",
   };
 }
