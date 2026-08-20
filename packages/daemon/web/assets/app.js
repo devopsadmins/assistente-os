@@ -1302,27 +1302,59 @@ async function waAddKnowledge(eventId) {
   const title = $("#wa-modal-title");
   const context = $("#wa-modal-context");
   const textarea = $("#wa-modal-text");
+  const emojiBar = $("#wa-modal-emojis");
+  const fieldsDiv = $("#wa-modal-fields");
+  const soulSelect = $("#wa-modal-soul");
+  const entityInput = $("#wa-modal-entity");
   if (!overlay || !textarea) return;
-  if (title) title.textContent = "Adicionar à alma";
   const p = waAllMessages.find((m) => m.id === eventId);
   const payload = p ? (typeof p.payload === "string" ? JSON.parse(p.payload) : (p.payload || {})) : {};
+  if (title) title.textContent = "Adicionar à alma";
   if (context) context.textContent = payload.body || "";
   textarea.value = "";
   textarea.placeholder = "Observação para adicionar ao grafo...";
   textarea.focus();
+  if (!emojiBar.dataset.loaded) {
+    const emojis = ["😀","😂","😍","🥰","😎","🤩","😢","😤","🙏","👍","👎","❤️","🔥","✨","🎉","💪","🤝","😊","🙄","😅","🥳","😇","🤗","😋","🤔","🤫","🫡","💪","🚀","⭐","🎵","☕","🎂"];
+    emojiBar.innerHTML = "";
+    for (const e of emojis) {
+      const btn = document.createElement("button");
+      btn.textContent = e;
+      btn.onclick = () => { textarea.value += e; textarea.focus(); };
+      emojiBar.appendChild(btn);
+    }
+    emojiBar.dataset.loaded = "1";
+  }
+  if (soulSelect && state.souls) {
+    soulSelect.innerHTML = "";
+    for (const s of state.souls) {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = s.id + (s.id === state.active ? " (ativa)" : "");
+      soulSelect.appendChild(opt);
+    }
+    soulSelect.value = state.active || "main";
+  }
+  if (fieldsDiv) fieldsDiv.style.display = "flex";
+  if (emojiBar) emojiBar.style.display = "none";
   const sendHandler = async () => {
     const body = textarea.value.trim();
     if (!body) return;
-    const soul = state.active || "main";
-    const entity = "whatsapp";
+    const soul = soulSelect?.value || state.active || "main";
+    const entity = entityInput?.value?.trim() || "whatsapp";
     overlay.classList.remove("open");
     try { await api(`/souls/${encodeURIComponent(soul)}/graph/observation`, { method: "POST", body: JSON.stringify({ entity, body }) }); alert("Adicionado!"); } catch { alert("Erro ao adicionar."); }
   };
   $("#wa-modal-send").onclick = sendHandler;
   textarea.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendHandler(); };
-  $("#wa-modal-cancel").onclick = () => overlay.classList.remove("open");
-  $("#wa-modal-close").onclick = () => overlay.classList.remove("open");
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove("open"); };
+  const closeModal = () => {
+    overlay.classList.remove("open");
+    if (fieldsDiv) fieldsDiv.style.display = "none";
+    if (emojiBar) emojiBar.style.display = "flex";
+  };
+  $("#wa-modal-cancel").onclick = closeModal;
+  $("#wa-modal-close").onclick = closeModal;
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
   overlay.classList.add("open");
 }
 

@@ -1,0 +1,252 @@
+- generic [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - generic [ref=f1e4]:
+      - img "Assistente OS" [ref=f1e5]
+      - heading ">_ Assistente OS" [level=1] [ref=f1e7]
+    - button "Menu" [ref=f1e8] [cursor=pointer]
+  - complementary [ref=f1e11]:
+    - generic [ref=f1e12]:
+      - img "Assistente OS" [ref=f1e13]
+      - generic [ref=f1e14]:
+        - heading ">_ Assistente OS" [level=1] [ref=f1e15]
+        - generic [ref=f1e16]: online
+    - generic [ref=f1e17]:
+      - generic [ref=f1e18]: SOULS
+      - searchbox "buscar soul…" [ref=f1e21]
+    - list [ref=f1e22]:
+      - listitem [ref=f1e23] [cursor=pointer]:
+        - generic [ref=f1e24]: cidadeplaza
+        - generic [ref=f1e27]: cidadeplaza
+      - listitem [ref=f1e28] [cursor=pointer]:
+        - generic [ref=f1e29]: consultoria_ia
+        - generic [ref=f1e32]: Consultoria em Inteligência Artificial e transformação digital
+      - listitem [ref=f1e33] [cursor=pointer]:
+        - generic [ref=f1e34]: desenvolvimento
+        - generic [ref=f1e37]: Desenvolvimento de software, arquitetura e DevOps
+      - listitem [ref=f1e38] [cursor=pointer]:
+        - generic [ref=f1e39]: escrita
+        - generic [ref=f1e42]: escrita
+      - listitem [ref=f1e43] [cursor=pointer]:
+        - generic [ref=f1e44]: familia_107348546863348
+        - generic [ref=f1e47]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e48] [cursor=pointer]:
+        - generic [ref=f1e49]: familia_120363194953409100
+        - generic [ref=f1e52]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e53] [cursor=pointer]:
+        - generic [ref=f1e54]: familia_120363317371269766
+        - generic [ref=f1e57]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e58] [cursor=pointer]:
+        - generic [ref=f1e59]: familia_120363324148636287
+        - generic [ref=f1e62]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e63] [cursor=pointer]:
+        - generic [ref=f1e64]: familia_120363377030152332
+        - generic [ref=f1e67]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e68] [cursor=pointer]:
+        - generic [ref=f1e69]: familia_120363429667789024
+        - generic [ref=f1e72]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e73] [cursor=pointer]:
+        - generic [ref=f1e74]: familia_146123394154498
+        - generic [ref=f1e77]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e78] [cursor=pointer]:
+        - generic [ref=f1e79]: familia_208473551851583
+        - generic [ref=f1e82]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e83] [cursor=pointer]:
+        - generic [ref=f1e84]: familia_228788898123903
+        - generic [ref=f1e87]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e88] [cursor=pointer]:
+        - generic [ref=f1e89]: familia_3410371842126
+        - generic [ref=f1e92]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e93] [cursor=pointer]:
+        - generic [ref=f1e94]: familia_55129740159741405021307
+        - generic [ref=f1e97]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e98] [cursor=pointer]:
+        - generic [ref=f1e99]: familia_55129880749061486585916
+        - generic [ref=f1e102]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e103] [cursor=pointer]:
+        - generic [ref=f1e104]: gestaoobrigacoes
+        - generic [ref=f1e107]: gestaoobrigacoes
+      - listitem [ref=f1e108] [cursor=pointer]:
+        - generic [ref=f1e109]: investimentos
+        - generic [ref=f1e112]: Investimentos, portfólio e análise de ativos
+      - listitem [ref=f1e113] [cursor=pointer]:
+        - generic [ref=f1e114]: iso
+        - generic [ref=f1e117]: iso
+      - listitem [ref=f1e118] [cursor=pointer]:
+        - generic [ref=f1e119]: kinetiswan
+        - generic [ref=f1e122]: Especialista em topologia LoRa Mesh para condomínios - telemetria predial, segurança patrimonial e manutenção preditiva via rádio malha 915 MHz off-grid
+      - listitem [ref=f1e123] [cursor=pointer]:
+        - generic [ref=f1e124]: main
+        - generic [ref=f1e127]: main
+      - listitem [ref=f1e128] [cursor=pointer]:
+        - generic [ref=f1e129]: mente_inclusiva
+        - generic [ref=f1e132]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f1e133] [cursor=pointer]:
+        - generic [ref=f1e134]: ministro_louvor
+        - generic [ref=f1e137]: ministro_louvor
+      - listitem [ref=f1e138] [cursor=pointer]:
+        - generic [ref=f1e139]: segundo-cerebro
+        - generic [ref=f1e142]: Segundo Cérebro importado
+      - listitem [ref=f1e143] [cursor=pointer]:
+        - generic [ref=f1e144]: slcia
+        - generic [ref=f1e147]: slcia
+      - listitem [ref=f1e148] [cursor=pointer]:
+        - generic [ref=f1e149]: suriel
+        - generic [ref=f1e152]: suriel
+    - generic [ref=f1e153]:
+      - generic [ref=f1e154]: "daemon: assistente-os · 26 souls"
+      - generic [ref=f1e155]: "ws: on"
+  - main [ref=f1e156]:
+    - navigation [ref=f1e157]:
+      - button "C&C Node" [ref=f1e158] [cursor=pointer]
+      - button "Chat" [ref=f1e161] [cursor=pointer]
+      - button "Memória" [ref=f1e164] [cursor=pointer]
+      - button "Grafo" [ref=f1e167] [cursor=pointer]
+      - button "LangGraph" [ref=f1e170] [cursor=pointer]
+      - button "Buffer" [ref=f1e173] [cursor=pointer]
+      - button "Motores LLM" [ref=f1e176] [cursor=pointer]
+      - button "MCP" [ref=f1e179] [cursor=pointer]
+      - button "WhatsApp" [active] [ref=f1e182] [cursor=pointer]
+      - button "Telemetria" [ref=f1e185] [cursor=pointer]
+    - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸
+    - generic [ref=f1e346]:
+      - heading "▸ WhatsApp" [level=2] [ref=f1e347]
+      - generic [ref=f1e348]:
+        - generic [ref=f1e349]:
+          - generic [ref=f1e350]: STATUS
+          - generic [ref=f1e351]: conectado
+        - generic [ref=f1e352]:
+          - generic [ref=f1e353]: TELEFONE
+          - generic [ref=f1e354]: 5512991713559@s.whatsapp.net
+        - generic [ref=f1e355]:
+          - generic [ref=f1e356]: ALMA
+          - generic [ref=f1e357]: main
+      - generic [ref=f1e358]:
+        - generic [ref=f1e359]:
+          - generic [ref=f1e360]: Conversas
+          - generic [ref=f1e361]:
+            - generic [ref=f1e362] [cursor=pointer]:
+              - generic [ref=f1e363]: 120363406695653917@newsletter
+              - generic [ref=f1e364]: "[image]"
+              - generic [ref=f1e365]:
+                - generic [ref=f1e366]: "1"
+                - generic [ref=f1e367]: 19:35
+            - generic [ref=f1e368] [cursor=pointer]:
+              - generic [ref=f1e369]: Marina
+              - generic [ref=f1e370]: 😳 VOCÊ ESTÁ PERDENDO UM CONTEÚDO MUITO
+              - generic [ref=f1e371]:
+                - generic [ref=f1e372]: "7"
+                - generic [ref=f1e373]: 19:35
+            - generic [ref=f1e374] [cursor=pointer]:
+              - generic [ref=f1e375]: 120363194953409100@newsletter
+              - generic [ref=f1e376]: "🚙 Leia mais: https://inf.money/im/85742"
+              - generic [ref=f1e377]:
+                - generic [ref=f1e378]: "7"
+                - generic [ref=f1e379]: 19:35
+            - generic [ref=f1e380] [cursor=pointer]:
+              - generic [ref=f1e381]: 279057648341037@lid
+              - generic [ref=f1e382]: "[mensagem]"
+              - generic [ref=f1e383]:
+                - generic [ref=f1e384]: "1"
+                - generic [ref=f1e385]: 19:30
+            - generic [ref=f1e386] [cursor=pointer]:
+              - generic [ref=f1e387]: ruan
+              - generic [ref=f1e388]: https://github.com/Sousa-Lima/Material-d
+              - generic [ref=f1e389]:
+                - generic [ref=f1e390]: "5"
+                - generic [ref=f1e391]: 19:18
+            - generic [ref=f1e392] [cursor=pointer]:
+              - generic [ref=f1e393]: Thiago Ferreira
+              - generic [ref=f1e394]: 😂
+              - generic [ref=f1e395]:
+                - generic [ref=f1e396]: "29"
+                - generic [ref=f1e397]: 19:11
+            - generic [ref=f1e398] [cursor=pointer]:
+              - generic [ref=f1e399]: 117996341202948@lid
+              - generic [ref=f1e400]: "[mensagem]"
+              - generic [ref=f1e401]:
+                - generic [ref=f1e402]: "2"
+                - generic [ref=f1e403]: 19:10
+            - generic [ref=f1e404] [cursor=pointer]:
+              - generic [ref=f1e405]: 120363404607741075@newsletter
+              - generic [ref=f1e406]: Às vezes a gente não entende o silêncio
+              - generic [ref=f1e407]:
+                - generic [ref=f1e408]: "3"
+                - generic [ref=f1e409]: 19:09
+            - generic [ref=f1e410] [cursor=pointer]:
+              - generic [ref=f1e411]: Osvaldo
+              - generic [ref=f1e412]: "[mensagem]"
+              - generic [ref=f1e413]:
+                - generic [ref=f1e414]: "4"
+                - generic [ref=f1e415]: 19:06
+            - generic [ref=f1e416] [cursor=pointer]:
+              - generic [ref=f1e417]: Abida Veiga
+              - generic [ref=f1e418]: "[mensagem]"
+              - generic [ref=f1e419]:
+                - generic [ref=f1e420]: "3"
+                - generic [ref=f1e421]: 19:03
+            - generic [ref=f1e422] [cursor=pointer]:
+              - generic [ref=f1e423]: Livia • Consultora Lomani
+              - generic [ref=f1e424]: VIPs, essa live é uma oportunidade super
+              - generic [ref=f1e425]:
+                - generic [ref=f1e426]: "7"
+                - generic [ref=f1e427]: 18:56
+            - generic [ref=f1e428] [cursor=pointer]:
+              - generic [ref=f1e429]: Magna Suene
+              - generic [ref=f1e430]: "[mensagem]"
+              - generic [ref=f1e431]:
+                - generic [ref=f1e432]: "10"
+                - generic [ref=f1e433]: 18:52
+            - generic [ref=f1e434] [cursor=pointer]:
+              - generic [ref=f1e435]: solimabr@yahoo.com.br
+              - generic [ref=f1e436]: https://www.facebook.com/share/v/1CNErME
+              - generic [ref=f1e437]:
+                - generic [ref=f1e438]: "5"
+                - generic [ref=f1e439]: 18:50
+            - generic [ref=f1e440] [cursor=pointer]:
+              - generic [ref=f1e441]: Jeeziel Vieira
+              - generic [ref=f1e442]: Jesus fez e faz o melhor para a Igreja.
+              - generic [ref=f1e443]:
+                - generic [ref=f1e444]: "2"
+                - generic [ref=f1e445]: 18:09
+            - generic [ref=f1e446] [cursor=pointer]:
+              - generic [ref=f1e447]: Amanda Vieira
+              - generic [ref=f1e448]: O caso dele é bem complexo que nosso Deu
+              - generic [ref=f1e449]:
+                - generic [ref=f1e450]: "1"
+                - generic [ref=f1e451]: 17:53
+            - generic [ref=f1e452] [cursor=pointer]:
+              - generic [ref=f1e453]: Times Butantã
+              - generic [ref=f1e454]: Boa noite! Oi,Everton de, Tudo bem? Aqu
+              - generic [ref=f1e455]:
+                - generic [ref=f1e456]: "1"
+                - generic [ref=f1e457]: 17:46
+            - generic [ref=f1e458] [cursor=pointer]:
+              - generic [ref=f1e459]: César
+              - generic [ref=f1e460]: Além disso também pode ter dispositivos
+              - generic [ref=f1e461]:
+                - generic [ref=f1e462]: "2"
+                - generic [ref=f1e463]: 17:45
+            - generic [ref=f1e464] [cursor=pointer]:
+              - generic [ref=f1e465]: Elisangela Lima
+              - generic [ref=f1e466]: oi
+              - generic [ref=f1e467]:
+                - generic [ref=f1e468]: "1"
+                - generic [ref=f1e469]: 17:36
+            - generic [ref=f1e470] [cursor=pointer]:
+              - generic [ref=f1e471]: Marcelo
+              - generic [ref=f1e472]: oi de novo
+              - generic [ref=f1e473]:
+                - generic [ref=f1e474]: "5"
+                - generic [ref=f1e475]: 17:23
+            - generic [ref=f1e476] [cursor=pointer]:
+              - generic [ref=f1e477]: Eder Andrew
+              - generic [ref=f1e478]: Tive que dar atenção em algumas demandas
+              - generic [ref=f1e479]:
+                - generic [ref=f1e480]: "2"
+                - generic [ref=f1e481]: 17:12
+        - generic [ref=f1e482]:
+          - generic [ref=f1e483]: Selecione uma conversa
+          - generic [ref=f1e485]:
+            - textbox "Escreva uma mensagem..." [ref=f1e486]
+            - button "Enviar" [ref=f1e487] [cursor=pointer]
+    - text: ▸ ▸ ▸ ▸ ▸

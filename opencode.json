@@ -32,7 +32,7 @@
     },
     "cloudflare": {
       "type": "local",
-      "command": ["npx", "-y", "@cloudflare/mcp-server-cloudflare"],
+      "command": ["bash", "-c", "set -a; source ~/.assistant-os/.env; set +a; export CLOUDFLARE_API_TOKEN=\"$CLOUDFLARE_TOKEN\"; exec npx -y @cloudflare/mcp-server-cloudflare run \"$CLOUDFLARE_ACCOUNT_ID\""],
       "enabled": true
     },
     "vercel": {

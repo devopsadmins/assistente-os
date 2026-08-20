@@ -1,0 +1,14 @@
+[     157ms] [ERROR] A bad HTTP response code (404) was received when fetching the script. @ :0
+[     212ms] [ERROR] Falha ao registrar SW: TypeError: Failed to register a ServiceWorker for scope ('http://localhost:4310/') with script ('http://localhost:4310/sw.js'): A bad HTTP response code (404) was received when fetching the script. @ http://localhost:4310/?v=3&t=123456:377
+[     213ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:4310/manifest.json:0
+[     213ms] [ERROR] Manifest fetch from http://localhost:4310/manifest.json failed, code 404 @ http://localhost:4310/?v=3&t=123456:0
+[   54273ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:4310/manifest.json:0
+[   54275ms] [ERROR] Manifest fetch from http://localhost:4310/manifest.json failed, code 404 @ http://localhost:4310/?v=3&t=123456:370
+[   54322ms] [ERROR] A bad HTTP response code (404) was received when fetching the script. @ :0
+[   54349ms] [ERROR] Falha ao registrar SW: TypeError: Failed to register a ServiceWorker for scope ('http://localhost:4310/') with script ('http://localhost:4310/sw.js'): A bad HTTP response code (404) was received when fetching the script. @ http://localhost:4310/?v=3&t=123456:377
+[   54360ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:4310/manifest.json:0
+[   54360ms] [ERROR] Manifest fetch from http://localhost:4310/manifest.json failed, code 404 @ http://localhost:4310/?v=3&t=123456:0
+[   90616ms] [ERROR] A bad HTTP response code (404) was received when fetching the script. @ :0
+[   90638ms] [ERROR] Falha ao registrar SW: TypeError: Failed to register a ServiceWorker for scope ('http://localhost:4310/') with script ('http://localhost:4310/sw.js'): A bad HTTP response code (404) was received when fetching the script. @ http://localhost:4310/?v=3&t=123456:377
+[   90757ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:4310/manifest.json:0
+[   90766ms] [ERROR] Manifest fetch from http://localhost:4310/manifest.json failed, code 404 @ http://localhost:4310/?v=3&t=123456:0

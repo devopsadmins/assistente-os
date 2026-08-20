@@ -1,0 +1,266 @@
+- generic [ref=f3e2]:
+  - generic [ref=f3e3]:
+    - generic [ref=f3e4]:
+      - img "Assistente OS" [ref=f3e5]
+      - heading ">_ Assistente OS" [level=1] [ref=f3e7]
+    - button "Menu" [ref=f3e8] [cursor=pointer]
+  - complementary [ref=f3e11]:
+    - generic [ref=f3e12]:
+      - img "Assistente OS" [ref=f3e13]
+      - generic [ref=f3e14]:
+        - heading ">_ Assistente OS" [level=1] [ref=f3e15]
+        - generic [ref=f3e16]: online
+    - generic [ref=f3e17]:
+      - generic [ref=f3e18]: SOULS
+      - searchbox "buscar soul…" [ref=f3e21]
+    - list [ref=f3e22]:
+      - listitem [ref=f3e23] [cursor=pointer]:
+        - generic [ref=f3e24]: cidadeplaza
+        - generic [ref=f3e27]: cidadeplaza
+      - listitem [ref=f3e28] [cursor=pointer]:
+        - generic [ref=f3e29]: consultoria_ia
+        - generic [ref=f3e32]: Consultoria em Inteligência Artificial e transformação digital
+      - listitem [ref=f3e33] [cursor=pointer]:
+        - generic [ref=f3e34]: desenvolvimento
+        - generic [ref=f3e37]: Desenvolvimento de software, arquitetura e DevOps
+      - listitem [ref=f3e38] [cursor=pointer]:
+        - generic [ref=f3e39]: escrita
+        - generic [ref=f3e42]: escrita
+      - listitem [ref=f3e43] [cursor=pointer]:
+        - generic [ref=f3e44]: familia_107348546863348
+        - generic [ref=f3e47]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e48] [cursor=pointer]:
+        - generic [ref=f3e49]: familia_120363194953409100
+        - generic [ref=f3e52]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e53] [cursor=pointer]:
+        - generic [ref=f3e54]: familia_120363317371269766
+        - generic [ref=f3e57]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e58] [cursor=pointer]:
+        - generic [ref=f3e59]: familia_120363324148636287
+        - generic [ref=f3e62]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e63] [cursor=pointer]:
+        - generic [ref=f3e64]: familia_120363377030152332
+        - generic [ref=f3e67]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e68] [cursor=pointer]:
+        - generic [ref=f3e69]: familia_120363429667789024
+        - generic [ref=f3e72]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e73] [cursor=pointer]:
+        - generic [ref=f3e74]: familia_146123394154498
+        - generic [ref=f3e77]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e78] [cursor=pointer]:
+        - generic [ref=f3e79]: familia_208473551851583
+        - generic [ref=f3e82]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e83] [cursor=pointer]:
+        - generic [ref=f3e84]: familia_228788898123903
+        - generic [ref=f3e87]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e88] [cursor=pointer]:
+        - generic [ref=f3e89]: familia_3410371842126
+        - generic [ref=f3e92]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e93] [cursor=pointer]:
+        - generic [ref=f3e94]: familia_55129740159741405021307
+        - generic [ref=f3e97]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e98] [cursor=pointer]:
+        - generic [ref=f3e99]: familia_55129880749061486585916
+        - generic [ref=f3e102]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e103] [cursor=pointer]:
+        - generic [ref=f3e104]: gestaoobrigacoes
+        - generic [ref=f3e107]: gestaoobrigacoes
+      - listitem [ref=f3e108] [cursor=pointer]:
+        - generic [ref=f3e109]: investimentos
+        - generic [ref=f3e112]: Investimentos, portfólio e análise de ativos
+      - listitem [ref=f3e113] [cursor=pointer]:
+        - generic [ref=f3e114]: iso
+        - generic [ref=f3e117]: iso
+      - listitem [ref=f3e118] [cursor=pointer]:
+        - generic [ref=f3e119]: kinetiswan
+        - generic [ref=f3e122]: Especialista em topologia LoRa Mesh para condomínios - telemetria predial, segurança patrimonial e manutenção preditiva via rádio malha 915 MHz off-grid
+      - listitem [ref=f3e123] [cursor=pointer]:
+        - generic [ref=f3e124]: main
+        - generic [ref=f3e127]: main
+      - listitem [ref=f3e128] [cursor=pointer]:
+        - generic [ref=f3e129]: mente_inclusiva
+        - generic [ref=f3e132]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+      - listitem [ref=f3e133] [cursor=pointer]:
+        - generic [ref=f3e134]: ministro_louvor
+        - generic [ref=f3e137]: ministro_louvor
+      - listitem [ref=f3e138] [cursor=pointer]:
+        - generic [ref=f3e139]: segundo-cerebro
+        - generic [ref=f3e142]: Segundo Cérebro importado
+      - listitem [ref=f3e143] [cursor=pointer]:
+        - generic [ref=f3e144]: slcia
+        - generic [ref=f3e147]: slcia
+      - listitem [ref=f3e148] [cursor=pointer]:
+        - generic [ref=f3e149]: suriel
+        - generic [ref=f3e152]: suriel
+    - generic [ref=f3e153]:
+      - generic [ref=f3e154]: "daemon: assistente-os · 26 souls"
+      - generic [ref=f3e155]: "ws: on"
+  - main [ref=f3e156]:
+    - navigation [ref=f3e157]:
+      - button "C&C Node" [ref=f3e158] [cursor=pointer]
+      - button "Chat" [ref=f3e161] [cursor=pointer]
+      - button "Memória" [ref=f3e164] [cursor=pointer]
+      - button "Grafo" [ref=f3e167] [cursor=pointer]
+      - button "LangGraph" [ref=f3e170] [cursor=pointer]
+      - button "Buffer" [ref=f3e173] [cursor=pointer]
+      - button "Motores LLM" [ref=f3e176] [cursor=pointer]
+      - button "MCP" [ref=f3e179] [cursor=pointer]
+      - button "WhatsApp" [ref=f3e182] [cursor=pointer]
+      - button "Telemetria" [ref=f3e185] [cursor=pointer]
+    - generic [ref=f3e188]:
+      - generic [ref=f3e189]:
+        - generic [ref=f3e190]: Command & Control · Almas do Acervo
+        - heading "▸ Consciências em serviço" [level=2] [ref=f3e191]:
+          - text: ▸ Consciências
+          - generic [ref=f3e192]: em serviço
+        - generic [ref=f3e193]: Gerencie agentes (almas), sessões e memórias persistentes.Cada alma é um perfil vivo de conhecimento.
+      - generic [ref=f3e194]:
+        - generic [ref=f3e195]:
+          - generic [ref=f3e196]: ALMAS / AGENTES
+          - generic [ref=f3e197]: "26"
+        - generic [ref=f3e198]:
+          - generic [ref=f3e199]: SESSÕES TOTAIS
+          - generic [ref=f3e200]: "17"
+        - generic [ref=f3e201]:
+          - generic [ref=f3e202]: ALMA ATIVA
+          - generic [ref=f3e203]: cidadeplaza
+        - generic [ref=f3e204]:
+          - generic [ref=f3e205]: MOTOR ATIVO
+          - generic [ref=f3e206]: soul
+      - generic [ref=f3e208]:
+        - generic [ref=f3e209]:
+          - button "TODAS" [ref=f3e210] [cursor=pointer]
+          - button "ATIVA" [ref=f3e211] [cursor=pointer]
+          - button "INATIVAS" [ref=f3e212] [cursor=pointer]
+        - generic [ref=f3e213]:
+          - generic [ref=f3e214] [cursor=pointer]:
+            - generic [ref=f3e215]:
+              - heading "cidadeplaza" [level=3] [ref=f3e216]
+              - generic [ref=f3e217]: ativa
+            - generic [ref=f3e218]: (sem descrição)
+          - generic [ref=f3e219] [cursor=pointer]:
+            - generic [ref=f3e220]:
+              - heading "consultoria_ia" [level=3] [ref=f3e221]
+              - generic [ref=f3e222]: ociosa
+            - generic [ref=f3e223]: Consultoria em Inteligência Artificial e transformação digital
+          - generic [ref=f3e224] [cursor=pointer]:
+            - generic [ref=f3e225]:
+              - heading "desenvolvimento" [level=3] [ref=f3e226]
+              - generic [ref=f3e227]: ociosa
+            - generic [ref=f3e228]: Desenvolvimento de software, arquitetura e DevOps
+          - generic [ref=f3e229] [cursor=pointer]:
+            - generic [ref=f3e230]:
+              - heading "escrita" [level=3] [ref=f3e231]
+              - generic [ref=f3e232]: ociosa
+            - generic [ref=f3e233]: (sem descrição)
+          - generic [ref=f3e234] [cursor=pointer]:
+            - generic [ref=f3e235]:
+              - heading "familia_107348546863348" [level=3] [ref=f3e236]
+              - generic [ref=f3e237]: ociosa
+            - generic [ref=f3e238]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e239] [cursor=pointer]:
+            - generic [ref=f3e240]:
+              - heading "familia_120363194953409100" [level=3] [ref=f3e241]
+              - generic [ref=f3e242]: ociosa
+            - generic [ref=f3e243]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e244] [cursor=pointer]:
+            - generic [ref=f3e245]:
+              - heading "familia_120363317371269766" [level=3] [ref=f3e246]
+              - generic [ref=f3e247]: ociosa
+            - generic [ref=f3e248]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e249] [cursor=pointer]:
+            - generic [ref=f3e250]:
+              - heading "familia_120363324148636287" [level=3] [ref=f3e251]
+              - generic [ref=f3e252]: ociosa
+            - generic [ref=f3e253]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e254] [cursor=pointer]:
+            - generic [ref=f3e255]:
+              - heading "familia_120363377030152332" [level=3] [ref=f3e256]
+              - generic [ref=f3e257]: ociosa
+            - generic [ref=f3e258]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e259] [cursor=pointer]:
+            - generic [ref=f3e260]:
+              - heading "familia_120363429667789024" [level=3] [ref=f3e261]
+              - generic [ref=f3e262]: ociosa
+            - generic [ref=f3e263]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e264] [cursor=pointer]:
+            - generic [ref=f3e265]:
+              - heading "familia_146123394154498" [level=3] [ref=f3e266]
+              - generic [ref=f3e267]: ociosa
+            - generic [ref=f3e268]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e269] [cursor=pointer]:
+            - generic [ref=f3e270]:
+              - heading "familia_208473551851583" [level=3] [ref=f3e271]
+              - generic [ref=f3e272]: ociosa
+            - generic [ref=f3e273]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e274] [cursor=pointer]:
+            - generic [ref=f3e275]:
+              - heading "familia_228788898123903" [level=3] [ref=f3e276]
+              - generic [ref=f3e277]: ociosa
+            - generic [ref=f3e278]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e279] [cursor=pointer]:
+            - generic [ref=f3e280]:
+              - heading "familia_3410371842126" [level=3] [ref=f3e281]
+              - generic [ref=f3e282]: ociosa
+            - generic [ref=f3e283]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e284] [cursor=pointer]:
+            - generic [ref=f3e285]:
+              - heading "familia_55129740159741405021307" [level=3] [ref=f3e286]
+              - generic [ref=f3e287]: ociosa
+            - generic [ref=f3e288]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e289] [cursor=pointer]:
+            - generic [ref=f3e290]:
+              - heading "familia_55129880749061486585916" [level=3] [ref=f3e291]
+              - generic [ref=f3e292]: ociosa
+            - generic [ref=f3e293]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e294] [cursor=pointer]:
+            - generic [ref=f3e295]:
+              - heading "gestaoobrigacoes" [level=3] [ref=f3e296]
+              - generic [ref=f3e297]: ociosa
+            - generic [ref=f3e298]: (sem descrição)
+          - generic [ref=f3e299] [cursor=pointer]:
+            - generic [ref=f3e300]:
+              - heading "investimentos" [level=3] [ref=f3e301]
+              - generic [ref=f3e302]: ociosa
+            - generic [ref=f3e303]: Investimentos, portfólio e análise de ativos
+          - generic [ref=f3e304] [cursor=pointer]:
+            - generic [ref=f3e305]:
+              - heading "iso" [level=3] [ref=f3e306]
+              - generic [ref=f3e307]: ociosa
+            - generic [ref=f3e308]: (sem descrição)
+          - generic [ref=f3e309] [cursor=pointer]:
+            - generic [ref=f3e310]:
+              - heading "kinetiswan" [level=3] [ref=f3e311]
+              - generic [ref=f3e312]: ociosa
+            - generic [ref=f3e313]: Especialista em topologia LoRa Mesh para condomínios - telemetria predial, segurança patrimonial e manutenção preditiva via rádio malha 915 MHz off-grid
+          - generic [ref=f3e314] [cursor=pointer]:
+            - generic [ref=f3e315]:
+              - heading "main" [level=3] [ref=f3e316]
+              - generic [ref=f3e317]: ociosa
+            - generic [ref=f3e318]: (sem descrição)
+          - generic [ref=f3e319] [cursor=pointer]:
+            - generic [ref=f3e320]:
+              - heading "mente_inclusiva" [level=3] [ref=f3e321]
+              - generic [ref=f3e322]: ociosa
+            - generic [ref=f3e323]: Atendimento Inteligente de Apoio à Família — suporte emocional para famílias neurodivergentes
+          - generic [ref=f3e324] [cursor=pointer]:
+            - generic [ref=f3e325]:
+              - heading "ministro_louvor" [level=3] [ref=f3e326]
+              - generic [ref=f3e327]: ociosa
+            - generic [ref=f3e328]: (sem descrição)
+          - generic [ref=f3e329] [cursor=pointer]:
+            - generic [ref=f3e330]:
+              - heading "segundo-cerebro" [level=3] [ref=f3e331]
+              - generic [ref=f3e332]: ociosa
+            - generic [ref=f3e333]: Segundo Cérebro importado
+          - generic [ref=f3e334] [cursor=pointer]:
+            - generic [ref=f3e335]:
+              - heading "slcia" [level=3] [ref=f3e336]
+              - generic [ref=f3e337]: ociosa
+            - generic [ref=f3e338]: (sem descrição)
+          - generic [ref=f3e339] [cursor=pointer]:
+            - generic [ref=f3e340]:
+              - heading "suriel" [level=3] [ref=f3e341]
+              - generic [ref=f3e342]: ociosa
+            - generic [ref=f3e343]: (sem descrição)
+    - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸

@@ -52,6 +52,7 @@ import { checkMonitors } from "./monitors.js";
 import { relevanceRule } from "./relevance.js";
 import { VoiceHandler } from "./voice.js";
 import { WhatsAppChannel } from "./channels/whatsapp.js";
+import { TelegramChannel } from "./channels/telegram.js";
 import { sanitizeUserPrompt, sanitizeLLMResponse } from "@assistente-os/core";
 import { runLangGraphAgent, runLangGraphAgentStream, probeLangGraph } from "./langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "./orchestrator/router.js";
@@ -138,6 +139,8 @@ export interface DaemonOptions {
   voiceEnabled?: boolean;
   /** Habilita o canal WhatsApp via Baileys (padrão: false). */
   whatsappEnabled?: boolean;
+  /** Habilita o canal Telegram via Bot API (padrão: false). */
+  telegramEnabled?: boolean;
 }
 
 export interface DaemonHandle {
@@ -145,6 +148,7 @@ export interface DaemonHandle {
   hub: WsHub;
   voice?: VoiceHandler;
   whatsapp?: WhatsAppChannel;
+  telegram?: TelegramChannel;
   close: () => Promise<void>;
 }
 
@@ -171,7 +175,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
   const webDir = options.webDir ?? defaultWebDir();
   const server = createServer(async (req, res) => {
     try {
-      await handle(req, res, { home, token, run: options.run ?? runOpenCode, hub, webDir, onEventDone, onAgendaDone, voiceHandler, whatsappChannel });
+      await handle(req, res, { home, token, run: options.run ?? runOpenCode, hub, webDir, onEventDone, onAgendaDone, voiceHandler, whatsappChannel, telegramChannel });
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
@@ -225,6 +229,35 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     });
   }
 
+  // Telegram channel (opcional)
+  let telegramChannel: TelegramChannel | undefined;
+  if (options.telegramEnabled) {
+    logger.info("Telegram habilitado — inicializando canal Bot API");
+    const telegramDefaultSoul = process.env.TELEGRAM_DEFAULT_SOUL || "main";
+    const telegramSoulMapStr = process.env.TELEGRAM_SOUL_MAP;
+    const telegramSoulMap = telegramSoulMapStr ? JSON.parse(telegramSoulMapStr) : {};
+    telegramChannel = new TelegramChannel({
+      home,
+      hub,
+      pool: getPool(process.env.DATABASE_URL || "postgres://assistente_os:assistente_os@localhost:5432/assistente_os"),
+      defaultSoul: telegramDefaultSoul,
+      soulMap: telegramSoulMap,
+      onResponse: async (jid, text) => {
+        // Responder via Telegram quando houver aprovação humana
+        try {
+          if (telegramChannel && telegramChannel.getStatus().connected) {
+            await telegramChannel.sendMessage(jid, text);
+          }
+        } catch (err) {
+          console.error("[server] Erro ao enviar resposta Telegram:", err);
+        }
+      },
+    });
+    void telegramChannel.start().catch((err) => {
+      logger.error({ err }, "falha ao iniciar canal Telegram");
+    });
+  }
+
   const onEventDone = (event: { id: number; type: string; soul: string | null; status: string }) => {
     try {
       hub.broadcast({ type: "event.processed", event });
@@ -263,6 +296,10 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     }).catch(() => {});
   }, 30_000);
   eventTimer.unref?.();
+  // Adicionar suporte ao canal Telegram na loop de respostas pendentes
+  const telegramResponse = telegramChannel
+    ? ((eventId: number, stdout: string) => void telegramChannel!.processResponse(eventId, stdout))
+    : undefined;
   const agendaTimer = setInterval(() => {
     void processDueAgenda({ home, run: runFn, onDone: onAgendaDone }).catch(() => {});
   }, 30_000);
@@ -272,6 +309,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     hub,
     voice: voiceHandler,
     whatsapp: whatsappChannel,
+    telegram: telegramChannel,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(monitorTimer);
@@ -279,6 +317,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
         clearInterval(agendaTimer);
         voiceHandler?.stop();
         void whatsappChannel?.stop();
+        void telegramChannel?.stop();
         server.close(() => resolve());
       }),
   };
@@ -381,6 +420,7 @@ interface RequestContext {
   onAgendaDone: (item: { id: number; title: string; soul: string | null; status: string }) => void;
   voiceHandler?: VoiceHandler;
   whatsappChannel?: WhatsAppChannel;
+  telegramChannel?: TelegramChannel;
 }
 
 const MIME: Record<string, string> = {
@@ -427,7 +467,7 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, webDir: string):
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse, context: RequestContext): Promise<void> {
-  const { home, token, run, hub, webDir, onEventDone, onAgendaDone, voiceHandler } = context;
+  const { home, token, run, hub, webDir, onEventDone, onAgendaDone, voiceHandler, whatsappChannel, telegramChannel } = context;
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
 
@@ -884,6 +924,16 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     return;
   }
 
+  // ── Telegram: status do canal ────────────────────────────────────────
+  if (req.method === "GET" && path === "/api/telegram/status") {
+    if (!context.telegramChannel) {
+      sendJson(res, 200, { connected: false, username: null, jid: null });
+      return;
+    }
+    sendJson(res, 200, context.telegramChannel.getStatus());
+    return;
+  }
+
   // ── WhatsApp: enviar mensagem ────────────────────────────────────────
   if (req.method === "POST" && path === "/api/whatsapp/send") {
     if (!context.whatsappChannel) {
@@ -898,6 +948,24 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       return;
     }
     const ok = await context.whatsappChannel.sendMessage(jid, text);
+    sendJson(res, ok ? 200 : 500, { ok });
+    return;
+  }
+
+  // ── Telegram: enviar mensagem ────────────────────────────────────────
+  if (req.method === "POST" && path === "/api/telegram/send") {
+    if (!context.telegramChannel) {
+      sendJson(res, 503, { error: "canal Telegram não habilitado" });
+      return;
+    }
+    const { body } = await readJson(req);
+    const chatId = body?.chatId as string | number | undefined;
+    const text = body?.text as string | undefined;
+    if (!chatId || !text) {
+      sendJson(res, 400, { error: "chatId e text obrigatórios" });
+      return;
+    }
+    const ok = await context.telegramChannel.sendMessage(chatId, text);
     sendJson(res, ok ? 200 : 500, { ok });
     return;
   }
