@@ -8,7 +8,7 @@
  * Suporta tool-calling via tools LangChain.
  */
 import type { Pool } from "@assistente-os/core";
-import { runAgent, type AgentStateType } from "@assistente-os/memory";
+import { runAgent, runAgentStream, type AgentStateType, type LangGraphStepEvent } from "@assistente-os/memory";
 import { createAgentTools } from "./langgraph-tools.js";
 import { loadConfig } from "@assistente-os/core";
 import { join } from "node:path";
@@ -121,5 +121,107 @@ export async function probeLangGraph(ollamaUrl: string): Promise<{ ok: boolean; 
     return { ok: false, reason: `Ollama HTTP ${resp.status}` };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export interface LangGraphStreamStep {
+  node: string;
+  ts: number;
+  iterationCount: number;
+  messageCount: number;
+  lastContent?: string;
+  toolCalls?: { name: string; args: Record<string, unknown> }[];
+}
+
+export interface LangGraphStreamResult {
+  steps: LangGraphStreamStep[];
+  finalState: AgentStateType;
+}
+
+export interface LangGraphStreamOptions extends LangGraphRunnerOptions {
+  onStep?: (step: LangGraphStreamStep) => void | Promise<void>;
+}
+
+export async function runLangGraphAgentStream(
+  pool: Pool,
+  options: LangGraphStreamOptions,
+): Promise<LangGraphRunnerResult> {
+  const { soul, prompt, threadId, timeoutSeconds = 300, useTools = true, onStep } = options;
+  const startedAt = Date.now();
+  const steps: LangGraphStreamStep[] = [];
+
+  try {
+    const finalThreadId = threadId ?? `soul-${soul}-${Date.now()}`;
+
+    let tools = undefined;
+    if (useTools) {
+      const config = loadConfig({});
+      tools = createAgentTools({
+        home: config.home,
+        pool,
+        soulId: soul,
+      });
+    }
+
+    let finalState: AgentStateType | undefined;
+
+    for await (const event of runAgentStream(pool, soul, prompt, finalThreadId, tools)) {
+      const step: LangGraphStreamStep = {
+        node: event.node,
+        ts: event.ts,
+        iterationCount: event.state.iterationCount,
+        messageCount: event.state.messages.length,
+        lastContent: event.state.messages[event.state.messages.length - 1]?.content,
+        toolCalls: event.state.messages[event.state.messages.length - 1]?.toolCalls,
+      };
+      steps.push(step);
+      finalState = event.state;
+
+      if (onStep) {
+        await onStep(step);
+      }
+    }
+
+    if (!finalState) {
+      return { code: 1, stdout: "", stderr: "LangGraph não produziu estado", timedOut: false };
+    }
+
+    const lastAssistant = [...finalState.messages]
+      .reverse()
+      .find((m) => m.role === "assistant");
+
+    const stdout = lastAssistant?.content ?? "(sem resposta)";
+
+    const toolCalls: LangGraphToolCallSummary[] = finalState.messages
+      .filter((m) => m.role === "assistant" && m.toolCalls?.length)
+      .flatMap((m) =>
+        m.toolCalls!.map((tc) => ({
+          name: tc.name,
+          args: tc.args,
+          result: finalState!.messages
+            .find((r) => r.role === "tool" && r.toolCallId === tc.id)
+            ?.content?.slice(0, 500) ?? "(sem resultado)",
+        })),
+      );
+
+    return {
+      code: 0,
+      stdout,
+      stderr: "",
+      timedOut: false,
+      state: finalState,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
+    };
+  } catch (err) {
+    const elapsed = Date.now() - startedAt;
+    const timedOut = elapsed >= timeoutSeconds * 1000;
+    const message = err instanceof Error ? err.message : String(err);
+
+    return {
+      code: 1,
+      stdout: "",
+      stderr: timedOut ? `LangGraph timeout after ${timeoutSeconds}s` : message,
+      timedOut,
+    };
   }
 }

@@ -48,7 +48,8 @@ import { checkMonitors } from "./monitors.js";
 import { relevanceRule } from "./relevance.js";
 import { VoiceHandler } from "./voice.js";
 import { sanitizeUserPrompt, sanitizeLLMResponse } from "@assistente-os/core";
-import { runLangGraphAgent, probeLangGraph } from "./langgraph-runner.js";
+import { runLangGraphAgent, runLangGraphAgentStream, probeLangGraph } from "./langgraph-runner.js";
+import { routeFromPrompt, type ExecutionMode } from "./orchestrator/router.js";
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
@@ -488,6 +489,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     }
     const requestedModel = body && typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined;
     const requestedTier = body && typeof body.tier === "string" && body.tier.trim() ? body.tier.trim() : undefined;
+    const explicitMode: ExecutionMode | undefined = body?.mode === "fast" || body?.mode === "pro" ? body.mode : undefined;
     const memorizar = body && body.memorizar === true;
     const soul = getSoul(home, decodeURIComponent(chatMatch[1]!));
     if (!soul) return sendJson(res, 404, { error: "soul não encontrada" });
@@ -520,8 +522,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       // route() sonda cada degrau (sem executar o prompt) e cai para o próximo se o
       // degrau local não responder; a execução real acontece uma única vez, abaixo,
       // no degrau vencedor.
-      const decision = await route(pool, config, soul, makeLocalFallbackProbe(config.ollamaUrl), config.routerTiers);
-      const model = requestedModel ?? decision.target.model;
+      const orchDecision = await routeFromPrompt(pool, config, soul, promptSanitized.sanitized, makeLocalFallbackProbe(config.ollamaUrl), explicitMode);
+      const decision = orchDecision.route;
+      const model = requestedModel ?? orchDecision.model;
     const tier = requestedTier ?? decision.target.tier;
       const startedAt = Date.now();
       let result: { code: number; stdout: string; stderr: string; timedOut: boolean; toolCalls?: Array<{ name: string; args: Record<string, unknown>; result: string }> };
@@ -545,10 +548,25 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
           timeoutSeconds * 1000,
         );
       } else if (decision.target.provider === "langgraph") {
-        result = await runLangGraphAgent(pool, {
+        result = await runLangGraphAgentStream(pool, {
           soul: soul.id,
           prompt: promptSanitized.sanitized,
           timeoutSeconds,
+          onStep: (step: { node: string; iterationCount: number; messageCount: number; lastContent?: string; toolCalls?: any[] }) => {
+            try {
+              hub.broadcast({
+                type: "graph.step",
+                soul: soul.id,
+                node: step.node,
+                iterationCount: step.iterationCount,
+                messageCount: step.messageCount,
+                lastContent: step.lastContent,
+                toolCalls: step.toolCalls,
+              });
+            } catch {
+              /* ws opcional */
+            }
+          },
         });
       } else {
         const env = { ...(process.env as Record<string, string>) };
@@ -615,6 +633,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
         soul: soul.id,
         model,
         tier: tier,
+        mode: orchDecision.mode,
         code: result.code,
         timedOut: result.timedOut,
         stdout: sanitizedStdout.slice(-2000),
@@ -628,6 +647,46 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       });
     }
     return;
+}
+
+// ----- Endpoints LangGraph ──────────────────────────────────────────
+  // /souls/:soul/langgraph/status - status do grafo
+  // /souls/:soul/langgraph/history - histórico de execução
+  const lgSoulMatch = path.match(/^\/souls\/([^/]+)$/);
+  if (lgSoulMatch && (req.url?.includes("/langgraph/status") || req.url?.includes("/langgraph/history"))) {
+    const soulId = decodeURIComponent(lgSoulMatch[1]!);
+    const home = context.home;
+    const { loadConfig } = await import("@assistente-os/core");
+    const cfg = loadConfig({ home });
+    const { getSoul } = await import("@assistente-os/core");
+    const { probeLangGraph } = await import("./langgraph-runner.js");
+    const ollamaUrl = cfg.ollamaUrl || "http://127.0.0.1:11434/v1";
+    const probe = await probeLangGraph(ollamaUrl);
+
+    if (req.url?.includes("/langgraph/status")) {
+      const soul = getSoul(home, soulId);
+      if (!soul) return sendJson(res, 404, { error: "Soul não encontrada" });
+      sendJson(res, 200, {
+        ok: true,
+        soul: soul.id,
+        ollamaAvailable: probe.ok,
+        mode: soul.config.models?.chat || "auto",
+        maxIterations: soul.config.agent?.guardrails?.maxIterations ?? 5,
+      });
+      return;
+    }
+
+    if (req.url?.includes("/langgraph/history")) {
+      // TODO: histórico real seria armazenado em checkpoint do LangGraph
+      // Por enquanto retorna dados mockados indicando suporte
+      sendJson(res, 200, {
+        ok: true,
+        soul: soulId,
+        steps: [],
+        message: "Histórico em breve - requires LangGraph checkpointer persistence",
+      });
+      return;
+    }
   }
 
   // ----- Webhooks assinados: fila de eventos processados em background -----

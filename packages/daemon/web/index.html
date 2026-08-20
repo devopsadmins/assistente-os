@@ -98,6 +98,7 @@
       <button class="tab" data-tab="chat"><svg class="ic"><use href="#i-chat"/></svg>Chat</button>
       <button class="tab" data-tab="memory"><svg class="ic"><use href="#i-memory"/></svg>Memória</button>
       <button class="tab" data-tab="graph"><svg class="ic"><use href="#i-graph"/></svg>Grafo</button>
+      <button class="tab" data-tab="langgraph"><svg class="ic"><use href="#i-graph"/></svg>LangGraph</button>
       <button class="tab" data-tab="buffer"><svg class="ic"><use href="#i-pulse"/></svg>Buffer</button>
       <button class="tab" data-tab="llm"><svg class="ic"><use href="#i-pulse"/></svg>Motores LLM</button>
       <button class="tab" data-tab="mcp"><svg class="ic"><use href="#i-pulse"/></svg>MCP</button>
@@ -150,6 +151,12 @@
             <option value="langgraph">langgraph</option>
           </select>
         </label>
+        <div class="mode-toggle" style="margin-top:6px;">
+          <span class="mode-label">modo:</span>
+          <button data-mode="auto" class="active">auto</button>
+          <button data-mode="fast">fast</button>
+          <button data-mode="pro">pro</button>
+        </div>
         <button id="chat-buffer" type="button" title="Inspecionar o buffer da soul (contexto montado)">Ver buffer</button>
         <div id="voice-controls" class="voice-controls">
           <button id="voice-toggle" type="button" class="voice-btn" title="Iniciar/Parar voz">
@@ -237,6 +244,33 @@
         <div class="box">
           <h3>Observações</h3>
           <ul id="graph-observations" class="graph-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-langgraph" class="panel">
+      <h2>LangGraph</h2>
+      <div class="langgraph-controls">
+        <select id="langgraph-mode">
+          <option value="retrieve">Retrieve only</option>
+          <option value="generate">Generate only</option>
+          <option value="tools">Tools enabled</option>
+          <option value="full">Full mode (default)</option>
+        </select>
+        <span id="langgraph-status" style="color: var(--text-secondary); margin-left: 12px; font-size: 11px;">Parado</span>
+      </div>
+      <div class="langgraph-canvas-wrap">
+        <svg id="langgraph-svg" viewBox="0 0 200 200" style="width:100%;height:auto"></svg>
+        <div id="langgraph-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-muted)">Carregando grafo...</div>
+      </div>
+      <div class="lg-info">
+        <div class="lg-section">
+          <h3>Etapas</h3>
+          <div id="lg-steps" class="lg-step-entry" style="color: var(--text-secondary)">Aguardando execução...</div>
+        </div>
+        <div class="lg-section">
+          <h3>Ferramentas</h3>
+          <div id="lg-tools" class="lg-tool-item">Nenhuma ferramenta executada</div>
         </div>
       </div>
     </section>

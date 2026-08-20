@@ -97,6 +97,7 @@ $("#tabs").addEventListener("click", (e) => {
   if (btn.dataset.tab === "dashboard") loadDashboard();
   if (btn.dataset.tab === "memory" && state.active) loadMemoryStatus();
   if (btn.dataset.tab === "graph" && state.active) loadGraph();
+  if (btn.dataset.tab === "langgraph" && state.active) loadLangGraph();
   if (btn.dataset.tab === "observability") loadObservability();
   if (btn.dataset.tab === "buffer") loadBuffer();
   if (btn.dataset.tab === "llm") loadLlm();
@@ -131,6 +132,9 @@ function connectWs() {
         const status = document.querySelector("#upload-index-status");
         if (status) status.textContent = `indexado: ${msg.indexed} chunks de ${msg.files} arquivo(s)`;
         loadMemoryStatus();
+      }
+      if (msg.type === "graph.step") {
+        renderLangGraphStep(msg);
       }
     } catch {
       /* ignora frames inválidos */
@@ -271,6 +275,7 @@ function startNetworkGraph() {
 
 /* ---------- chat ---------- */
 const chatLog = $("#chat-log");
+let currentMode = "auto";
 
 function addMsg(kind, html) {
   const div = document.createElement("div");
@@ -294,10 +299,10 @@ async function sendChat(prompt) {
   try {
     const body = await api(`/souls/${encodeURIComponent(state.active)}/chat`, {
       method: "POST",
-      body: JSON.stringify({ prompt, model, tier }),
+      body: JSON.stringify({ prompt, model, tier, mode: currentMode === "auto" ? undefined : currentMode }),
     });
     chatLog.removeChild(chatLog.lastChild);
-    const meta = `tier: ${esc(body.tier)} · model: ${esc(body.model)} · code: ${body.code}${body.timedOut ? " · timedOut" : ""} · ${esc(body.routerReason || "")}`;
+    const meta = `tier: ${esc(body.tier)} · mode: ${esc(body.mode || "auto")} · model: ${esc(body.model)} · code: ${body.code}${body.timedOut ? " · timedOut" : ""} · ${esc(body.routerReason || "")}`;
     if (body.ok) {
       let soulHtml = "";
       if (body.toolCalls?.length) {
@@ -342,6 +347,15 @@ $("#chat-input").addEventListener("keydown", (e) => {
     e.preventDefault();
     $("#chat-form").requestSubmit();
   }
+});
+
+/* ---------- mode toggle ---------- */
+$(".mode-toggle")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  currentMode = btn.dataset.mode;
+  $(".mode-toggle .active")?.classList.remove("active");
+  btn.classList.add("active");
 });
 
 /* ---------- buffer da soul ---------- */
@@ -509,6 +523,70 @@ async function loadGraph() {
         )
         .join("")
     : `<li class="muted">sem observações</li>`;
+}
+
+}
+
+/* ---------- langgraph ---------- */
+async function loadLangGraph() {
+  if (!state.active) {
+    ["#langgraph-svg", "#lg-steps", "#lg-tools"].forEach((sel) => ($(sel).innerHTML = ""));
+    $("#langgraph-status").textContent = "Selecione uma soul";
+    return;
+  }
+  const g = await api(`/souls/${encodeURIComponent(state.active)}/langgraph/status`).catch(() => null);
+  if (!g) {
+    $("#langgraph-status").textContent = "Status indisponível";
+    return;
+  }
+  $("#langgraph-status").textContent = g.ollamaAvailable ? "Ollama disponível" : "Ollama indisponível";
+  $("#langgraph-mode").value = "full";
+}
+
+function renderLangGraphStep(msg) {
+  const node = msg.node || "unknown";
+  const stepEl = $("#lg-steps");
+  const steps = stepEl.querySelectorAll(".lg-step-entry");
+  
+  // Atualizar a etapa atual
+  steps.forEach((s, i) => {
+    s.classList.remove("active", "done", "error");
+    if (i === msg.iterationCount - 1) {
+      s.classList.add("active");
+      s.classList.add(msg.ok ? "done" : "error");
+    }
+  });
+  
+  // Adicionar entrada de passo se não existir
+  const lastStep = steps[steps.length - 1];
+  const lastNode = lastStep?.className || "";
+  const isActive = lastNode.includes("active");
+  
+  if (!isActive) {
+    const newStep = document.createElement("div");
+    newStep.className = "lg-step-entry";
+    newStep.innerHTML = `
+      <span class="lg-step-node">${node}</span>
+      <span class="lg-step-time">${new Date().toLocaleTimeString()}</span>
+    `;
+    stepEl.insertBefore(newStep, lastStep || null);
+    // Manter apenas últimas 10 etapas
+    while (stepEl.children.length > 10) {
+      stepEl.removeChild(stepEl.firstChild);
+    }
+  }
+  
+  // Atualizar ferramentas executadas
+  const toolsEl = $("#lg-tools");
+  if (msg.toolCalls && msg.toolCalls.length) {
+    toolsEl.innerHTML = msg.toolCalls.slice(0, 5).map((tc) => `
+      <div class="lg-tool-item">
+        <span class="lg-tool-name">${esc(tc.name)}</span>
+        <span class="lg-tool-desc">args: ${esc(JSON.stringify(tc.args, null, 2).slice(0, 50))}</span>
+      </div>`).join("") || "Nenhuma ferramenta";
+  } else {
+    toolsEl.textContent = "Nenhuma ferramenta executada";
+  }
 }
 
 /* ---------- observabilidade ---------- */

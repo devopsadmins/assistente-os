@@ -211,6 +211,51 @@ export async function runAgent(
   return await graph.invoke(initialState, config);
 }
 
+export interface LangGraphStepEvent {
+  node: string;
+  state: AgentStateType;
+  ts: number;
+}
+
+export async function* runAgentStream(
+  pool: Pool,
+  soul: string,
+  userMessage: string,
+  threadId?: string,
+  tools?: StructuredTool[],
+): AsyncGenerator<LangGraphStepEvent> {
+  const graph = tools && tools.length > 0
+    ? buildGraphWithTools(pool, tools)
+    : buildGraphWithoutTools(pool);
+
+  const initialState: AgentStateType = {
+    soul,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
+          "Você tem acesso a um grafo de memória com entidades, relações e observações.",
+      },
+      { role: "user", content: userMessage },
+    ],
+    context: "",
+    lastToolResult: undefined,
+    entities: undefined,
+    relations: undefined,
+    iterationCount: 0,
+    maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
+  };
+
+  const config = { configurable: { thread_id: threadId ?? `soul-${soul}` } };
+
+  for await (const step of graph.stream(initialState, config)) {
+    const node = Object.keys(step)[0] ?? "unknown";
+    const state = (step as Record<string, AgentStateType>)[node] ?? initialState;
+    yield { node, state, ts: Date.now() };
+  }
+}
+
 /**
  * Re-exporta funções auxiliares para retrocompatibilidade.
  */
