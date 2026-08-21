@@ -42,6 +42,17 @@ export class TelegramChannel extends EventEmitter {
   private lastUpdateId = 0;
   private consecutiveFailures = 0;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingResponses = new Map<number, { chatId: string; ts: number }>();
+  private static readonly PENDING_RESPONSE_TTL_MS = 15 * 60 * 1000;
+
+  private setPendingResponse(eventId: number, chatId: string): void {
+    const now = Date.now();
+    for (const [id, entry] of this.pendingResponses) {
+      if (now - entry.ts > TelegramChannel.PENDING_RESPONSE_TTL_MS) this.pendingResponses.delete(id);
+      else break;
+    }
+    this.pendingResponses.set(eventId, { chatId, ts: now });
+  }
 
   constructor(config: TelegramChannelConfig) {
     super();
@@ -198,18 +209,14 @@ export class TelegramChannel extends EventEmitter {
         fromMe: false,
       });
 
-      await addEvent(this.config.pool, {
+      const event = await addEvent(this.config.pool, {
         type: "telegram.message",
         payload: { from, jid: chatId, body: text },
         soul: soulId,
       });
 
       if (this.config.onResponse) {
-        try {
-          await this.config.onResponse(chatId, text);
-        } catch (err) {
-          console.error("[telegram] Erro no onResponse:", err);
-        }
+        this.setPendingResponse(event.id, chatId);
       }
     } catch (err) {
       console.error("[telegram] Erro ao processar update:", err);
@@ -217,12 +224,11 @@ export class TelegramChannel extends EventEmitter {
   }
 
   async processResponse(eventId: number, stdout: string): Promise<void> {
-    // Para Telegram, o stdout é a mensagem de resposta
-    // Precisamos saber o chatId - mas como não temos persistência de evento
-    // simples, enviamos para o chatId último recebido ou definimos como null
-    // Por enquanto, tentamos enviar para o jid configurado
-    if (this.jid && this.connected) {
-      await this.sendMessage(this.jid, stdout.trim());
+    const entry = this.pendingResponses.get(eventId);
+    if (!entry) return;
+    this.pendingResponses.delete(eventId);
+    if (stdout.trim() && this.connected) {
+      await this.sendMessage(entry.chatId, stdout.trim());
     }
   }
 }
