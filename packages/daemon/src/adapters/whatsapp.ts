@@ -11,11 +11,12 @@
  */
 
 import {
-  Soul, soulDir, ensureSoulFiles, todayISODate
+  loadConfig as loadCoreConfig, type AssistenteOsConfig,
+  soulDir, todayISODate, getPool, getActiveSoul,
 } from "@assistente-os/core";
-import { getPool } from "@assistente-os/core";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
-import { join, basename } from "node:path";
+import { getEmbedder, search } from "@assistente-os/memory";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 // Dynamic import for annotar to avoid TS type resolution at startup
 const __annotarPromise = import("@assistente-os/core").then((mod) => mod.anotar);
@@ -25,19 +26,12 @@ const __annotarPromise = import("@assistente-os/core").then((mod) => mod.anotar)
 const WHATSAPP_WEBHOOK_PATH = "/api/webhooks/whatsapp";
 const WHATSAPP_APPROVE_PATH = "/api/webhooks/whatsapp/approve";
 
-interface WhatsAppConfig {
-  ollamaUrl: string;
-  ollamaChatModel: string;
-  homeDir: string;
-}
+type WhatsAppConfig = AssistenteOsConfig;
 
 function loadConfig(): WhatsAppConfig {
-  return {
-    ollamaUrl: process.env.OLLAMA_URL || "http://localhost:11434",
-    ollamaChatModel: process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free",
-    homeDir: process.env.ASSISTENTE_OS_HOME ||
-      (require("node:os").homedir?.() || "~") + "/.assistant-os",
-  };
+  // Reusa o loadConfig() real de @assistente-os/core (lê DATABASE_URL/OLLAMA_URL
+  // do .env de verdade) em vez de reimplementar resolução de home/URL aqui.
+  return loadCoreConfig();
 }
 
 // ── Ollama Chat via fetch nativo com timeout via AbortController ──────
@@ -87,32 +81,24 @@ async function ollamaChat(
 
 // ── RAG Context Retrieval ───────────────────────────────────────────
 
+/**
+ * Busca contexto RAG usando o indexador real (`chunks`, pgvector) — antes
+ * esta função consultava uma tabela/coluna (`memory_chunks`, `metadata->>'soul'`)
+ * que nunca existiu no schema real, então sempre retornava vazio silenciosamente.
+ */
 async function getRAGContext(
-  pool: any,
+  config: WhatsAppConfig,
   soulId: string,
   query: string
 ): Promise<string> {
   try {
-    const results = await pool.query(
-      `
-      SELECT content, metadata->>'soul' as soul, 
-             (1 - (embedding <=> $1::vector)) as similarity
-      FROM memory_chunks
-      WHERE metadata->>'soul' = $2
-      ORDER BY embedding <=> $1::vector
-      LIMIT 5
-      `,
-      [query, soulId]
-    );
-
-    if (!results || results.length === 0) return "";
-
+    const pool = getPool(config.databaseUrl);
+    const results = await search(pool, soulId, query, getEmbedder(), 5);
+    if (!results.length) return "";
     return results
-      .map(
-        (r: any) => "- [score: " + (r.similarity?.toFixed ? r.similarity.toFixed(3) : "?") + "] " + r.content.slice(0, 200)
-      )
+      .map((r) => `- [score: ${r.score.toFixed(3)}] ${r.body.slice(0, 200)}`)
       .join("\n");
-  } catch (err) {
+  } catch {
     return "";
   }
 }
@@ -130,27 +116,20 @@ async function processWhatsAppPayload(
   error?: string;
 }> {
   const cfg = { ...loadConfig(), ...config };
-  const pool = getPool(
-    "postgres://assistente_os:assistente_os@localhost:5432/assistente_os"
-  );
-
-  let ragContext = "";
-  try {
-    const effectivePool = getPool(
-      "postgres://assistente_os:assistente_os@localhost:5432/assistente_os"
-    );
-    ragContext = await getRAGContext(effectivePool, "main", payload.data?.body || "");
-  } catch (err) {
-    // ignored
-  }
 
   // 1. Identificar Alma ativa
   let soulId = "main";
   try {
-    const { getActiveSoul } = await import("@assistente-os/core");
-    const activeSoul = getActiveSoul(cfg.homeDir);
+    const activeSoul = getActiveSoul(cfg.home);
     soulId = activeSoul ?? "main";
-  } catch (err) {
+  } catch {
+    // ignored
+  }
+
+  let ragContext = "";
+  try {
+    ragContext = await getRAGContext(cfg, soulId, payload.data?.body || "");
+  } catch {
     // ignored
   }
 
@@ -169,7 +148,7 @@ async function processWhatsAppPayload(
 
   // 3. Construir resposta humana-in-the-loop
   const sessionDate = todayISODate();
-  const soulDirPath = soulDir(cfg.homeDir, soulId);
+  const soulDirPath = soulDir(join(cfg.home, "souls"), soulId);
   try {
     mkdirSync(soulDirPath, { recursive: true });
     mkdirSync(join(soulDirPath, "sessoes"), { recursive: true });
@@ -202,10 +181,6 @@ async function processWhatsAppPayload(
 
 export function registerWhatsAppRoutes(_app: any) {
   // Lógica real nos endpoints HTTP no server.ts
-}
-
-if (require.main === module) {
-  console.log("WhatsApp adapter loaded - ready for HTTP integration");
 }
 
 export { processWhatsAppPayload };

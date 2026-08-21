@@ -1587,76 +1587,52 @@ const embedder = getEmbedder();
 
   // ── WhatsApp Webhook Human-in-the-Loop ──────────────────────────────
   if (req.method === "POST" && path === "/api/webhooks/whatsapp") {
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
     try {
-      const { processWhatsAppPayload, registerWhatsAppRoutes } = await import(
-        "./adapters/whatsapp.js"
-      );
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const payload: any = JSON.parse(body);
-          const result = await processWhatsAppPayload(payload);
-          if (result.requires_approval) {
-            sendJson(res, 200, {
-              status: "pending_approval",
-              requires_approval: true,
-              draft: result.draft,
-              session_path: result.session_path,
-            });
-          } else {
-            // Auto-approve: already persisted by processWhatsAppPayload
-            sendJson(res, 200, {
-              status: "approved",
-              message: "Resposta disparada automaticamente",
-              session_path: result.session_path,
-            });
-          }
-        } catch (err) {
-          console.error("WhatsApp webhook error:", err);
-          sendJson(res, 500, { error: "Internal processing error" });
-        }
-      });
-      // O handler de 'end' é assíncrono; precisamos bloquear o retorno
-      // Como este é um servidor HTTP simples, enviamos OK imediatamente
-      // e a lógica completa termina no callback 'end'. Para simplificar,
-      // retornamos 202 Accepted indicando que o processamento começou.
-      sendJson(res, 202, { status: "queued", message: "Payload recebido para processamento" });
+      const { processWhatsAppPayload } = await import("./adapters/whatsapp.js");
+      const result = await processWhatsAppPayload(parsed.body);
+      if (result.requires_approval) {
+        sendJson(res, 200, {
+          status: "pending_approval",
+          requires_approval: true,
+          draft: result.draft,
+          session_path: result.session_path,
+        });
+      } else {
+        // Auto-approve: already persisted by processWhatsAppPayload
+        sendJson(res, 200, {
+          status: "approved",
+          message: "Resposta disparada automaticamente",
+          session_path: result.session_path,
+        });
+      }
     } catch (err) {
-      sendJson(res, 400, { error: "Invalid JSON payload" });
+      console.error("WhatsApp webhook error:", err);
+      sendJson(res, 500, { error: "Internal processing error" });
     }
     return;
   }
 
   if (req.method === "POST" && path === "/api/webhooks/whatsapp/approve") {
+    const parsed = await readJson(req);
+    if (parsed.error === "too_large") return sendJson(res, 413, { error: "body excede 1 MB" });
+    if (parsed.error === "invalid") return sendJson(res, 400, { error: "JSON inválido" });
     try {
       const { anotar } = await import("@assistente-os/core");
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const payload: any = JSON.parse(body);
-          // O payload deve conter: session_path e a aprovação do draft
-          const { session_path, draft, contato } = payload;
-          if (!session_path) {
-            return sendJson(res, 400, { error: "session_path é obrigatório" });
-          }
-          // Persistir aprovação no log de sessão
-          const approvalEntry = `🟢 Aprovação humana confirmada em ${new Date().toISOString()}\nContato: ${contato || "desconhecido"}\nRascunho aprovado:\n${draft || ""}`;
-          const file = anotar(
-            session_path.split(`/sessoes/${session_path.split(`/sessoes/`)[1]}`)[0],
-            approvalEntry
-          );
-          sendJson(res, 200, { ok: true, arquivo: file, message: "Aprovação registrada" });
-        } catch (err) {
-          console.error("WhatsApp approve error:", err);
-          sendJson(res, 500, { error: "Internal processing error" });
-        }
-      });
-      // Retornar imediatamente; o 'end' callback completará o processamento
-      sendJson(res, 202, { status: "approval_queued", message: "Aprovação recebida para processamento" });
+      const payload = (parsed.body ?? {}) as { session_path?: string; draft?: string; contato?: string };
+      const { session_path, draft, contato } = payload;
+      if (!session_path) {
+        return sendJson(res, 400, { error: "session_path é obrigatório" });
+      }
+      const approvalEntry = `🟢 Aprovação humana confirmada em ${new Date().toISOString()}\nContato: ${contato || "desconhecido"}\nRascunho aprovado:\n${draft || ""}`;
+      const soulDirFromSessionPath = session_path.split("/sessoes/")[0] ?? session_path;
+      const file = anotar(soulDirFromSessionPath, approvalEntry);
+      sendJson(res, 200, { ok: true, arquivo: file, message: "Aprovação registrada" });
     } catch (err) {
-      sendJson(res, 400, { error: "Invalid JSON payload" });
+      console.error("WhatsApp approve error:", err);
+      sendJson(res, 500, { error: "Internal processing error" });
     }
     return;
   }

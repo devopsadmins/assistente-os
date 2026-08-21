@@ -165,7 +165,10 @@ export class WhatsAppChannel extends EventEmitter {
             reconnect: false,
           });
           this.emit("disconnected", statusCode);
-          this.scheduleReconnect(5000);
+          // Backoff exponencial (não mais fixo em 5s) — sem credenciais válidas
+          // após a limpeza, reconectar rápido demais só spamma tentativas antes
+          // do usuário poder re-escanear o QR/pareamento.
+          this.scheduleReconnect();
           return;
         }
 
@@ -252,15 +255,20 @@ export class WhatsAppChannel extends EventEmitter {
 
   private async transcribeAudio(mediaFile: string): Promise<string | null> {
     try {
-      const { execSync } = await import("node:child_process");
+      const { execSync, execFileSync } = await import("node:child_process");
       let ffmpegCmd = "ffmpeg";
       try { execSync("which ffmpeg", { stdio: "ignore" }); } catch {
         ffmpegCmd = "/home/support/bin/ffmpeg";
         try { execSync(`${ffmpegCmd} -version`, { stdio: "ignore" }); } catch { return null; }
       }
+      // mediaFile já foi sanitizado em saveMedia() (não contém `/`/`..`), mas
+      // execFileSync (sem shell) elimina qualquer risco de injeção de comando
+      // independentemente disso — os argumentos vão direto pro argv do processo.
       const oggPath = join(this.mediaDir, mediaFile);
       const wavPath = oggPath.replace(/\.\w+$/, ".wav");
-      execSync(`${ffmpegCmd} -y -i "${oggPath}" -ar 16000 -ac 1 -f f32le "${wavPath}" 2>/dev/null`);
+      execFileSync(ffmpegCmd, ["-y", "-i", oggPath, "-ar", "16000", "-ac", "1", "-f", "f32le", wavPath], {
+        stdio: ["ignore", "ignore", "ignore"],
+      });
       const pcm = readFileSync(wavPath);
       try { unlinkSync(wavPath); } catch {}
       const { SpeechToText } = await import("@assistente-os/voice");
@@ -334,7 +342,7 @@ export class WhatsAppChannel extends EventEmitter {
       });
 
       if (this.config.onResponse) {
-        this.pendingResponses.set(event.id, jid);
+        this.setPendingResponse(event.id, jid);
       }
     } catch (err) {
       this.config.hub.broadcast({
@@ -357,7 +365,12 @@ export class WhatsAppChannel extends EventEmitter {
     try {
       mkdirSync(this.mediaDir, { recursive: true });
       const ext = this.extFromMime(info.mimetype);
-      const filename = `${msg.key?.id ?? Date.now()}${ext}`;
+      // msg.key.id vem do remetente (não é gerado pelo servidor) — sanitiza antes
+      // de usar como nome de arquivo para bloquear path traversal (`../`) ou
+      // metacaracteres de shell.
+      const rawId = msg.key?.id ?? String(Date.now());
+      const safeId = rawId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128) || String(Date.now());
+      const filename = `${safeId}${ext}`;
       const filePath = join(this.mediaDir, filename);
       const buffer = await downloadMediaMessage(msg as any, "buffer", {});
       const { writeFileSync } = await import("node:fs");
@@ -382,14 +395,34 @@ export class WhatsAppChannel extends EventEmitter {
     return "";
   }
 
-  private pendingResponses = new Map<number, string>();
+  private pendingResponses = new Map<number, { jid: string; ts: number }>();
+  private static readonly PENDING_RESPONSE_TTL_MS = 15 * 60 * 1000;
+
+  /**
+   * Registra o jid aguardando resposta para um evento, podando entradas
+   * expiradas primeiro — sem isso, eventos cujo processamento nunca conclui
+   * (crash, erro no pipeline) vazavam no Map indefinidamente.
+   */
+  private setPendingResponse(eventId: number, jid: string): void {
+    const now = Date.now();
+    // Map preserva ordem de inserção: as mais antigas vêm primeiro, então
+    // dá pra parar assim que achar uma ainda válida.
+    for (const [id, entry] of this.pendingResponses) {
+      if (now - entry.ts > WhatsAppChannel.PENDING_RESPONSE_TTL_MS) {
+        this.pendingResponses.delete(id);
+      } else {
+        break;
+      }
+    }
+    this.pendingResponses.set(eventId, { jid, ts: now });
+  }
 
   async processResponse(eventId: number, stdout: string): Promise<void> {
-    const jid = this.pendingResponses.get(eventId);
-    if (!jid) return;
+    const entry = this.pendingResponses.get(eventId);
+    if (!entry) return;
     this.pendingResponses.delete(eventId);
     if (stdout.trim()) {
-      await this.sendMessage(jid, stdout);
+      await this.sendMessage(entry.jid, stdout);
     }
   }
 
