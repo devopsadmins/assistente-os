@@ -45,5 +45,13 @@
       "command": ["pm2-mcp"],
       "enabled": true
     }
+  },
+  "skills": {
+    "enabled": true,
+    "directory": ".opencode/skills"
+  },
+  "agents": {
+    "enabled": true,
+    "directory": ".agents"
   }
 }

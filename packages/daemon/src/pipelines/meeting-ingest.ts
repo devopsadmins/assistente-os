@@ -22,27 +22,17 @@ import {
 import { join, basename } from "node:path";
 import { todayISODate } from "@assistente-os/core";
 
-// ── Tipos de saída estruturada ───────────────────────────────────────
+// ── Funções auxiliares de parse (inline - baseadas no meeting-ingest original) ──
 
-interface ActionItem {
-  texto: string;
-  responsavel?: string | null;
-  prazo?: string | null;
+/** Detecta formato do arquivo baseado na extensão */
+function getFormat(filePath: string): "vtt" | "srt" | "txt" {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".vtt")) return "vtt";
+  if (lower.endsWith(".srt")) return "srt";
+  return "txt";
 }
 
-interface MeetingPayload {
-  decisoes: string[];
-  acoes: ActionItem[];
-  objeccoes: string[];
-  resumo: string;
-  rawTranscript: string;
-  fonteArquivo: string;
-}
-
-/**
- * Parser de arquivo VTT (WebVTT).
- * Remove cabeçalho, timestamps e números de sequência.
- */
+/** Parser de arquivo VTT (WebVTT). */
 function parseVTT(content: string): string {
   let text = content;
   text = text.replace(/^WEBVTT[\s\S]*?:/m, "");
@@ -56,10 +46,7 @@ function parseVTT(content: string): string {
   return text.trim();
 }
 
-/**
- * Parser de arquivo SRT (SubRip Subtitle).
- * Remove números de sequência e timestamps.
- */
+/** Parser de arquivo SRT (SubRip Subtitle). */
 function parseSRT(content: string): string {
   let text = content;
   text = text.replace(/^\d+\n/m, "");
@@ -71,10 +58,7 @@ function parseSRT(content: string): string {
   return text.trim();
 }
 
-/**
- * Parser para arquivos TXT brutos.
- * Remove marcações de palestrantes e normaliza whitespace.
- */
+/** Parser para arquivos TXT brutos. */
 function parseTXT(content: string): string {
   let text = content;
   text = text.replace(/^\[[^\]]+\]\s*/gm, "");
@@ -97,14 +81,19 @@ async function parseTranscriptionFile(filePath: string): Promise<string> {
   }
 }
 
-/**
- * Extrai dados estruturados via Ollama LLM usando fetch nativo.
- */
+/** Extrai dados estruturados via Ollama LLM usando fetch nativo. */
 async function extractMeetingWithOllama(
   prompt: string,
   ollamaUrl: string,
   chatModel: string
-): Promise<MeetingPayload> {
+): Promise<{
+  decisoes: string[];
+  acoes: { texto: string; owner?: string; dueDate?: string }[];
+  objeccoes: string[];
+  resumo: string;
+  rawTranscript?: string;
+  fonteArquivo?: string;
+}> {
   const payload = {
     model: chatModel,
     messages: [{ role: "user", content: prompt }],
@@ -131,8 +120,6 @@ async function extractMeetingWithOllama(
         acoes: [],
         objeccoes: [],
         resumo: "",
-        rawTranscript: "",
-        fonteArquivo: "",
       };
     }
 
@@ -146,8 +133,6 @@ async function extractMeetingWithOllama(
         acoes: parsed.acoes || [],
         objeccoes: parsed.objeccoes || [],
         resumo: parsed.resumo || "",
-        rawTranscript: "",
-        fonteArquivo: "",
       };
     } catch (err) {
       console.error("LLM output não é JSON válido na meeting extraction");
@@ -156,8 +141,6 @@ async function extractMeetingWithOllama(
         acoes: [],
         objeccoes: [],
         resumo: "",
-        rawTranscript: "",
-        fonteArquivo: "",
       };
     }
   } catch (err) {
@@ -168,25 +151,28 @@ async function extractMeetingWithOllama(
       acoes: [],
       objeccoes: [],
       resumo: "",
-      rawTranscript: "",
-      fonteArquivo: "",
     };
   }
 }
 
-/**
- * Escreve payload de reunião no Markdown da soul.
- */
-function writeMeetingToMarkdown(
-  soulDir: string,
-  payload: MeetingPayload,
-  dateISO: string
-): string {
-  mkdirSync(soulDir, { recursive: true });
-  const meetingPath = join(soulDir, "sessoes", dateISO + "-meeting.md");
+// ── Tipos locais ────────────────────────────────────────────────────────────
 
+/** Estrutura de payload de reunião */
+interface MeetingPayload {
+  decisoes?: string[];
+  acoes?: { texto: string; owner?: string; dueDate?: string }[];
+  objeccoes?: string[];
+  resumo?: string;
+  rawTranscript?: string;
+  fonteArquivo?: string;
+}
+
+/**
+ * Converte MeetingPayload em string Markdown.
+ */
+function meetingPayloadToMarkdown(payload: MeetingPayload): string {
   let decisoesBlock = "";
-  if (payload.decisoes.length > 0) {
+  if (payload.decisoes && payload.decisoes.length > 0) {
     const lines: string[] = [];
     for (const d of payload.decisoes) {
       lines.push("- " + d);
@@ -195,15 +181,15 @@ function writeMeetingToMarkdown(
   }
 
   let acoesBlock = "";
-  if (payload.acoes.length > 0) {
+  if (payload.acoes && payload.acoes.length > 0) {
     const lines: string[] = [];
     for (const a of payload.acoes) {
       const partes: string[] = ["- [" + a.texto + "]"];
-      if (a.responsavel) {
-        partes.push("(responsável: " + a.responsavel + ")");
+      if (a.owner) {
+        partes.push("(responsável: " + a.owner + ")");
       }
-      if (a.prazo) {
-        partes.push("prazo: " + a.prazo);
+      if (a.dueDate) {
+        partes.push("prazo: " + a.dueDate);
       }
       lines.push(partes.join(" "));
     }
@@ -211,7 +197,7 @@ function writeMeetingToMarkdown(
   }
 
   let objeccoesBlock = "";
-  if (payload.objeccoes.length > 0) {
+  if (payload.objeccoes && payload.objeccoes.length > 0) {
     const lines: string[] = [];
     for (const o of payload.objeccoes) {
       lines.push("- " + o);
@@ -231,7 +217,7 @@ function writeMeetingToMarkdown(
 
   const entry =
     "# Reunião - " +
-    dateISO +
+    payload.fonteArquivo +
     "\n" +
     decisoesBlock +
     acoesBlock +
@@ -239,34 +225,7 @@ function writeMeetingToMarkdown(
     resumoBlock +
     metadataBlock;
 
-  if (!existsSync(meetingPath)) {
-    writeFileSync(meetingPath, entry, "utf8");
-  } else {
-    appendFileSync(meetingPath, entry, "utf8");
-  }
-
-  return meetingPath;
-}
-
-/**
- * Dispara reindexação RAG (best-effort).
- */
-async function triggerMeetingRAGReindex(
-  soulId: string,
-  homeDir: string,
-  meetingPayload: MeetingPayload
-): Promise<void> {
-  try {
-    const { getPool } = await import("@assistente-os/core");
-    const pool = getPool(
-      "postgres://assistente_os:assistente_os@localhost:5432/assistente_os"
-    );
-    await import("@assistente-os/memory");
-  } catch (err) {
-    console.debug(
-      "Meeting RAG reindex skipped (offline/fallback):" + (err as Error).message
-    );
-  }
+  return entry;
 }
 
 // ── Exportação principal ─────────────────────────────────────────────
@@ -312,14 +271,24 @@ ${rawTranscript}`;
   meetingPayload.fonteArquivo = basename(filePath);
 
   // 3. Persistir em Markdown
-  const meetingPath = writeMeetingToMarkdown(
-    join(homeDir, "souls", targetSoulId),
-    meetingPayload,
-    todayISODate()
-  );
+  const markdown = meetingPayloadToMarkdown(meetingPayload);
+  const meetingDir = join(homeDir, "souls", targetSoulId);
+  mkdirSync(meetingDir, { recursive: true });
+  const meetingPath = join(meetingDir, "sessoes", todayISODate() + "-meeting.md");
+  writeFileSync(meetingPath, markdown, "utf8");
 
   // 4. Trigger reindex RAG (best-effort)
-  await triggerMeetingRAGReindex(targetSoulId, homeDir, meetingPayload);
+  try {
+    const { getPool } = await import("@assistente-os/core");
+    const pool = getPool(
+      "postgres://assistente_os:assistente_os@localhost:5432/assistente_os"
+    );
+    await import("@assistente-os/memory");
+  } catch (err) {
+    console.debug(
+      "Meeting RAG reindex skipped (offline/fallback):" + (err as Error).message
+    );
+  }
 
   return {
     meetingPath,
@@ -362,9 +331,9 @@ Objeção: clientes podem cancelar se atrasar mais.
       const result = await meetingIngestPipeline(tmpFile);
       console.log("✅ Pipeline meeting-ingest concluído:");
       console.log("   - Arquivo: " + result.meetingPath);
-      console.log("   - Decisões: " + result.meetingPayload.decisoes.length);
-      console.log("   - Ações: " + result.meetingPayload.acoes.length);
-      console.log("   - Objeções: " + result.meetingPayload.objeccoes.length);
+      console.log("   - Decisões: " + (result.meetingPayload.decisoes?.length || 0));
+      console.log("   - Ações: " + (result.meetingPayload.acoes?.length || 0));
+      console.log("   - Objeções: " + (result.meetingPayload.objeccoes?.length || 0));
       console.log(
         "   - Resumo: " + (result.meetingPayload.resumo?.slice(0, 80) || "") + "..."
       );
