@@ -21,8 +21,9 @@ import {
   Soul, soulDir
 } from "../souls.js";
 import { todayISODate, anotar } from "../alma.js";
+import { resolveHome } from "../config.js";
 import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 
 // ── Flag Environment ──────────────────────────────────────────────────
 
@@ -46,35 +47,10 @@ interface CheckpointRecord {
 }
 
 /**
- * Garante tabela de checkpoints no PostgreSQL.
- * Usa o pool existente do core. Se falhar, tenta SQLite fallback.
- */
-async function ensurePostgresCheckpointsTable(pool: Pool): Promise<void> {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS agent_checkpoints (
-        id SERIAL PRIMARY KEY,
-        soul_id TEXT NOT NULL,
-        iteration INTEGER NOT NULL,
-        last_tool_result JSONB,
-        context JSONB,
-        created_at TIMESTAMPTZ DEFAULT now()
-      )
-    `);
-    console.debug("✅ Tabela agent_checkpoints garantida no PostgreSQL");
-  } catch (err) {
-    // Fallback para SQLite caso PG falhe
-    console.debug(
-      "⚠️ Falha ao garantir tabela PG para checkpoints, tentará SQLite:",
-      (err as Error).message
-    );
-    throw err; // Deixar caller decidir fallback
-  }
-}
-
-/**
- * Persiste um checkpoint no PostgreSQL.
- * Se PG indisponível, grava em SQLite local `~/.assistant-os/memory.db`.
+ * Persiste um checkpoint no PostgreSQL (tabela `agent_checkpoints`, criada
+ * pela migration 0006 — ver packages/core/src/migrations.ts). Se o pool não
+ * estiver disponível ou o INSERT falhar, grava em `~/.assistant-os/.checkpoint.json`
+ * como fallback local-first — nunca lança, best-effort.
  */
 async function persistCheckpoint(
   pool: Pool | undefined,
@@ -86,9 +62,7 @@ async function persistCheckpoint(
   const dateISO = todayISODate();
 
   if (pool) {
-    // Caminho PostgreSQL
     try {
-      await ensurePostgresCheckpointsTable(pool);
       await pool.query(
         `INSERT INTO agent_checkpoints (soul_id, iteration, last_tool_result, context, created_at)
          VALUES ($1, $2, $3::jsonb, $4::jsonb, now())`,
@@ -97,78 +71,33 @@ async function persistCheckpoint(
       console.debug(`🔖 Checkpoint PG gravado: soul=${soulId}, iter=${iteration}`);
       return;
     } catch (err) {
-      console.debug("PG checkpoint falhou, tentando SQLite:", (err as Error).message);
+      console.debug("PG checkpoint falhou, gravando fallback JSON:", (err as Error).message);
     }
   }
 
-  // Fallback SQLite local: ~/.assistant-os/memory.db
+  // Fallback local: ~/.assistant-os/.checkpoint.json
   try {
-    const sqliteDbPath = join(
-      process.env.ASSISTENTE_OS_HOME || join(require("node:os").homedir(), ".assistant-os"),
-      "memory.db"
-    );
-
-    // Usar node:sqlite (disponível Node 26+) ou melhor-sqlite3 se instalado
-    let db: any;
-    try {
-      // Tentativa de import stdlib node:sqlite (compatibilidade)
-      // Em Node 26+ está disponível; aqui fazemos o better-sqlite3 se houver
-      // @ts-expect-error better-sqlite3 é optional (runtime fallback)
-      const { Database } = await import("better-sqlite3");
-      db = new Database(sqliteDbPath, { readonly: false });
-    } catch (importErr) {
-      // Fallback ainda mais básico: escrever arquivo JSON manual
-      console.debug(
-        "Nem better-sqlite3 disponível, usando arquivo JSON para checkpoint:",
-        (importErr as Error).message
-      );
-      // Write JSON file approach
-      const checkpoint = {
-        id: Date.now(),
-        soul_id: soulId,
-        iteration,
-        last_tool_result: lastToolResult,
-        context: context,
-        created_at: dateISO,
-      };
-      const checkpointDir = join(sqliteDbPath, "..");
-      mkdirSync(checkpointDir, { recursive: true });
-      const jsonPath = join(checkpointDir, ".checkpoint.json");
-      // Append array ou overwrite último
-      let existing = [];
-      if (existsSync(jsonPath)) {
-        existing = JSON.parse(readFileSync(jsonPath, "utf8"));
-      }
-      existing.push(checkpoint);
-      writeFileSync(jsonPath, JSON.stringify(existing, null, 2), "utf8");
-      console.debug(`🔖 Checkpoint JSON gravado: ${jsonPath}`);
-      return;
+    const checkpointDir = resolveHome();
+    mkdirSync(checkpointDir, { recursive: true });
+    const jsonPath = join(checkpointDir, ".checkpoint.json");
+    const checkpoint = {
+      id: Date.now(),
+      soul_id: soulId,
+      iteration,
+      last_tool_result: lastToolResult,
+      context: context,
+      created_at: dateISO,
+    };
+    let existing = [];
+    if (existsSync(jsonPath)) {
+      existing = JSON.parse(readFileSync(jsonPath, "utf8"));
     }
-
-    // Garante tabela
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS agent_checkpoints (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        soul_id TEXT NOT NULL,
-        iteration INTEGER NOT NULL,
-        last_tool_result TEXT,
-        context TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Insere registro
-    const stmt = db.prepare(
-      `INSERT INTO agent_checkpoints (soul_id, iteration, last_tool_result, context, created_at) VALUES (?, ?, ?, ?, ?)`
-    );
-    stmt.run(soulId, iteration, lastToolResult ?? null, context ?? null, dateISO);
-    console.debug(`🔖 Checkpoint SQLite gravado: soul=${soulId}, iter=${iteration}`);
-
-    // Fecha conexão após operação
-    db.close();
-  } catch (sqliteErr) {
+    existing.push(checkpoint);
+    writeFileSync(jsonPath, JSON.stringify(existing, null, 2), "utf8");
+    console.debug(`🔖 Checkpoint JSON gravado: ${jsonPath}`);
+  } catch (err) {
     // Último recurso: ignora checkpoint (non-fatal)
-    console.debug("Checkpoint persistence falhou totalmente (non-fatal):", (sqliteErr as Error).message);
+    console.debug("Checkpoint persistence falhou totalmente (non-fatal):", (err as Error).message);
   }
 }
 
@@ -202,9 +131,7 @@ export async function incrementAndCheckIteration(
   checkpointPersisted: boolean;
 }> {
   const newCount = currentCount + 1;
-  const shouldContinue = newCount <= (LANGGRAPH_MAX_ITERATIONS ?? 5)
-    ? "continue"
-    : "end";
+  const shouldContinue = checkIterationLimit(newCount);
 
   // Persistir checkpoint após este incremento
   await persistCheckpoint(pool, soulId, newCount, lastToolResult, context);
@@ -236,15 +163,6 @@ export async function logTokenTelemetry(
   operationDesc: string
 ): Promise<string> {
   const dateISO = todayISODate();
-  const homeDir = process.env.ASSISTENTE_OS_HOME || join(require("node:os").homedir(), ".assistant-os");
-  const soulPath = soulDir(join(homeDir, "souls"), soulId);
-
-  // Garante diretórios
-  mkdirSync(soulPath, { recursive: true });
-  mkdirSync(join(soulPath, "sessoes"), { recursive: true });
-
-  // Arquivo de log: sessoes/YYYY-MM-DD.md
-  const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
 
   // Monta entrada de telemetria
   const telemetryEntry = `
@@ -260,13 +178,16 @@ export async function logTokenTelemetry(
 
 `.trim();
 
-  // Append no arquivo (cria se não existir)
+  // Append no arquivo (cria se não existir) — best-effort, nunca bloqueia o processo principal
   try {
+    const soulPath = soulDir(join(resolveHome(), "souls"), soulId);
+    mkdirSync(soulPath, { recursive: true });
+    mkdirSync(join(soulPath, "sessoes"), { recursive: true });
+    const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
     appendFileSync(logPath, telemetryEntry + "\n", "utf8");
     console.debug(`✅ Telemetry logged: ${logPath}`);
     return logPath;
   } catch (err) {
-    // Best-effort: se falhar, não bloqueia o processo principal
     console.debug("⚠️ Falha ao escrever telemetry (non-fatal):", (err as Error).message);
     return "";
   }
@@ -283,11 +204,6 @@ export async function logStateCheckpointToMarkdown(
   lastToolResultSummary?: string
 ): Promise<string> {
   const dateISO = todayISODate();
-  const homeDir = process.env.ASSISTENTE_OS_HOME || join(require("node:os").homedir(), ".assistant-os");
-  const soulPath = soulDir(join(homeDir, "souls"), soulId);
-
-  mkdirSync(soulPath, { recursive: true });
-  const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
 
   const entry = `
 ### Checkpoint de Estado
@@ -301,6 +217,9 @@ export async function logStateCheckpointToMarkdown(
 `.trim();
 
   try {
+    const soulPath = soulDir(join(resolveHome(), "souls"), soulId);
+    mkdirSync(soulPath, { recursive: true });
+    const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
     appendFileSync(logPath, entry + "\n", "utf8");
     console.debug(`📓 State checkpoint logged: ${logPath}`);
     return logPath;

@@ -17,6 +17,7 @@ import { todayISODate } from "../alma.js";
 import { soulDir } from "../souls.js";
 import { nowIso } from "../costs.js";
 import { sanitizeText } from "../security/content-filter.js";
+import { resolveHome } from "../config.js";
 
 // ── Tipos ──────────────────────────────────────────────────────────────
 
@@ -54,10 +55,6 @@ export interface RelevanceGuardResult {
 // ── Configuração ───────────────────────────────────────────────────────
 
 const DEFAULT_RELEVANCE_THRESHOLD = 0.70;
-
-function resolveHome(): string {
-  return process.env.ASSISTENTE_OS_HOME || join(require("node:os").homedir(), ".assistant-os");
-}
 
 // ── Intenção e Justificativa ───────────────────────────────────────────
 

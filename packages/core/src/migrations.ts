@@ -197,4 +197,21 @@ export const MIGRATIONS: Migration[] = [
     id: "0005_drop_redundant_familias_telefone_index",
     sql: `DROP INDEX IF EXISTS idx_familias_telefone;`,
   },
+  {
+    // Antes criada ad hoc via CREATE TABLE IF NOT EXISTS a cada checkpoint
+    // (packages/core/src/graph/state-checkpoint.ts) — movida para o mecanismo
+    // de migrations como o resto do schema.
+    id: "0006_agent_checkpoints",
+    sql: `
+      CREATE TABLE IF NOT EXISTS agent_checkpoints (
+        id SERIAL PRIMARY KEY,
+        soul_id TEXT NOT NULL,
+        iteration INTEGER NOT NULL,
+        last_tool_result JSONB,
+        context JSONB,
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_soul ON agent_checkpoints (soul_id);
+    `,
+  },
 ];

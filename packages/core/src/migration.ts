@@ -11,6 +11,8 @@ export interface MigrationSummary {
   migrated: number;
   skipped: string[];
   perSoul: Record<string, { files: number; md: number }>;
+  /** Erros de cópia de arquivo individuais (não abortam a migração, mas ficam visíveis). */
+  errors: string[];
 }
 
 /**
@@ -22,7 +24,7 @@ export interface MigrationSummary {
  *  - qualquer .md dentro de conhecimento/ vira sources/knowledge (fonte p/ RAG)
  */
 export function migrateAlmas(sourceRoot: string, targetHome = resolveHome()): MigrationSummary {
-  const out: MigrationSummary = { migrated: 0, skipped: [], perSoul: {} };
+  const out: MigrationSummary = { migrated: 0, skipped: [], perSoul: {}, errors: [] };
   if (!existsSync(sourceRoot)) return { ...out, skipped: [`fonte não encontrada: ${sourceRoot}`] };
   const soulsRoot = ensureSoulsDir(targetHome);
   const almas = readdirSync(sourceRoot, { withFileTypes: true }).filter((e) => e.isDirectory());
@@ -68,6 +70,7 @@ export function migrateAlmas(sourceRoot: string, targetHome = resolveHome()): Mi
     // config da soul: id + descrição derivada do perfil, se existir
     writeSoulConfig(dest, { name: alma.name });
     out.perSoul[alma.name] = { files: counter.files, md: counter.md };
+    if (errors.length > 0) out.errors.push(...errors.map((e) => `${alma.name}: ${e}`));
     if (counter.files === 0) out.skipped.push(alma.name);
     else out.migrated++;
   }
@@ -83,13 +86,17 @@ export function printMigrationSummary(summary: MigrationSummary): void {
   if (summary.skipped.length > 0) {
     console.log(`Sem conteúdo (ignoradas): ${summary.skipped.join(", ")}`);
   }
+  if (summary.errors.length > 0) {
+    console.log(`Erros de cópia (${summary.errors.length}):`);
+    for (const e of summary.errors) console.log(`  ${e}`);
+  }
 }
 
 /**
  * Importa o Segundo Cérebro como uma Soul no Assistente OS.
  */
 export function importSegundoCerebro(sourceRoot: string, targetHome = resolveHome(), soulName = "segundo-cerebro"): MigrationSummary {
-  const out: MigrationSummary = { migrated: 0, skipped: [], perSoul: {} };
+  const out: MigrationSummary = { migrated: 0, skipped: [], perSoul: {}, errors: [] };
   if (!existsSync(sourceRoot)) return { ...out, skipped: [`fonte não encontrada: ${sourceRoot}`] };
   
   const soulsRoot = ensureSoulsDir(targetHome);
@@ -138,7 +145,8 @@ export function importSegundoCerebro(sourceRoot: string, targetHome = resolveHom
   writeSoulConfig(dest, { name: soulName, description: "Segundo Cérebro importado" });
   
   out.perSoul[soulName] = { files: counter.files, md: counter.md };
+  if (errors.length > 0) out.errors.push(...errors);
   if (counter.files > 0) out.migrated++;
-  
+
   return out;
 }

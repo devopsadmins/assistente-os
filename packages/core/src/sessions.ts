@@ -53,19 +53,25 @@ export interface ExecutionLogInput {
  * de verdade, duplicaria sem essa garantia no banco.
  */
 export async function openSession(pool: Pool, soul: string, maxTurns: number, budgetCap?: number): Promise<SessionRecord> {
-  const inserted = await pool.query(
-    `INSERT INTO sessions (soul, started_at, ended_at, prompt_count, max_turns, budget_cap)
-     VALUES ($1, $2, NULL, 0, $3, $4)
-     ON CONFLICT (soul) WHERE ended_at IS NULL DO NOTHING
-     RETURNING *`,
-    [soul, nowIso(), maxTurns, budgetCap ?? null],
-  );
-  if (inserted.rows[0]) return rowToSession(inserted.rows[0]);
-  const { rows } = await pool.query(
-    "SELECT * FROM sessions WHERE soul = $1 AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
-    [soul],
-  );
-  return rowToSession(rows[0]);
+  // Até 3 tentativas: se a sessão concorrente "vencedora" for fechada entre o
+  // INSERT (que perde o ON CONFLICT) e o SELECT de fallback, nenhuma sessão
+  // aberta existe mais — uma nova tentativa de INSERT deve então ter sucesso.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const inserted = await pool.query(
+      `INSERT INTO sessions (soul, started_at, ended_at, prompt_count, max_turns, budget_cap)
+       VALUES ($1, $2, NULL, 0, $3, $4)
+       ON CONFLICT (soul) WHERE ended_at IS NULL DO NOTHING
+       RETURNING *`,
+      [soul, nowIso(), maxTurns, budgetCap ?? null],
+    );
+    if (inserted.rows[0]) return rowToSession(inserted.rows[0]);
+    const { rows } = await pool.query(
+      "SELECT * FROM sessions WHERE soul = $1 AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
+      [soul],
+    );
+    if (rows[0]) return rowToSession(rows[0]);
+  }
+  throw new Error(`openSession: não foi possível abrir/recuperar sessão para soul '${soul}' após concorrência repetida`);
 }
 
 /** Incrementa o contador de prompts da sessão e devolve o total usado. */
