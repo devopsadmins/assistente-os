@@ -10,7 +10,7 @@ import { RunnableSequence, RunnableLambda } from "@langchain/core/runnables";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { ChatOpenAI } from "@langchain/openai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { Embedder } from "./embedders.js";
+import type { Embedder } from "./embedders.js";
 import { search } from "./indexer.js";
 import { langchainTemplates } from "./prompt-templates.js";
 import { getEmbedder } from "./embedder-provider.js";
@@ -30,6 +30,12 @@ export interface RagResult {
   model: string;
   query: string;
   tokensUsed?: number;
+}
+
+export interface RagContext {
+  context: string;
+  sources: RagChunk[];
+  hasRelevantDocs: boolean;
 }
 
 function createLLM() {
@@ -101,6 +107,42 @@ function formatContext(chunks: RagChunk[]): string {
     parts.push("");
   });
   return parts.join("\n");
+}
+
+/**
+ * Busca contexto relevante para uma pergunta.
+ * Retorna o contexto formatado e as fontes encontradas.
+ */
+export async function retrieveContext(
+  pool: Pool,
+  soul: string,
+  query: string,
+  limit = 5
+): Promise<RagContext> {
+  const embedder: Embedder = getEmbedder();
+  const results = await search(pool, soul, query, embedder, limit);
+
+  let chunks: RagChunk[];
+  if (results.length > 0) {
+    chunks = results.map((r): RagChunk => ({
+      doc: r.docKey,
+      path: r.path,
+      score: r.score,
+      method: r.method === "vector" ? "semantic" : "literal",
+      snippet: r.body.slice(0, 200),
+    }));
+  } else {
+    chunks = await literalSearchFallback(pool, soul, query, limit);
+  }
+
+  const context = formatContext(chunks);
+  return {
+    context,
+    sources: chunks,
+    // >= (não >): literalSearchFallback atribui score exatamente 0.5 de propósito
+    // (o mesmo valor do gate) — com > estrito, o fallback literal nunca passava.
+    hasRelevantDocs: chunks.length > 0 && chunks[0].score >= 0.5,
+  };
 }
 
 /**

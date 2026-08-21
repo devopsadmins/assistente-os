@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { LiteralEmbedder } from "../embedders.js";
 import { indexDirectory } from "../indexer.js";
 import { addObservation } from "../graph.js";
-import { retrieveContext, buildRagChain, runRagChain } from "../langchain-rag.js";
+import { retrieveContext, buildRagChain, runRagChain } from "../rag-chain.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
 function tempDir(t: string) {
