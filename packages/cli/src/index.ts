@@ -352,6 +352,7 @@ async function main(): Promise<void> {
         token: process.env.ASSISTENTE_OS_DAEMON_TOKEN,
         voiceEnabled: process.env.VOICE_ENABLED === "true",
         whatsappEnabled: process.env.WHATSAPP_ENABLED === "true",
+        telegramEnabled: process.env.TELEGRAM_ENABLED === "true",
       });
       console.log(`[assistente-os] daemon em http://${host}:${daemon.port} (home: ${config.home})`);
       console.log(`[assistente-os] degraus: ${config.routerTiers.join(" -> ")}`);

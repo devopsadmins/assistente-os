@@ -18,7 +18,12 @@ const pools = new Map<string, Pool>();
 export function getPool(databaseUrl: string): Pool {
   let pool = pools.get(databaseUrl);
   if (!pool) {
-    pool = new Pool({ connectionString: databaseUrl });
+    pool = new Pool({ 
+      connectionString: databaseUrl,
+      max: 50,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+    });
     pools.set(databaseUrl, pool);
   }
   return pool;

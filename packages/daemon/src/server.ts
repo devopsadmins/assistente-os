@@ -170,8 +170,28 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     logger.warn("AVISO: Daemon escutando fora de localhost sem ASSISTENTE_OS_DAEMON_TOKEN configurado. Certifique-se de que está protegido por um proxy/tunnel.");
   }
   const startupConfig = loadConfig({ home });
-  const applied = await runMigrations(getPool(startupConfig.databaseUrl));
-  if (applied.length > 0) logger.info({ applied }, "migrações do banco aplicadas");
+
+  // Run migrations with retry logic (non-blocking for web server startup)
+  const runMigrationsWithRetry = async (): Promise<void> => {
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      try {
+        const pool = getPool(startupConfig.databaseUrl);
+        const applied = await runMigrations(pool);
+        if (applied.length > 0) logger.info({ applied }, "migrações do banco aplicadas");
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (attempt === 10) {
+          logger.error({ err, attempt }, "falha ao aplicar migrações após 10 tentativas — prosseguindo sem migrações");
+          return;
+        }
+        logger.warn({ attempt, err: msg }, "falha ao conectar no banco — retentativa em 3s");
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+  };
+
+  // Start web server first (so /health works even if DB is temporarily unavailable)
   const webDir = options.webDir ?? defaultWebDir();
   const server = createServer(async (req, res) => {
     try {
@@ -181,7 +201,12 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     }
   });
   const hub = new WsHub(server);
-  
+
+  // Run migrations in background (non-blocking)
+  runMigrationsWithRetry().catch((err) => {
+    logger.error({ err }, "erro inesperado em migrações");
+  });
+
   // Voice handler (opcional)
   let voiceHandler: VoiceHandler | undefined;
   if (options.voiceEnabled) {

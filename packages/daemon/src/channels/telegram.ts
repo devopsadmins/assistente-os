@@ -131,7 +131,15 @@ export class TelegramChannel extends EventEmitter {
 
       const resp = await fetch(fullUrl);
       if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
+        const errTxt = await resp.text();
+        // 409 Conflict: outro processo está usando o mesmo offset, resetamos
+        if (resp.status === 409) {
+          console.warn("[telegram] Conflict 409 — resetando offset e tentando novamente");
+          this.lastUpdateId = 0;
+          this.pollTimer = setTimeout(() => this.doPoll(), POLLING_INTERVAL_MS);
+          return;
+        }
+        throw new Error(`HTTP ${resp.status}: ${errTxt}`);
       }
 
       const data: any = await resp.json();
@@ -152,9 +160,15 @@ export class TelegramChannel extends EventEmitter {
 
       this.pollTimer = setTimeout(() => this.doPoll(), POLLING_INTERVAL_MS);
     } catch (err) {
-      console.error("[telegram] Erro no polling:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error("[telegram] Erro no polling:", errorMsg);
       this.consecutiveFailures++;
-      this.pollTimer = setTimeout(() => this.doPoll(), POLLING_INTERVAL_MS * 2);
+      // Em caso de 409, espera um pouco maior antes de reiniciar
+      if (errorMsg && errorMsg.includes("409")) {
+        this.pollTimer = setTimeout(() => this.doPoll(), POLLING_INTERVAL_MS * 5);
+      } else {
+        this.pollTimer = setTimeout(() => this.doPoll(), POLLING_INTERVAL_MS * 2);
+      }
     }
   }
 

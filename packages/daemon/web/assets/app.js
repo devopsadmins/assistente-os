@@ -98,7 +98,7 @@ function connectWs() {
     _wsReconnectDelay = 1000;
     api("/api/whatsapp/status").then((s) => {
       updateWhatsAppStatus(s.connected ? "conectado" : "desconectado", s.phone);
-    }).catch(() => {});
+    }).catch(() => { });
   };
   ws.onclose = () => {
     $("#ws-info").textContent = "ws: off";
@@ -214,7 +214,7 @@ async function loadDashboard() {
       </div>
     `;
   }
-  
+
   if (!window._graphRunning) {
     window._graphRunning = true;
     startNetworkGraph();
@@ -381,12 +381,11 @@ async function loadBuffer() {
         <span class="chip">~${b.tokenEstimate} tokens</span>
         ${b.ragVerdict && b.ragVerdict.ok ? `<span class="chip ok">rag: ${esc(b.ragVerdict.method)}</span>` : `<span class="chip">rag: —</span>`}
       </div>
-      <div style="margin-bottom:8px">${
-        nonEmpty
-          .map(
-            (f) => `<span class="chip" title="${esc(f.path)}">${esc(f.path.split(/[\\/]/).pop())}: ${f.chars}</span>`,
-          )
-          .join("")
+      <div style="margin-bottom:8px">${nonEmpty
+        .map(
+          (f) => `<span class="chip" title="${esc(f.path)}">${esc(f.path.split(/[\\/]/).pop())}: ${f.chars}</span>`,
+        )
+        .join("")
       }</div>
       <details>
         <summary style="cursor:pointer">ver system prompt montado</summary>
@@ -446,7 +445,7 @@ $("#memory-form").addEventListener("submit", async (e) => {
         </div>`,
       )
       .join("");
-} catch (err) {
+  } catch (err) {
     box.innerHTML = `<span class="muted">erro: ${esc(err.message)}</span>`;
   }
 });
@@ -519,14 +518,14 @@ async function loadGraph() {
     : `<li class="muted">sem relações</li>`;
   $("#graph-observations").innerHTML = g.observations.length
     ? g.observations
-        .map(
-          (o) => `
+      .map(
+        (o) => `
           <li class="obs">
             <b>${esc(o.entity)}</b> · ${fmtTs(o.ts)}${o.source ? ` · ${esc(o.source)}` : ""}<br/>
             ${esc(o.body)}
           </li>`,
-        )
-        .join("")
+      )
+      .join("")
     : `<li class="muted">sem observações</li>`;
 }
 
@@ -641,7 +640,7 @@ function renderLangGraphStep(msg) {
   const node = msg.node || "unknown";
   const stepEl = $("#lg-steps");
   const steps = stepEl.querySelectorAll(".lg-step-entry");
-  
+
   // Atualizar a etapa atual
   steps.forEach((s, i) => {
     s.classList.remove("active", "done", "error");
@@ -650,12 +649,12 @@ function renderLangGraphStep(msg) {
       s.classList.add(msg.ok ? "done" : "error");
     }
   });
-  
+
   // Adicionar entrada de passo se não existir
   const lastStep = steps[steps.length - 1];
   const lastNode = lastStep?.className || "";
   const isActive = lastNode.includes("active");
-  
+
   if (!isActive) {
     const newStep = document.createElement("div");
     newStep.className = "lg-step-entry";
@@ -669,7 +668,7 @@ function renderLangGraphStep(msg) {
       stepEl.removeChild(stepEl.firstChild);
     }
   }
-  
+
   // Atualizar ferramentas executadas
   const toolsEl = $("#lg-tools");
   if (msg.toolCalls && msg.toolCalls.length) {
@@ -755,23 +754,22 @@ async function loadObservability() {
     eventsBox.innerHTML = `
       <div style="margin-bottom:8px">
         ${["pending", "processing", "completed", "failed"]
-          .map((k) => `<span class="chip ${k === "failed" && stats[k] > 0 ? "fail" : k === "completed" && stats[k] > 0 ? "ok" : ""}">${esc(k)}: ${stats[k] ?? 0}</span>`)
-          .join("")}
+        .map((k) => `<span class="chip ${k === "failed" && stats[k] > 0 ? "fail" : k === "completed" && stats[k] > 0 ? "ok" : ""}">${esc(k)}: ${stats[k] ?? 0}</span>`)
+        .join("")}
       </div>
-      ${
-        events.recent.length
-          ? events.recent
-              .map(
-                (e) => `
+      ${events.recent.length
+        ? events.recent
+          .map(
+            (e) => `
               <div class="cost-row">
                 <span class="soul" style="flex:0 0 60px">#${e.id}</span>
                 <span class="mono" style="flex:1">${esc(e.type)}</span>
                 <span class="chip ${e.status === "completed" ? "ok" : e.status === "failed" ? "fail" : ""}">${esc(e.status)}</span>
                 <span class="cost-val">${fmtTs(e.ts)}</span>
               </div>`,
-              )
-              .join("")
-          : `<span class="muted">nenhum evento recebido ainda (POST /events exige ASSISTENTE_OS_WEBHOOK_SECRET)</span>`
+          )
+          .join("")
+        : `<span class="muted">nenhum evento recebido ainda (POST /events exige ASSISTENTE_OS_WEBHOOK_SECRET)</span>`
       }`;
   } else {
     eventsBox.innerHTML = `<span class="muted">eventos indisponíveis</span>`;
@@ -781,8 +779,8 @@ async function loadObservability() {
   const execs = infra?.executions ?? [];
   execBox.innerHTML = execs.length
     ? execs
-        .map(
-          (x) => `
+      .map(
+        (x) => `
         <div class="cost-row">
           <span class="soul" style="flex:0 0 100px">${esc(x.soul)}</span>
           <span class="chip ${x.status === "ok" ? "ok" : "fail"}">${esc(x.status)}</span>
@@ -790,8 +788,8 @@ async function loadObservability() {
           <span class="cost-val">${x.contextChars} chars</span>
           <span class="cost-val">${fmtTs(x.ts)}</span>
         </div>`,
-        )
-        .join("")
+      )
+      .join("")
     : `<span class="muted">nenhuma execução registrada ainda</span>`;
 
   /* --- Custos --- */
@@ -804,20 +802,20 @@ async function loadObservability() {
       <div class="costs-section">
         <h3>Custo por soul</h3>
         ${soulEntries.length
-          ? `<table class="costs-table">
+        ? `<table class="costs-table">
               <thead><tr><th>Soul</th><th>Gasto</th></tr></thead>
               <tbody>${soulEntries.map(([s, v]) => `<tr><td>${esc(s)}</td><td>$${v.toFixed(4)}</td></tr>`).join("")}</tbody>
             </table>`
-          : `<span class="muted">nenhum custo registrado</span>`}
+        : `<span class="muted">nenhum custo registrado</span>`}
       </div>
       <div class="costs-section">
         <h3>Chamadas recentes</h3>
         ${recent.length
-          ? `<table class="costs-table">
+        ? `<table class="costs-table">
               <thead><tr><th>Soul</th><th>Tier</th><th>Status</th><th>Data</th></tr></thead>
               <tbody>${recent.map((c) => `<tr><td>${esc(c.soul)}</td><td>${esc(c.provider ?? "—")}</td><td><span class="chip ${c.status === "ok" ? "ok" : "fail"}">${esc(c.status)}</span></td><td>${fmtTs(c.ts)}</td></tr>`).join("")}</tbody>
             </table>`
-          : `<span class="muted">nenhuma chamada registrada</span>`}
+        : `<span class="muted">nenhuma chamada registrada</span>`}
       </div>`;
   }
 
@@ -848,7 +846,7 @@ async function renderMonitors() {
     .join("");
   box.querySelectorAll(".monitor-del").forEach((b) => {
     b.addEventListener("click", async () => {
-      await api(`/monitors/${b.dataset.del}`, { method: "DELETE" }).catch(() => {});
+      await api(`/monitors/${b.dataset.del}`, { method: "DELETE" }).catch(() => { });
       renderMonitors();
     });
   });
@@ -1011,7 +1009,7 @@ async function toggleVoice() {
 function updateVoiceStatus(status) {
   const el = $("#voice-status");
   if (!el) return;
-  
+
   switch (status) {
     case "listening":
       el.textContent = "Voz: ouvindo...";
@@ -1036,7 +1034,7 @@ function updateVoiceStatus(status) {
 function showVoiceTranscript(text, kind = "user") {
   const el = $("#voice-transcript");
   if (!el) return;
-  
+
   if (kind === "user") {
     el.innerHTML = `<span style="color: var(--neon-cyan);">Você:</span> ${esc(text)}`;
   } else {
@@ -1056,10 +1054,10 @@ async function boot() {
   }
   loadDashboard();
   loadWhatsAppMessages();
-  
+
   // Voice toggle button
   $("#voice-toggle")?.addEventListener("click", toggleVoice);
-  
+
   // WebSocket voice events
   if (_ws) {
     const origHandler = _ws.onmessage;
@@ -1074,7 +1072,7 @@ async function boot() {
         } else if (msg.type === "voice.spoken") {
           showVoiceTranscript(msg.text, "soul");
         }
-      } catch {}
+      } catch { }
       origHandler(e);
     };
   }
@@ -1088,7 +1086,7 @@ function waCacheLoad() {
   try { return JSON.parse(localStorage.getItem(WA_STORAGE_KEY) || "[]"); } catch { return []; }
 }
 function waCacheSave(msgs) {
-  try { localStorage.setItem(WA_STORAGE_KEY, JSON.stringify(msgs.slice(0, WA_MAX_CACHED))); } catch {}
+  try { localStorage.setItem(WA_STORAGE_KEY, JSON.stringify(msgs.slice(0, WA_MAX_CACHED))); } catch { }
 }
 function waCacheAdd(msg) {
   const msgs = waCacheLoad();
@@ -1165,7 +1163,7 @@ function setupReplySend(jid) {
       waAllMessages = waCacheLoad();
       const g = groupByJid(waAllMessages).find((x) => x.jid === jid);
       if (g) renderMessages(g.messages);
-    } catch {}
+    } catch { }
   };
   btn.onclick = handler;
   input.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handler(); };
@@ -1178,7 +1176,7 @@ async function loadWhatsAppMessages() {
   try {
     const fresh = await api("/api/whatsapp/messages?limit=200");
     if (fresh.length) { waAllMessages = fresh; waCacheSave(fresh); refreshWhatsAppView(); }
-  } catch {}
+  } catch { }
 }
 
 function refreshWhatsAppView() {
@@ -1247,7 +1245,7 @@ window.waReply = function (eventId, jid) {
   textarea.value = "";
   textarea.focus();
   if (!emojiBar.dataset.loaded) {
-    const emojis = ["😀","😂","😍","🥰","😎","🤩","😢","😤","🙏","👍","👎","❤️","🔥","✨","🎉","💪","🤝","😊","🙄","😅","🥳","😇","🤗","😋","🤔","🤫","🫡","💪","🚀","⭐","🎵","☕","🎂"];
+    const emojis = ["😀", "😂", "😍", "🥰", "😎", "🤩", "😢", "😤", "🙏", "👍", "👎", "❤️", "🔥", "✨", "🎉", "💪", "🤝", "😊", "🙄", "😅", "🥳", "😇", "🤗", "😋", "🤔", "🤫", "🫡", "💪", "🚀", "⭐", "🎵", "☕", "🎂"];
     emojiBar.innerHTML = "";
     for (const e of emojis) {
       const btn = document.createElement("button");
@@ -1266,7 +1264,7 @@ window.waReply = function (eventId, jid) {
       waCacheAdd({ id: Date.now(), ts: new Date().toISOString(), payload: { from: "eu", jid, body: text }, soul: "main" });
       waAllMessages = waCacheLoad();
       refreshWhatsAppView();
-    } catch {}
+    } catch { }
   };
   $("#wa-modal-send").onclick = sendHandler;
   textarea.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendHandler(); };
@@ -1315,7 +1313,7 @@ async function waAddKnowledge(eventId) {
   textarea.placeholder = "Observação para adicionar ao grafo...";
   textarea.focus();
   if (!emojiBar.dataset.loaded) {
-    const emojis = ["😀","😂","😍","🥰","😎","🤩","😢","😤","🙏","👍","👎","❤️","🔥","✨","🎉","💪","🤝","😊","🙄","😅","🥳","😇","🤗","😋","🤔","🤫","🫡","💪","🚀","⭐","🎵","☕","🎂"];
+    const emojis = ["😀", "😂", "😍", "🥰", "😎", "🤩", "😢", "😤", "🙏", "👍", "👎", "❤️", "🔥", "✨", "🎉", "💪", "🤝", "😊", "🙄", "😅", "🥳", "😇", "🤗", "😋", "🤔", "🤫", "🫡", "💪", "🚀", "⭐", "🎵", "☕", "🎂"];
     emojiBar.innerHTML = "";
     for (const e of emojis) {
       const btn = document.createElement("button");
