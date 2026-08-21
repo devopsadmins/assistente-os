@@ -16,7 +16,8 @@ export class FallbackEmbedder {
     return this._dims;
   }
 
-  async embed(text: string): Promise<number[]> {
+  /** Retorna null se Xenova E Ollama falharem — caller degrada p/ busca literal. */
+  async embed(text: string): Promise<number[] | null> {
     if (!this.xenovaFailed) {
       try {
         return await this.xenova.embed(text);
@@ -28,7 +29,12 @@ export class FallbackEmbedder {
         }
       }
     }
-    return await this.embedWithOllama(text);
+    try {
+      return await this.embedWithOllama(text);
+    } catch (err) {
+      console.error("embedWithOllama falhou (non-fatal, degrada p/ busca literal):", (err as Error).message);
+      return null;
+    }
   }
 
   private async embedWithOllama(text: string): Promise<number[]> {
