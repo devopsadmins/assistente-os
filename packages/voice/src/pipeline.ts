@@ -169,7 +169,15 @@ export class VoicePipeline extends EventEmitter {
       console.log("📝 Transcrevendo áudio...");
       this.emit("transcribing");
 
-      const text = await this.stt.transcribe(audioBuffer, 16000);
+      // audioBuffer é PCM 16-bit LE bruto (mesmo formato de processAudioForVad) —
+      // stt.transcribe() espera Float32Array normalizado; passar o Buffer direto
+      // faz reinterpretar os bytes como float32 sem converter (ruído/tamanho errado).
+      const float32 = new Float32Array(audioBuffer.length / 2);
+      for (let i = 0; i < audioBuffer.length; i += 2) {
+        float32[i / 2] = audioBuffer.readInt16LE(i) / 32768;
+      }
+
+      const text = await this.stt.transcribe(float32, 16000);
 
       if (!text.trim()) {
         console.log("⚠️ Nenhum texto detectado na transcrição.");
