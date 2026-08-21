@@ -31,7 +31,9 @@ import {
 } from "@assistente-os/memory";
 import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
-import { createFullBackup } from "./backup.js";
+import { createFullBackup, pruneOldBackups } from "./backup.js";
+
+const BACKUP_RETENTION_DAYS = 7;
 
 const HELP = `
 os — Assistente OS
@@ -55,7 +57,7 @@ Uso:
                                 lista itens da agenda (padrão: pending)
   os daemon [port]             inicia o daemon REST+WS (padrão 4310)
   os voice                     inicia o pipeline de voz (VAD + STT + TTS)
-  os backup                    gera um ZIP completo do perfil, RAG e conhecimento
+  os backup                    gera um ZIP completo do perfil, RAG e conhecimento (retenção de 7 dias)
   os help                      mostra esta ajuda
 
 Variáveis de ambiente: ASSISTENTE_OS_HOME (padrão ~/.assistant-os),
@@ -68,7 +70,9 @@ async function main(): Promise<void> {
   const [cmd, ...args] = process.argv.slice(2);
 
   // Comandos que não tocam o banco não precisam de conectividade pra funcionar.
-  if (cmd !== undefined && cmd !== "help" && cmd !== "--help" && cmd !== "-h") {
+  // backup também entra na lista: o dump é feito pelo pg_dump (conexão própria),
+  // e abrir pool aqui compete com o daemon por conexões do Postgres.
+  if (cmd !== undefined && cmd !== "help" && cmd !== "--help" && cmd !== "-h" && cmd !== "backup") {
     const applied = await runMigrations(getPool(config.databaseUrl));
     if (applied.length > 0) console.log(`migrações aplicadas: ${applied.join(", ")}`);
   }
@@ -431,6 +435,10 @@ async function main(): Promise<void> {
       console.log(`backup criado: ${backup.path}`);
       console.log(`tamanho: ${(backup.bytes / 1024 / 1024).toFixed(2)} MB`);
       console.log(`itens de topo: ${backup.entries.join(", ")}`);
+      const removed = await pruneOldBackups(config.home, BACKUP_RETENTION_DAYS);
+      if (removed.length > 0) {
+        console.log(`retenção (${BACKUP_RETENTION_DAYS} dias): removido(s) ${removed.join(", ")}`);
+      }
       console.log("atenção: o ZIP pode conter chaves e segredos do arquivo .env; armazene-o em local protegido");
       return;
     }

@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import AdmZip from "adm-zip";
+import { mkdtemp, mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createFullBackup } from "../backup.js";
+import { createFullBackup, pruneOldBackups } from "../backup.js";
 
 // URL propositalmente inalcançável: exercita o caminho de degradação graciosa
 // do dump do Postgres (pg_dump ausente OU conexão recusada — qualquer um dos
 // dois deve falhar sem derrubar o backup dos arquivos), sem depender de infra
-// real (nem Postgres nem pg_dump precisam estar disponíveis pra este teste passar).
+// real. O fallback via docker exec é desativado para o teste não tocar no
+// Postgres real da máquina.
+process.env.AOS_DISABLE_DOCKER_FALLBACK = "1";
 const UNREACHABLE_DB_URL = "postgres://nope:nope@127.0.0.1:1/nope";
 
 test("cria um ZIP completo sem incluir backups anteriores; dump do banco falha sem derrubar o backup", async () => {
@@ -23,20 +26,50 @@ test("cria um ZIP completo sem incluir backups anteriores; dump do banco falha s
     await mkdir(join(home, ".backup-antigo"));
 
     const result = await createFullBackup(home, UNREACHABLE_DB_URL, new Date("2026-08-15T12:00:00.000Z"));
-    const archive = await readFile(result.path);
-    const index = archive.toString("latin1");
+    const archive = new AdmZip(result.path);
+    const names = archive.getEntries().map((entry) => entry.entryName);
 
-    assert.equal(archive.subarray(0, 2).toString(), "PK");
     assert.ok(result.bytes > 0);
     assert.deepEqual(result.entries.sort(), [".env", "active.json", "souls"]);
-    for (const name of ["souls/main/perfil.md", "souls/main/sessoes/sessao.md", ".env", "manifest.json"]) {
-      assert.match(index, new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    for (const name of ["souls/main/perfil.md", "souls/main/sessoes/sessao.md", ".env"]) {
+      assert.ok(names.includes(name), `esperado no ZIP: ${name}`);
     }
-    assert.doesNotMatch(index, /backup-antigo/);
+    assert.ok(!names.some((name) => name.includes("backup-antigo")), "backups anteriores não devem entrar no ZIP");
+
+    const manifestFiles = archive.getEntries().filter((entry) => entry.entryName.endsWith("/manifest.json"));
+    assert.equal(manifestFiles.length, 1);
+    const manifest = JSON.parse(archive.readAsText(manifestFiles[0]!.entryName)) as {
+      createdAt: string;
+      entries: string[];
+      containsSecrets: boolean;
+      database: { ok: boolean; error?: string };
+    };
+    assert.equal(manifest.createdAt, "2026-08-15T12:00:00.000Z");
+    assert.deepEqual(manifest.entries.sort(), [".env", "active.json", "souls"]);
+    assert.equal(manifest.containsSecrets, true);
     // dump falhou (URL inalcançável) — manifest registra o erro, mas o zip ainda foi gerado.
-    assert.doesNotMatch(index, /database\.dump/);
-    assert.match(index, /"database"/);
-    assert.match(index, /"ok":\s*false/);
+    assert.equal(manifest.database.ok, false);
+    assert.match(manifest.database.error ?? "", /dump do banco/);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("pruneOldBackups remove apenas ZIPs de backup mais antigos que a retenção", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assistente-os-backup-prune-"));
+  try {
+    const oldTime = new Date("2026-08-01T12:00:00.000Z");
+    await writeFile(join(home, "backup-2026-08-01T12-00-00-abcd1234.zip"), "velho");
+    await writeFile(join(home, "backup-2026-08-20T12-00-00-efgh5678.zip"), "novo");
+    await writeFile(join(home, "outro.txt"), "x");
+    await utimes(join(home, "backup-2026-08-01T12-00-00-abcd1234.zip"), oldTime, oldTime);
+
+    const removed = await pruneOldBackups(home, 7, new Date("2026-08-21T12:00:00.000Z"));
+
+    assert.deepEqual(removed, ["backup-2026-08-01T12-00-00-abcd1234.zip"]);
+    await assert.rejects(stat(join(home, "backup-2026-08-01T12-00-00-abcd1234.zip")));
+    await stat(join(home, "backup-2026-08-20T12-00-00-efgh5678.zip"));
+    await stat(join(home, "outro.txt"));
   } finally {
     await rm(home, { recursive: true, force: true });
   }

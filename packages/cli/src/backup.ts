@@ -1,7 +1,7 @@
 import { createWriteStream, existsSync } from "node:fs";
 import { chmod, cp, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -16,10 +16,10 @@ export interface BackupResult {
 }
 
 /**
- * Backup completo: souls/, config/.env e demais arquivos de `home` (cópia de
- * arquivo simples — não há mais bancos SQLite embutidos aí) + um dump do
- * Postgres via `pg_dump --format=custom` (requer pg_dump no PATH; vem com o
- * pacote `postgresql-client` no Linux ou a instalação completa do Postgres).
+ * Backup completo: souls/, config/.env e demais arquivos de `home` + um dump
+ * do Postgres via `pg_dump --format=custom`. Se o pg_dump não estiver instalado
+ * no host, usa o cliente de dentro do container Docker do Postgres (detectado
+ * via `docker ps`; desative com AOS_DISABLE_DOCKER_FALLBACK=1).
  * Restaurar com: `pg_restore --clean --if-exists -d <DATABASE_URL> database.dump`.
  */
 export async function createFullBackup(home: string, databaseUrl: string, now = new Date()): Promise<BackupResult> {
@@ -96,17 +96,84 @@ export async function createFullBackup(home: string, databaseUrl: string, now = 
   }
 }
 
+export async function pruneOldBackups(home: string, retentionDays: number, now = new Date()): Promise<string[]> {
+  const cutoff = now.getTime() - retentionDays * 24 * 60 * 60 * 1000;
+  const entries = await readdir(home, { withFileTypes: true });
+  const removed: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !/^backup-.*\.zip$/i.test(entry.name)) continue;
+    const path = join(home, entry.name);
+    const info = await stat(path);
+    if (info.mtimeMs >= cutoff) continue;
+    await rm(path, { force: true });
+    removed.push(entry.name);
+  }
+  return removed;
+}
+
 async function dumpDatabase(databaseUrl: string, destination: string): Promise<void> {
+  const url = new URL(databaseUrl);
+
   try {
-    await execFileAsync("pg_dump", ["--format=custom", `--file=${destination}`, databaseUrl]);
+    await runPgDump("pg_dump", ["--format=custom", databaseUrl], destination);
+    return;
   } catch (err: any) {
-    // pg_dump pode não estar instalado (ENOENT) ou o banco pode ser inacessível.
-    // Em ambos os casos, o backup segue apenas com os arquivos — o manifest
-    // registra o erro para que o cliente saiba que o dump não foi gerado.
-    const isENOENT = err.code === "ENOENT";
-    throw new Error(
-      `dump do banco ${isENOENT ? "não encontrado (instale postgresql-client)" : "falhou"}: ${err.message || String(err)}`,
+    // Sem pg_dump no host (ENOENT), usa o cliente de dentro do container Docker
+    // do Postgres (mesma versão do servidor; stream via stdout). Qualquer outra
+    // falha (banco inacessível, credenciais) não tem fallback.
+    if (err.code !== "ENOENT") {
+      throw new Error(`dump do banco falhou: ${err.message || String(err)}`);
+    }
+  }
+
+  const container = await findPostgresContainer();
+  if (!container) {
+    throw new Error("dump do banco não encontrado: instale postgresql-client ou suba o Postgres via Docker");
+  }
+  const user = url.username || "postgres";
+  const database = url.pathname.replace(/^\//, "") || "postgres";
+  try {
+    await runPgDump(
+      "docker",
+      ["exec", container, "pg_dump", "--format=custom", `--username=${user}`, database],
+      destination,
     );
+  } catch (err: any) {
+    throw new Error(`dump do banco falhou (via docker exec ${container}): ${err.message || String(err)}`);
+  }
+}
+
+// O dump vem pelo stdout (pg_dump -Fc aceita stream) e é gravado direto no ZIP
+// de staging — nada é escrito no FS do container nem do host fora do backup.
+async function runPgDump(command: string, args: string[], destination: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const out = createWriteStream(destination);
+    child.stdout.pipe(out);
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    out.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0 && out.writableFinished) resolve();
+      else reject(Object.assign(new Error(`saiu com código ${code}: ${stderr.trim()}`), { code }));
+    });
+  });
+}
+
+async function findPostgresContainer(): Promise<string | undefined> {
+  if (process.env.AOS_DISABLE_DOCKER_FALLBACK === "1") return undefined;
+  try {
+    const { stdout } = await execFileAsync("docker", ["ps", "--format", "{{.Names}} {{.Image}}"]);
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => /postgres/i.test(line))
+      ?.split(" ")[0];
+  } catch {
+    return undefined;
   }
 }
 

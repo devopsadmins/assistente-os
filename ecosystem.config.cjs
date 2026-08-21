@@ -25,5 +25,22 @@ module.exports = {
       max_restarts: 10,
       min_uptime: "10s",
     },
+    {
+      // Backup agendado: roda e sai; o cron_restart do PM2 dispara de novo.
+      name: "assistente-os-backup",
+      script: "packages/cli/dist/index.js",
+      cwd: __dirname,
+      interpreter: "node",
+      // Mesma política do app principal: sem env aqui, loadDotEnv() lê ~/.assistant-os/.env.
+      args: "backup",
+      // One-shot: sem autorestart, senão o PM2 reinicia em loop após o exit.
+      autorestart: false,
+      watch: false,
+      // 3x por dia (00:00, 08:00, 16:00); retenção de 7 dias aplicada pelo próprio comando.
+      cron_restart: "0 */8 * * *",
+      out_file: "logs/backup-out.log",
+      error_file: "logs/backup-err.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+    },
   ],
 };
