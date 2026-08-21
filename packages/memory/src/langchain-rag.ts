@@ -230,22 +230,9 @@ export async function runRagChain(
   const answer = await chain.invoke({});
 
   return {
-    answer: extractAnswer(answer),
+    answer,
     sources: documents,
     model: process.env.OLLAMA_MODEL || "qwen2.5:latest",
     query,
   };
-}
-
-function extractAnswer(raw: string): string {
-  const marker = "AIMessage: ";
-  const idx = raw.indexOf(marker);
-  if (idx !== -1) {
-    const start = idx + marker.length;
-    const end = raw.indexOf("]", start);
-    if (end !== -1) {
-      return raw.slice(start, end);
-    }
-  }
-  return raw;
 }
