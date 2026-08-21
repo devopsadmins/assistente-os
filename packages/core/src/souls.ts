@@ -37,7 +37,17 @@ export function ensureSoulsDir(configHome: string): string {
   return dir;
 }
 
+/** Soul ids são nomes de diretório: letras, números, `_` e `-` apenas. */
+const SOUL_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+export function isValidSoulId(id: string): boolean {
+  return typeof id === "string" && SOUL_ID_PATTERN.test(id);
+}
+
 export function soulDir(soulsRoot: string, id: string): string {
+  if (!isValidSoulId(id)) {
+    throw new Error(`soulId inválido: ${JSON.stringify(id)}`);
+  }
   return join(soulsRoot, id);
 }
 

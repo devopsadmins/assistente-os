@@ -437,6 +437,19 @@ interface McpServerOptions {
   home: string;
 }
 
+/** Extrai o texto das partes NDJSON emitidas pelo `opencode run` no stdout. */
+function extractOpenCodeText(stdout: string): string {
+  const textLines = stdout.split(EOL).map((l) => {
+    try {
+      const j = JSON.parse(l) as { type?: string; part?: { text?: string } };
+      return j.type === "text" && j.part?.text ? j.part.text : "";
+    } catch {
+      return "";
+    }
+  });
+  return textLines.filter(Boolean).join("\n");
+}
+
 export class McpServer {
   private config;
   private closed = false;
@@ -478,7 +491,12 @@ export class McpServer {
 
         case "tools/list": {
           const agentSoulId = process.env.AGENT_SOUL_ID;
-          const soul = agentSoulId ? getSoul(this.config.home, agentSoulId) : null;
+          let soul = null;
+          try {
+            soul = agentSoulId ? getSoul(this.config.home, agentSoulId) : null;
+          } catch {
+            soul = null;
+          }
           const patterns = soul ? resolveAllowedTools(soul.config?.agent) : null;
           const filtered = patterns
             ? TOOLS.filter((t) => isToolAllowed(patterns, t.name))
@@ -511,7 +529,12 @@ export class McpServer {
 
   private requireSoul(id: unknown): { id: string } | { error: string } {
     if (typeof id !== "string" || !id.trim()) return { error: "parâmetro soul é obrigatório" };
-    const soul = getSoul(this.config.home, id);
+    let soul;
+    try {
+      soul = getSoul(this.config.home, id);
+    } catch {
+      return { error: `soul inválida: ${id}` };
+    }
     if (!soul) return { error: `soul não encontrada: ${id}` };
     return { id };
   }
@@ -544,15 +567,7 @@ export class McpServer {
         const model = typeof args.model === "string" && args.model ? args.model : undefined;
         const timeoutSeconds = typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 300;
         const result = await runOpenCode(prompt, { cwd: join(this.config.home, "souls", soul.id), model, timeoutSeconds });
-        const textLines = result.stdout.split(EOL).map((l) => {
-          try {
-            const j = JSON.parse(l) as { type?: string; part?: { text?: string } };
-            return j.type === "text" && j.part?.text ? j.part.text : "";
-          } catch {
-            return "";
-          }
-        });
-        const rawText = textLines.filter(Boolean).join("\n");
+        const rawText = extractOpenCodeText(result.stdout);
         const sanitized = sanitizeLLMResponse(rawText);
         return { ok: result.code === 0 && !result.timedOut, code: result.code, timedOut: result.timedOut, text: sanitized.sanitized, stderr: result.stderr.slice(-1000), contentFilter: sanitized.count > 0 ? { detected: sanitized.count } : undefined };
       }
@@ -571,7 +586,7 @@ export class McpServer {
           soul: soul.id,
           query,
           verdict,
-          results: results.map((r) => ({ doc: r.docKey, path: r.path, score: r.score, method: r.method, snippet: r.body.slice(0, 300) })),
+          results: results.map((r) => ({ doc: r.docKey, path: r.path, score: r.score, method: r.method, snippet: sanitizeLLMResponse(r.body.slice(0, 300)).sanitized })),
         };
       }
 
@@ -649,21 +664,14 @@ export class McpServer {
             result.code === 0 && !result.timedOut ? "completed" : "failed",
             result.timedOut ? "timeout" : result.code !== 0 ? `opencode saiu com código ${result.code}` : undefined,
           );
-          const textLines = result.stdout.split(EOL).map((l) => {
-            try {
-              const j = JSON.parse(l) as { type?: string; part?: { text?: string } };
-              return j.type === "text" && j.part?.text ? j.part.text : "";
-            } catch {
-              return "";
-            }
-          });
+          const rawText = extractOpenCodeText(result.stdout);
           return {
             ok: result.code === 0 && !result.timedOut,
             code: result.code,
             timedOut: result.timedOut,
             agendaId: item.id,
             title,
-            text: textLines.filter(Boolean).join("\n"),
+            text: sanitizeLLMResponse(rawText).sanitized,
             stderr: result.stderr.slice(-1000),
           };
         }

@@ -28,16 +28,27 @@ export interface PurgeResult {
 const vault = new Map<string, Map<string, string>>();
 const metadata = new Map<string, { soulId: string; createdAt: string }>();
 
+/** Limites de capacidade — evitam crescimento sem bound se purgeCredentials() nunca for chamado. */
+const MAX_TASKS = 500;
+const MAX_KEYS_PER_TASK = 200;
+
 /**
  * Armazena uma credencial em memória volátil, associada a uma tarefa.
  * Se já existir uma credencial com a mesma key, sobrescreve.
+ * Lança erro se o vault atingir o limite de capacidade (tarefas ou keys por tarefa).
  */
 export function storeCredential(taskId: string, key: string, value: string): void {
   if (!taskId || !key) throw new Error("taskId e key são obrigatórios");
   let bucket = vault.get(taskId);
   if (!bucket) {
+    if (vault.size >= MAX_TASKS) {
+      throw new Error(`temp-vault cheio: limite de ${MAX_TASKS} tarefas ativas atingido`);
+    }
     bucket = new Map();
     vault.set(taskId, bucket);
+  }
+  if (!bucket.has(key) && bucket.size >= MAX_KEYS_PER_TASK) {
+    throw new Error(`temp-vault cheio: limite de ${MAX_KEYS_PER_TASK} credenciais por tarefa atingido`);
   }
   bucket.set(key, value);
   if (!metadata.has(taskId)) {

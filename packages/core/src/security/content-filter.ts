@@ -31,7 +31,9 @@ export const DEFAULT_PATTERNS: SecretPattern[] = [
   },
   {
     name: "AZURE_DEVOPS_PAT",
-    regex: /[A-Za-z0-9]{52}(?=[^A-Za-z0-9]|$)/g,
+    // Exclui sequências puramente hexadecimais de 52 chars (hashes/IDs comuns) —
+    // PATs reais têm alfabeto misto (maiúsculas+minúsculas+dígitos).
+    regex: /(?![A-Fa-f0-9]{52}(?:[^A-Za-z0-9]|$))[A-Za-z0-9]{52}(?=[^A-Za-z0-9]|$)/g,
     replacement: "[REDACTED_AZURE_PAT]",
   },
   {

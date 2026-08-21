@@ -191,4 +191,10 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_familias_telefone ON familias (telefone);
     `,
   },
+  {
+    // familias.telefone já é UNIQUE (0004), o que cria um índice único implícito;
+    // idx_familias_telefone era um segundo índice redundante sobre a mesma coluna.
+    id: "0005_drop_redundant_familias_telefone_index",
+    sql: `DROP INDEX IF EXISTS idx_familias_telefone;`,
+  },
 ];

@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { todayISODate } from "../alma.js";
 import { soulDir } from "../souls.js";
 import { nowIso } from "../costs.js";
+import { sanitizeText } from "../security/content-filter.js";
 
 // ── Tipos ──────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ export function buildSessionHeader(entry: AuditEntry): string {
   ];
 
   if (entry.params && Object.keys(entry.params).length > 0) {
-    lines.push(`**Parâmetros:** \`${JSON.stringify(entry.params)}\``);
+    lines.push(`**Parâmetros:** \`${sanitizeText(JSON.stringify(entry.params)).sanitized}\``);
   }
 
   if (entry.relevanceVerdict) {
@@ -94,14 +95,13 @@ export function buildSessionHeader(entry: AuditEntry): string {
  */
 export function logIntention(entry: AuditEntry): string {
   const home = resolveHome();
-  const soulPath = soulDir(join(home, "souls"), entry.soulId);
   const dateISO = todayISODate();
-  mkdirSync(join(soulPath, "sessoes"), { recursive: true });
-
-  const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
   const header = buildSessionHeader(entry);
 
   try {
+    const soulPath = soulDir(join(home, "souls"), entry.soulId);
+    mkdirSync(join(soulPath, "sessoes"), { recursive: true });
+    const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
     if (!existsSync(logPath) || readFileSync(logPath, "utf8").length === 0) {
       appendFileSync(logPath, header, "utf8");
     } else {
@@ -211,14 +211,13 @@ export function buildTelemetryBlock(metrics: TokenMetrics, operationDesc: string
  */
 export function logTelemetry(soulId: string, metrics: TokenMetrics, operationDesc: string): string {
   const home = resolveHome();
-  const soulPath = soulDir(join(home, "souls"), soulId);
   const dateISO = todayISODate();
-  mkdirSync(join(soulPath, "sessoes"), { recursive: true });
-
-  const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
   const block = buildTelemetryBlock(metrics, operationDesc);
 
   try {
+    const soulPath = soulDir(join(home, "souls"), soulId);
+    mkdirSync(join(soulPath, "sessoes"), { recursive: true });
+    const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
     appendFileSync(logPath, block, "utf8");
     return logPath;
   } catch (err) {
@@ -232,11 +231,7 @@ export function logTelemetry(soulId: string, metrics: TokenMetrics, operationDes
  */
 export function logFullAuditEntry(entry: AuditEntry): string {
   const home = resolveHome();
-  const soulPath = soulDir(join(home, "souls"), entry.soulId);
   const dateISO = todayISODate();
-  mkdirSync(join(soulPath, "sessoes"), { recursive: true });
-
-  const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
 
   const lines = [
     "",
@@ -247,7 +242,7 @@ export function logFullAuditEntry(entry: AuditEntry): string {
   ];
 
   if (entry.params) {
-    lines.push(`- **params:** \`${JSON.stringify(entry.params)}\``);
+    lines.push(`- **params:** \`${sanitizeText(JSON.stringify(entry.params)).sanitized}\``);
   }
 
   if (entry.relevanceVerdict) {
@@ -267,6 +262,9 @@ export function logFullAuditEntry(entry: AuditEntry): string {
   lines.push("", "---", "");
 
   try {
+    const soulPath = soulDir(join(home, "souls"), entry.soulId);
+    mkdirSync(join(soulPath, "sessoes"), { recursive: true });
+    const logPath = join(soulPath, "sessoes", `${dateISO}.md`);
     appendFileSync(logPath, lines.join("\n"), "utf8");
     return logPath;
   } catch (err) {

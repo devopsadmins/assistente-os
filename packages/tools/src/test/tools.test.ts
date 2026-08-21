@@ -91,6 +91,22 @@ test("mcp: soul desconhecida responde erro", async () => {
   }
 });
 
+test("mcp: soul com path traversal (../) é rejeitada, não escapa souls/", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 6,
+      method: "tools/call",
+      params: { name: "soul_context", arguments: { soul: "../../../etc" } },
+    });
+    assert.ok(res?.error, "esperava erro para soul com path traversal");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("mcp: ping responde ok e notificação não tem resposta", async () => {
   const home = await tempHome();
   const server = new McpServer({ home });
