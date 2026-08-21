@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse } from "@assistente-os/core";
+import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
 import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose } from "@assistente-os/daemon";
 import { join } from "node:path";
@@ -34,6 +34,7 @@ const SOUL_SCOPED_TOOLS = new Set([
   "graph_list", "observation_add",
   "soul_context", "soul_chat",
   "soul_anotar", "soul_licao", "soul_decidir",
+  "soul_record_lesson", "soul_get_lessons",
   "action_execute",
   "browser_navigate", "browser_click", "browser_extract_text",
   "browser_screenshot", "browser_close",
@@ -222,6 +223,48 @@ const TOOLS: Tool[] = [
         consequencias: { type: "string", description: "consequências esperadas" },
       },
       required: ["soul", "titulo"],
+    },
+  },
+  {
+    name: "soul_record_lesson",
+    description: "Registra um incidente de agente (erro + causa raiz + regra corretiva) em licoes.md da soul; promove automaticamente a regra global após 3 reincidências do mesmo tópico.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul" },
+        agentId: { type: "string", description: "id/nome do agente que cometeu o incidente" },
+        topic: { type: "string", description: "tópico normalizado para agrupar reincidências (ex: shell-injection)" },
+        mistake: { type: "string", description: "o que deu errado" },
+        rootCause: { type: "string", description: "causa raiz do erro" },
+        correctiveRule: { type: "string", description: "regra corretiva a seguir daqui em diante" },
+      },
+      required: ["soul", "agentId", "topic", "mistake", "rootCause", "correctiveRule"],
+    },
+  },
+  {
+    name: "soul_get_lessons",
+    description: "Retorna as últimas lições registradas em licoes.md da soul.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul" },
+        limit: { type: "number", description: "quantidade máxima de lições (default 20)" },
+      },
+      required: ["soul"],
+    },
+  },
+  {
+    name: "guardian_audit_execution",
+    description: "Julga a qualidade de uma execução de agente via LLM (score 0-100, ISO/IEC 42001); aprova apenas com score >= 95.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "id da tarefa avaliada" },
+        targetAgent: { type: "string", description: "id/nome do agente avaliado" },
+        changesSummary: { type: "string", description: "resumo das mudanças feitas" },
+        testResults: { type: "string", description: "resultado dos testes (opcional)" },
+      },
+      required: ["taskId", "targetAgent", "changesSummary"],
     },
   },
   {
@@ -751,6 +794,44 @@ export class McpServer {
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
+      }
+
+      case "soul_record_lesson": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const agentId = typeof args.agentId === "string" && args.agentId.trim() ? args.agentId.trim() : null;
+        const topic = typeof args.topic === "string" && args.topic.trim() ? args.topic.trim() : null;
+        const mistake = typeof args.mistake === "string" && args.mistake.trim() ? args.mistake.trim() : null;
+        const rootCause = typeof args.rootCause === "string" && args.rootCause.trim() ? args.rootCause.trim() : null;
+        const correctiveRule = typeof args.correctiveRule === "string" && args.correctiveRule.trim() ? args.correctiveRule.trim() : null;
+        if (!agentId || !topic || !mistake || !rootCause || !correctiveRule) {
+          throw new Error("parâmetros agentId, topic, mistake, rootCause e correctiveRule são obrigatórios");
+        }
+        const repoRoot = process.env.ASSISTENTE_OS_REPO_ROOT || process.cwd();
+        const result = recordAgentIncident(this.config.home, repoRoot, soul.id, { agentId, topic, mistake, rootCause, correctiveRule });
+        return { ok: true, promoted: result.promoted };
+      }
+
+      case "soul_get_lessons": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const limit = typeof args.limit === "number" && args.limit > 0 ? args.limit : 20;
+        const dir = join(this.config.home, "souls", soul.id);
+        return { ok: true, lessons: getLessons(dir, limit) };
+      }
+
+      case "guardian_audit_execution": {
+        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
+        const targetAgent = typeof args.targetAgent === "string" && args.targetAgent.trim() ? args.targetAgent.trim() : null;
+        const changesSummary = typeof args.changesSummary === "string" && args.changesSummary.trim() ? args.changesSummary.trim() : null;
+        if (!taskId || !targetAgent || !changesSummary) {
+          throw new Error("parâmetros taskId, targetAgent e changesSummary são obrigatórios");
+        }
+        const testResults = typeof args.testResults === "string" ? args.testResults : undefined;
+        const result = await auditExecution({ taskId, targetAgent, changesSummary, testResults });
+        return { ok: true, ...result };
       }
 
       case "agenda_add": {
