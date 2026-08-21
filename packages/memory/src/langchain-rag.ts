@@ -140,7 +140,9 @@ export async function retrieveContext(
   return {
     context,
     sources: chunks,
-    hasRelevantDocs: chunks.length > 0 && chunks[0].score > 0.5,
+    // >= (não >): literalSearchFallback atribui score exatamente 0.5 de propósito
+    // (o mesmo valor do gate) — com > estrito, o fallback literal nunca passava.
+    hasRelevantDocs: chunks.length > 0 && chunks[0].score >= 0.5,
   };
 }
 

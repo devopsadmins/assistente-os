@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LiteralEmbedder } from "../embedders.js";
 import { indexDirectory } from "../indexer.js";
+import { addObservation } from "../graph.js";
 import { retrieveContext, buildRagChain, runRagChain } from "../langchain-rag.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
@@ -44,6 +45,23 @@ test("retrieveContext retorna vazio quando não há documentos", async () => {
     assert.equal(result.context, "Não foram encontrados documentos relevantes para esta pergunta.");
     assert.equal(result.sources.length, 0);
     assert.equal(result.hasRelevantDocs, false);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("retrieveContext: hasRelevantDocs=true quando só o fallback literal (observations) encontra algo", async () => {
+  // Sem indexar nada em chunks: search() retorna vazio, forçando literalSearchFallback
+  // (que atribui score=0.5 de propósito). Regressão do bug: hasRelevantDocs usava
+  // `> 0.5` (estrito), então o fallback literal nunca era considerado relevante.
+  const testDb = await createTestSchema();
+  try {
+    await addObservation(testDb.pool, "s4", "Projeto Assistente OS", "Usa Ollama para inferência local.", "teste");
+
+    const result = await retrieveContext(testDb.pool, "s4", "Ollama", 5);
+    assert.ok(result.sources.length > 0, "esperava achar via fallback literal");
+    assert.equal(result.sources[0]?.method, "literal");
+    assert.equal(result.hasRelevantDocs, true);
   } finally {
     await testDb.cleanup();
   }
