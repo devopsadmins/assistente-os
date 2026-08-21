@@ -256,18 +256,6 @@ export async function* runAgentStream(
   }
 }
 
-/**
- * Re-exporta funções auxiliares para retrocompatibilidade.
- */
-export {
-  addUserMessage,
-  addToolResult,
-  checkMaxIterations,
-  nextIteration,
-  executeRagChain,
-  decideNextStep,
-} from "./agent-workflow-legacy.js";
-
 export {
   defaultTemplate as ragDefaultTemplate,
   codeTemplate as ragCodeTemplate,

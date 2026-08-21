@@ -10,7 +10,6 @@
  * - Estatísticas e métricas de índice
  */
 import { getEmbedder } from "./embedder-provider.js";
-import { chunkTextExact } from "./chunker.js";
 import { runRagChain } from "./rag-chain.js";
 import { STOPWORDS_PT } from "./relevance.js";
 import { listObservations, upsertEntity, upsertRelation, addObservation } from "./graph.js";

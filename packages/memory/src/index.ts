@@ -1,9 +1,7 @@
 export * from "./embedders.js";
-export * from "./embedders-langchain.js";
 export * from "./embedder-provider.js";
 export * from "./embedder-local.js";
 export * from "./embedder-fallback.js";
-export { chunkTextExact } from "./chunker.js";
 export * from "./rag-chain.js";
 export * from "./prompt-templates.js";
 export * from "./agent-state.js";
