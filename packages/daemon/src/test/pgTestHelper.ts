@@ -17,9 +17,23 @@ function baseUrl(): string {
   );
 }
 
+// O adminPool (CREATE/DROP SCHEMA) é um singleton cacheado por getPool() e
+// compartilhado por todos os testes do arquivo — fechá-lo em cleanup() por
+// teste quebraria os testes seguintes que ainda o usam. Em vez disso, fecha
+// uma única vez quando o processo do arquivo de teste está de fato terminando.
+let adminPoolExitHookRegistered = false;
+function registerAdminPoolExitHook(adminUrl: string): void {
+  if (adminPoolExitHookRegistered) return;
+  adminPoolExitHookRegistered = true;
+  process.on("beforeExit", () => {
+    void closePool(adminUrl).catch(() => {});
+  });
+}
+
 export async function createTestSchema(): Promise<TestDb> {
   const schema = `test_${randomBytes(6).toString("hex")}`;
   const adminUrl = baseUrl();
+  registerAdminPoolExitHook(adminUrl);
   const adminPool = getPool(adminUrl);
   await adminPool.query(`CREATE SCHEMA "${schema}"`);
 

@@ -27,14 +27,40 @@ $("#sidebar-overlay")?.addEventListener("click", () => toggleMenu(true));
 
 
 /* ---------- api ---------- */
-function authHeaders() {
-  return {};
+const AOS_TOKEN_KEY = "aos_daemon_token";
+function getDaemonToken() {
+  try { return localStorage.getItem(AOS_TOKEN_KEY) || ""; } catch { return ""; }
 }
+function setDaemonToken(token) {
+  try {
+    if (token) localStorage.setItem(AOS_TOKEN_KEY, token);
+    else localStorage.removeItem(AOS_TOKEN_KEY);
+  } catch { /* localStorage indisponível */ }
+}
+function authHeaders() {
+  const token = getDaemonToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+function promptForToken() {
+  const current = getDaemonToken();
+  const next = window.prompt(
+    "Token de acesso do daemon (ASSISTENTE_OS_DAEMON_TOKEN). Deixe em branco para remover.",
+    current,
+  );
+  if (next === null) return;
+  setDaemonToken(next.trim());
+}
+$("#auth-token-btn")?.addEventListener("click", promptForToken);
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
     headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) },
   });
+  if (res.status === 401) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "não autorizado — clique em 🔑 para configurar o token do daemon");
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;

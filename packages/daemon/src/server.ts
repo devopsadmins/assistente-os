@@ -7,6 +7,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
+import { browserShutdown } from "./tools/browser.js";
 import {
   loadConfig,
   getPool,
@@ -343,6 +344,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
         voiceHandler?.stop();
         void whatsappChannel?.stop();
         void telegramChannel?.stop();
+        void browserShutdown();
         server.close(() => resolve());
       }),
   };
@@ -500,10 +502,12 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
 
   if (serveStatic(req, res, webDir)) return;
 
-  // Autenticação dispensada temporariamente (requisições livres).
-// Para reativar, descomente a verificação original em isAuthorized().
-// Se precisar de controle mais granular, defina ASSISTENTE_OS_DAEMON_TOKEN
-// e use o modo original com Bearer header.
+  // Exige Bearer token quando ASSISTENTE_OS_DAEMON_TOKEN está configurado.
+  // /health fica público (infra/monitoramento); demais rotas exigem o token.
+  if (token && path !== "/health" && !isAuthorized(req, token)) {
+    sendJson(res, 401, { error: "não autorizado" });
+    return;
+  }
 
   if (req.method === "GET" && path === "/health") {
     const { listSouls } = await import("@assistente-os/core");

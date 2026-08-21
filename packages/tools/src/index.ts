@@ -37,6 +37,10 @@ const SOUL_SCOPED_TOOLS = new Set([
   "action_execute",
   "browser_navigate", "browser_click", "browser_extract_text",
   "browser_screenshot", "browser_close",
+  "ado_list_projects", "ado_list_repositories", "ado_list_work_items",
+  "ado_create_work_item", "ado_get_work_item", "ado_update_work_item",
+  "ado_list_pipelines", "ado_run_pipeline",
+  "ado_list_pull_requests", "ado_create_pull_request",
 ]);
 
 /**
@@ -248,7 +252,13 @@ const TOOLS: Tool[] = [
   {
     name: "ado_list_projects",
     description: "Lista todos os projetos da organização Azure DevOps.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
+      },
+      required: ["soul"],
+    },
   },
   {
     name: "ado_list_repositories",
@@ -256,9 +266,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         project: { type: "string", description: "Nome ou ID do projeto" },
       },
-      required: ["project"],
+      required: ["soul", "project"],
     },
   },
   {
@@ -267,11 +278,12 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         project: { type: "string", description: "Nome ou ID do projeto" },
         wiql: { type: "string", description: "Query WIQL opcional" },
         top: { type: "number", description: "Limite de resultados", default: 50 },
       },
-      required: ["project"],
+      required: ["soul", "project"],
     },
   },
   {
@@ -280,6 +292,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         project: { type: "string", description: "Nome ou ID do projeto" },
         type: { type: "string", description: "Tipo do work item (ex: 'Bug', 'User Story', 'Task')", default: "Task" },
         title: { type: "string", description: "Título do work item" },
@@ -289,7 +302,7 @@ const TOOLS: Tool[] = [
         areaPath: { type: "string", description: "Area path" },
         iterationPath: { type: "string", description: "Iteration path" },
       },
-      required: ["project", "title"],
+      required: ["soul", "project", "title"],
     },
   },
   {
@@ -298,10 +311,11 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         id: { type: "number", description: "ID do work item" },
         project: { type: "string", description: "Nome ou ID do projeto (opcional)" },
       },
-      required: ["id"],
+      required: ["soul", "id"],
     },
   },
   {
@@ -310,10 +324,11 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         id: { type: "number", description: "ID do work item" },
         fields: { type: "object", description: "Campos a atualizar (ex: { 'System.State': 'Active', 'System.Title': 'Novo título' })" },
       },
-      required: ["id", "fields"],
+      required: ["soul", "id", "fields"],
     },
   },
   {
@@ -322,9 +337,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         project: { type: "string", description: "Nome ou ID do projeto" },
       },
-      required: ["project"],
+      required: ["soul", "project"],
     },
   },
   {
@@ -333,12 +349,13 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         project: { type: "string", description: "Nome ou ID do projeto" },
         pipelineId: { type: "number", description: "ID do pipeline" },
         variables: { type: "object", description: "Variáveis do pipeline" },
         branch: { type: "string", description: "Branch para rodar (padrão: default)" },
       },
-      required: ["project", "pipelineId"],
+      required: ["soul", "project", "pipelineId"],
     },
   },
   {
@@ -347,12 +364,13 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         project: { type: "string", description: "Nome ou ID do projeto" },
         repositoryId: { type: "string", description: "Nome ou ID do repositório" },
         status: { type: "string", description: "Status: 'active', 'completed', 'abandoned', 'all'", default: "active" },
         top: { type: "number", description: "Limite de resultados", default: 50 },
       },
-      required: ["project", "repositoryId"],
+      required: ["soul", "project", "repositoryId"],
     },
   },
   {
@@ -361,6 +379,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        soul: { type: "string", description: "ID da soul que está executando a ação" },
         project: { type: "string", description: "Nome ou ID do projeto" },
         repositoryId: { type: "string", description: "Nome ou ID do repositório" },
         sourceRefName: { type: "string", description: "Branch de origem (ex: 'refs/heads/feature')" },
@@ -371,7 +390,7 @@ const TOOLS: Tool[] = [
         workItemIds: { type: "array", items: { type: "number" }, description: "IDs de work items para linkar" },
         reviewers: { type: "array", items: { type: "string" }, description: "Emails dos reviewers" },
       },
-      required: ["project", "repositoryId", "sourceRefName", "targetRefName", "title"],
+      required: ["soul", "project", "repositoryId", "sourceRefName", "targetRefName", "title"],
     },
   },
   // Browser Automation Tools (Flow OS)
@@ -537,6 +556,20 @@ export class McpServer {
     }
     if (!soul) return { error: `soul não encontrada: ${id}` };
     return { id };
+  }
+
+  /**
+   * Autoriza uma tool que depende de AGENT_SOUL_ID (env, não parâmetro) em vez de `soul`.
+   * Fail-closed: nega se AGENT_SOUL_ID não estiver setado, em vez de pular a checagem.
+   */
+  private authorizeAgentSoul(toolName: string): void {
+    const agentSoulId = process.env.AGENT_SOUL_ID;
+    if (!agentSoulId) {
+      throw new Error(
+        `[Security 42001] '${toolName}' exige AGENT_SOUL_ID configurado no processo (nenhuma soul identificada).`,
+      );
+    }
+    authorizeTool(this.config.home, agentSoulId, toolName);
   }
 
   private async executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -740,6 +773,9 @@ export class McpServer {
 
       // Azure DevOps Tools
       case "ado_list_projects": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const connection = await getAdoConnection(this.config);
         const coreApi = await connection.getCoreApi();
         const projects = await coreApi.getProjects();
@@ -754,6 +790,9 @@ export class McpServer {
       }
 
       case "ado_list_repositories": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const project = typeof args.project === "string" ? args.project : null;
         if (!project) throw new Error("parâmetro project é obrigatório");
         const connection = await getAdoConnection(this.config);
@@ -771,6 +810,9 @@ export class McpServer {
       }
 
       case "ado_list_work_items": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const project = typeof args.project === "string" ? args.project : null;
         if (!project) throw new Error("parâmetro project é obrigatório");
         const wiql = typeof args.wiql === "string" ? args.wiql : null;
@@ -804,6 +846,9 @@ export class McpServer {
       }
 
       case "ado_create_work_item": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const project = typeof args.project === "string" ? args.project : null;
         const type = typeof args.type === "string" ? args.type : "Task";
         const title = typeof args.title === "string" ? args.title : null;
@@ -839,6 +884,9 @@ export class McpServer {
       }
 
       case "ado_get_work_item": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const id = typeof args.id === "number" ? args.id : null;
         const project = typeof args.project === "string" ? args.project : undefined;
         if (!id) throw new Error("parâmetro id é obrigatório");
@@ -864,6 +912,9 @@ export class McpServer {
       }
 
       case "ado_update_work_item": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const id = typeof args.id === "number" ? args.id : null;
         const fields = args.fields as Record<string, unknown> | null;
         if (!id || !fields) throw new Error("id e fields são obrigatórios");
@@ -888,6 +939,9 @@ export class McpServer {
       }
 
       case "ado_list_pipelines": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const project = typeof args.project === "string" ? args.project : null;
         if (!project) throw new Error("parâmetro project é obrigatório");
 
@@ -907,6 +961,9 @@ export class McpServer {
       }
 
       case "ado_run_pipeline": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const project = typeof args.project === "string" ? args.project : null;
         const pipelineId = typeof args.pipelineId === "number" ? args.pipelineId : null;
         const variables = args.variables as Record<string, string> | undefined;
@@ -938,6 +995,9 @@ export class McpServer {
       }
 
       case "ado_list_pull_requests": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const project = typeof args.project === "string" ? args.project : null;
         const repositoryId = typeof args.repositoryId === "string" ? args.repositoryId : null;
         const status = typeof args.status === "string" ? args.status : "active";
@@ -970,6 +1030,9 @@ export class McpServer {
       }
 
       case "ado_create_pull_request": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
         const project = typeof args.project === "string" ? args.project : null;
         const repositoryId = typeof args.repositoryId === "string" ? args.repositoryId : null;
         const sourceRefName = typeof args.sourceRefName === "string" ? args.sourceRefName : null;
@@ -1020,8 +1083,7 @@ export class McpServer {
         const url = typeof args.url === "string" && args.url.trim() ? args.url.trim() : null;
         if (!url) throw new Error("parâmetro url é obrigatório");
         const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        const agentSoulId = process.env.AGENT_SOUL_ID;
-        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        this.authorizeAgentSoul(name);
         return await browserNavigate(url, taskId);
       }
 
@@ -1029,31 +1091,27 @@ export class McpServer {
         const selector = typeof args.selector === "string" && args.selector.trim() ? args.selector.trim() : null;
         if (!selector) throw new Error("parâmetro selector é obrigatório");
         const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        const agentSoulId = process.env.AGENT_SOUL_ID;
-        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        this.authorizeAgentSoul(name);
         return await browserClick(selector, taskId);
       }
 
       case "browser_extract_text": {
         const selector = typeof args.selector === "string" ? args.selector.trim() : "body";
         const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        const agentSoulId = process.env.AGENT_SOUL_ID;
-        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        this.authorizeAgentSoul(name);
         return await browserExtractText(selector, taskId);
       }
 
       case "browser_screenshot": {
         const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
         const fullPage = typeof args.fullPage === "boolean" ? args.fullPage : false;
-        const agentSoulId = process.env.AGENT_SOUL_ID;
-        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        this.authorizeAgentSoul(name);
         return await browserScreenshot(taskId, fullPage);
       }
 
       case "browser_close": {
         const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        const agentSoulId = process.env.AGENT_SOUL_ID;
-        if (agentSoulId) authorizeTool(this.config.home, agentSoulId, name);
+        this.authorizeAgentSoul(name);
         return await browserClose(taskId);
       }
 

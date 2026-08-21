@@ -356,6 +356,17 @@ async function main(): Promise<void> {
       });
       console.log(`[assistente-os] daemon em http://${host}:${daemon.port} (home: ${config.home})`);
       console.log(`[assistente-os] degraus: ${config.routerTiers.join(" -> ")}`);
+
+      let shuttingDown = false;
+      const shutdown = async (signal: string) => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log(`\n[assistente-os] ${signal} recebido, encerrando graciosamente...`);
+        await daemon.close();
+        process.exit(0);
+      };
+      process.on("SIGTERM", () => void shutdown("SIGTERM"));
+      process.on("SIGINT", () => void shutdown("SIGINT"));
       return;
     }
 
