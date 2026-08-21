@@ -1700,10 +1700,10 @@ const embedder = getEmbedder();
           sendJson(res, 200, {
             status: "completed",
             meetingPath: result.meetingPath,
-            decisoes: result.meetingPayload.decisoes.length,
-            acoes: result.meetingPayload.acoes.length,
-            objeccoes: result.meetingPayload.objeccoes.length,
-            resumo: result.meetingPayload.resumo.slice(0, 60) + "...",
+            decisoes: (result.meetingPayload.decisoes ?? []).length,
+            acoes: (result.meetingPayload.acoes ?? []).length,
+            objeccoes: (result.meetingPayload.objeccoes ?? []).length,
+            resumo: (result.meetingPayload.resumo ?? "").slice(0, 60) + "...",
           });
         } catch (err) {
           console.error("Meeting ingest error:", err);

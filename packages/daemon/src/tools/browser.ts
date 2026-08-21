@@ -19,8 +19,9 @@
  */
 
 import { existsSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { join, tmpdir } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir, homedir } from "node:os";
 import { createHash } from "node:crypto";
 
 // ── Tipos ──────────────────────────────────────────────────────────────
@@ -49,6 +50,43 @@ export interface ScreenshotAuditData {
   format: "png" | "jpeg" | "webp";
   fullPage: boolean;
   sizeBytes: number;
+}
+
+export interface TableData {
+  headers: string[];
+  rows: Record<string, string>[];
+}
+
+// ── Table extraction helpers ────────────────────────────────────────────
+
+/**
+ * Converte tabelas cruas extraídas do DOM ({headers, cells}) em TableData[],
+ * mapeando cada linha para um objeto keyed pelos headers. Células a mais são
+ * descartadas; headers sem célula correspondente viram string vazia.
+ */
+export function domTableToData(raw: { headers: string[]; cells: string[][] }[]): TableData[] {
+  return raw.map(({ headers, cells }) => ({
+    headers,
+    rows: cells.map((row) => {
+      const obj: Record<string, string> = {};
+      headers.forEach((h, i) => {
+        obj[h] = row[i] ?? "";
+      });
+      return obj;
+    }),
+  }));
+}
+
+/** Serializa TableData[] como uma ou mais tabelas Markdown, separadas por linha em branco. */
+export function tableDataToMarkdown(tables: TableData[]): string {
+  return tables
+    .map((t) => {
+      const headerLine = `| ${t.headers.join(" | ")} |`;
+      const sepLine = `| ${t.headers.map(() => "---").join(" | ")} |`;
+      const rowLines = t.rows.map((r) => `| ${t.headers.map((h) => r[h] ?? "").join(" | ")} |`);
+      return [headerLine, sepLine, ...rowLines].join("\n");
+    })
+    .join("\n\n");
 }
 
 // ── Lazy Playwright import ─────────────────────────────────────────────
@@ -148,53 +186,59 @@ function computeSHA256(content: string): string {
  * IDs ofuscados ou renderizações dinâmicas.
  */
 async function getAccessibilityTreeFromPage(page: Page): Promise<AccessibilityNode> {
-  // Usar o método CDP para obter a árvore de acessibilidade
-  const client = await page.context().connection();
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send("Accessibility.enable");
+    const { nodes } = await client.send("Accessibility.getFullAXTree");
+    return buildAccessibilityTree(nodes);
+  } finally {
+    await client.detach().catch(() => {});
+  }
+}
 
-  // Enable accessibility domain if not already enabled
-  await client.send("Accessibility.enable");
+/**
+ * Converte a lista plana de AXNode (protocolo CDP Accessibility.getFullAXTree)
+ * em uma árvore hierárquica, seguindo childIds a partir da raiz (nó sem pai).
+ */
+function buildAccessibilityTree(nodes: any[]): AccessibilityNode {
+  const byId = new Map<string, any>();
+  for (const node of nodes) byId.set(node.nodeId, node);
+  const childIds = new Set<string>();
+  for (const node of nodes) {
+    for (const id of node.childIds ?? []) childIds.add(id);
+  }
+  const root = nodes.find((n) => !childIds.has(n.nodeId)) ?? nodes[0];
 
-  // Get the accessibility tree
-  const { tree } = await client.send("Accessibility.getFullAccessibilityTree", {
-    interestType: ["role", "name", "description", "value", "states", "labeledby"],
-  });
-
-  // Recursively convert to our typed structure
-  function convertNode(node: any): AccessibilityNode {
-    const children: AccessibilityNode[] = (node.children || [])
-      .map((c: any) => convertNode(c));
+  function convert(node: any): AccessibilityNode {
+    const children: AccessibilityNode[] = (node.childIds ?? [])
+      .map((id: string) => byId.get(id))
+      .filter(Boolean)
+      .map((child: any) => convert(child));
+    const states: string[] = (node.properties ?? [])
+      .filter((p: any) => p?.value?.value === true)
+      .map((p: any) => p.name);
 
     return {
-      role: node.role || "unknown",
-      name: node.name,
-      description: node.description,
-      value: node.value !== undefined ? node.value : undefined,
+      role: node.role?.value ?? "unknown",
+      name: node.name?.value,
+      description: node.description?.value,
+      value: node.value?.value,
       children,
-      bbox: node.bbox,
-      states: node.states,
-      labeledby: node.labeledby,
+      states: states.length ? states : undefined,
     };
   }
 
-  return convertNode(tree);
+  return root ? convert(root) : { role: "unknown", children: [] };
 }
 
 // ── CDP Session management ────────────────────────────────────────────
 
-async function getCDPSession(taskId: string): Promise<{ session: CDPSession; error?: string }> {
+async function getCDPSession(taskId: string): Promise<{ session: CDPSession } | { error: string }> {
   const page = getPage(taskId);
   if (!page) return { error: `Nenhuma página aberta para a tarefa: ${taskId}` };
 
   try {
-    // Get CDP session from page
-    const client = await page.context().connection();
-    const session = new (await import("playwright-core")).CDPSession(client);
-
-    // Connect to the page's CDP session
-    await session.attach({
-      sessionId: page._client.sessionId,
-    });
-
+    const session = await page.context().newCDPSession(page);
     return { session };
   } catch (err) {
     return { error: `Falha ao conectar CDP: ${(err as Error).message}` };
@@ -458,50 +502,32 @@ export async function executeDynamicFix(
 
   try {
     // Execute the script in the page context using page.evaluate
-    const result = await page.evaluate(
-      (code: string) => {
-        try {
-          // Safe execution - only allow specific operations
-          const allowedGlobals = ["document", "window", "document.querySelector", "document.querySelectorAll"];
-          const windowAny = window as any;
-          
-          // Block dangerous operations
-          if (code.includes("alert(") || code.includes("prompt(") || code.includes("confirm(")) {
-            throw new Error("Operações de diálogo não permitidas");
-          }
-          if (code.includes("fetch(") || code.includes("XMLHttpRequest")) {
-            throw new Error("Requisições de rede não permitidas");
-          }
-          if (code.includes("localStorage") || code.includes("sessionStorage")) {
-            throw new Error("Armazenamento local não permitida");
-          }
-          if (code.includes("import") || code.includes("require")) {
-            throw new Error("Importações não permitidas");
-          }
+    const result = await page.evaluate((code: string) => {
+      // Block dangerous operations
+      if (code.includes("alert(") || code.includes("prompt(") || code.includes("confirm(")) {
+        throw new Error("Operações de diálogo não permitidas");
+      }
+      if (code.includes("fetch(") || code.includes("XMLHttpRequest")) {
+        throw new Error("Requisições de rede não permitidas");
+      }
+      if (code.includes("localStorage") || code.includes("sessionStorage")) {
+        throw new Error("Armazenamento local não permitida");
+      }
+      if (code.includes("import") || code.includes("require")) {
+        throw new Error("Importações não permitidas");
+      }
 
-          // Execute the script
-          const sandbox = {
-            document,
-            window,
-            console,
-            setTimeout,
-            setInterval,
-          };
-
-          // Use new Function with restricted scope
-          const fn = new Function("document", "window", "console", code);
-          return fn(document, window, console);
-        } catch (e) {
-          throw e;
-        }
-      },
-      scriptContent
-    );
+      // Executa em escopo restrito (só document/window/console do próprio contexto da página)
+      const doc = (globalThis as any).document;
+      const win = (globalThis as any).window;
+      const fn = new Function("document", "window", "console", code);
+      return fn(doc, win, console);
+    }, scriptContent);
 
     // Store the successful helper in the tools cache
     const soulId = process.env.AGENT_SOUL_ID || "default";
     const toolsCacheDir = join(
-      process.env.ASSISTENTE_OS_HOME || `${require("node:os").homedir?.() || "~"}/.assistant-os`,
+      process.env.ASSISTENTE_OS_HOME || `${homedir()}/.assistant-os`,
       "souls",
       soulId,
       "tools_cache"
@@ -550,21 +576,3 @@ export async function executeDynamicFix(
   }
 }
 
-// ── Exportação principal ─────────────────────────────────────────────
-
-// Export all functions for MCP tool integration
-export {
-  browserNavigate,
-  browserClick,
-  browserExtractText,
-  browserScreenshot,
-  browserClose,
-  browserShutdown,
-  activePageCount,
-  getAccessibilityTree,
-  captureAuditedScreenshot,
-  executeDynamicFix,
-  BrowserResult,
-  AccessibilityNode,
-  ScreenshotAuditData,
-};
