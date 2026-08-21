@@ -57,10 +57,12 @@ Uso:
                                 lista itens da agenda (padrão: pending)
   os daemon [port]             inicia o daemon REST+WS (padrão 4310)
   os voice                     inicia o pipeline de voz (VAD + STT + TTS)
-  os backup                    gera um ZIP completo do perfil, RAG e conhecimento (retenção de 7 dias)
+  os backup                    gera um ZIP completo do perfil, RAG e conhecimento em
+                                ASSISTENTE_OS_BACKUP_DIR (padrão ~/.assistant-os-backups; retenção de 7 dias)
   os help                      mostra esta ajuda
 
 Variáveis de ambiente: ASSISTENTE_OS_HOME (padrão ~/.assistant-os),
+ASSISTENTE_OS_BACKUP_DIR (padrão ~/.assistant-os-backups),
 OLLAMA_URL, OLLAMA_CHAT_MODEL, OLLAMA_EMBED_MODEL, AOS_HOST,
 ASSISTENTE_OS_DAEMON_TOKEN, VOICE_ENABLED.
 `;
@@ -431,11 +433,11 @@ async function main(): Promise<void> {
     }
 
     case "backup": {
-      const backup = await createFullBackup(config.home, config.databaseUrl);
+      const backup = await createFullBackup(config.home, config.databaseUrl, config.backupDir);
       console.log(`backup criado: ${backup.path}`);
       console.log(`tamanho: ${(backup.bytes / 1024 / 1024).toFixed(2)} MB`);
       console.log(`itens de topo: ${backup.entries.join(", ")}`);
-      const removed = await pruneOldBackups(config.home, BACKUP_RETENTION_DAYS);
+      const removed = await pruneOldBackups(config.backupDir, BACKUP_RETENTION_DAYS);
       if (removed.length > 0) {
         console.log(`retenção (${BACKUP_RETENTION_DAYS} dias): removido(s) ${removed.join(", ")}`);
       }

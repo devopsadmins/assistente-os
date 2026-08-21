@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import AdmZip from "adm-zip";
 import { mkdtemp, mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { createFullBackup, pruneOldBackups } from "../backup.js";
 
@@ -16,16 +16,20 @@ const UNREACHABLE_DB_URL = "postgres://nope:nope@127.0.0.1:1/nope";
 
 test("cria um ZIP completo sem incluir backups anteriores; dump do banco falha sem derrubar o backup", async () => {
   const home = await mkdtemp(join(tmpdir(), "assistente-os-backup-"));
+  const backupDir = await mkdtemp(join(tmpdir(), "assistente-os-backup-dest-"));
   try {
     await mkdir(join(home, "souls", "main", "sessoes"), { recursive: true });
     await writeFile(join(home, "souls", "main", "perfil.md"), "perfil");
     await writeFile(join(home, "souls", "main", "sessoes", "sessao.md"), "sessao");
     await writeFile(join(home, ".env"), "SECRET=redacted");
     await writeFile(join(home, "active.json"), "{}");
+    // Arquivo de uma migração anterior (quando o backup ainda ficava dentro de `home`) —
+    // continua sendo excluído do conteúdo arquivado, mesmo não sendo mais o caso comum.
     await writeFile(join(home, "backup-antigo.zip"), "antigo");
     await mkdir(join(home, ".backup-antigo"));
 
-    const result = await createFullBackup(home, UNREACHABLE_DB_URL, new Date("2026-08-15T12:00:00.000Z"));
+    const result = await createFullBackup(home, UNREACHABLE_DB_URL, backupDir, new Date("2026-08-15T12:00:00.000Z"));
+    assert.equal(dirname(result.path), backupDir);
     const archive = new AdmZip(result.path);
     const names = archive.getEntries().map((entry) => entry.entryName);
 
@@ -52,25 +56,26 @@ test("cria um ZIP completo sem incluir backups anteriores; dump do banco falha s
     assert.match(manifest.database.error ?? "", /dump do banco/);
   } finally {
     await rm(home, { recursive: true, force: true });
+    await rm(backupDir, { recursive: true, force: true });
   }
 });
 
 test("pruneOldBackups remove apenas ZIPs de backup mais antigos que a retenção", async () => {
-  const home = await mkdtemp(join(tmpdir(), "assistente-os-backup-prune-"));
+  const backupDir = await mkdtemp(join(tmpdir(), "assistente-os-backup-prune-"));
   try {
     const oldTime = new Date("2026-08-01T12:00:00.000Z");
-    await writeFile(join(home, "backup-2026-08-01T12-00-00-abcd1234.zip"), "velho");
-    await writeFile(join(home, "backup-2026-08-20T12-00-00-efgh5678.zip"), "novo");
-    await writeFile(join(home, "outro.txt"), "x");
-    await utimes(join(home, "backup-2026-08-01T12-00-00-abcd1234.zip"), oldTime, oldTime);
+    await writeFile(join(backupDir, "backup-2026-08-01T12-00-00-abcd1234.zip"), "velho");
+    await writeFile(join(backupDir, "backup-2026-08-20T12-00-00-efgh5678.zip"), "novo");
+    await writeFile(join(backupDir, "outro.txt"), "x");
+    await utimes(join(backupDir, "backup-2026-08-01T12-00-00-abcd1234.zip"), oldTime, oldTime);
 
-    const removed = await pruneOldBackups(home, 7, new Date("2026-08-21T12:00:00.000Z"));
+    const removed = await pruneOldBackups(backupDir, 7, new Date("2026-08-21T12:00:00.000Z"));
 
     assert.deepEqual(removed, ["backup-2026-08-01T12-00-00-abcd1234.zip"]);
-    await assert.rejects(stat(join(home, "backup-2026-08-01T12-00-00-abcd1234.zip")));
-    await stat(join(home, "backup-2026-08-20T12-00-00-efgh5678.zip"));
-    await stat(join(home, "outro.txt"));
+    await assert.rejects(stat(join(backupDir, "backup-2026-08-01T12-00-00-abcd1234.zip")));
+    await stat(join(backupDir, "backup-2026-08-20T12-00-00-efgh5678.zip"));
+    await stat(join(backupDir, "outro.txt"));
   } finally {
-    await rm(home, { recursive: true, force: true });
+    await rm(backupDir, { recursive: true, force: true });
   }
 });

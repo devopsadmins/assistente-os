@@ -109,6 +109,7 @@ $("#tabs").addEventListener("click", (e) => {
   if (btn.dataset.tab === "llm") loadLlm();
   if (btn.dataset.tab === "mcp") loadMcp();
   if (btn.dataset.tab === "whatsapp") loadWhatsAppMessages();
+  if (btn.dataset.tab === "telegram") loadTelegramMessages();
 });
 
 /* ---------- websocket ---------- */
@@ -124,6 +125,9 @@ function connectWs() {
     _wsReconnectDelay = 1000;
     api("/api/whatsapp/status").then((s) => {
       updateWhatsAppStatus(s.connected ? "conectado" : "desconectado", s.phone);
+    }).catch(() => { });
+    api("/api/telegram/status").then((s) => {
+      updateTelegramStatus(s.connected ? "conectado" : "desconectado", s.username);
     }).catch(() => { });
   };
   ws.onclose = () => {
@@ -165,6 +169,15 @@ function connectWs() {
       }
       if (msg.type === "whatsapp.message") {
         appendWhatsAppLog(msg);
+      }
+      if (msg.type === "telegram.connected") {
+        updateTelegramStatus("conectado", msg.username);
+      }
+      if (msg.type === "telegram.disconnected") {
+        updateTelegramStatus("desconectado", null);
+      }
+      if (msg.type === "telegram.message") {
+        appendTelegramLog(msg);
       }
     } catch {
       /* ignora frames inválidos */
@@ -1423,6 +1436,149 @@ function updateWhatsAppStatus(status, phone) {
     const wrap = $("#wa-qr-wrap");
     if (wrap) wrap.style.display = "none";
   }
+}
+
+/* ---------- Telegram ---------- */
+const TG_STORAGE_KEY = "aos_telegram_messages";
+const TG_MAX_CACHED = 200;
+
+function tgCacheLoad() {
+  try { return JSON.parse(localStorage.getItem(TG_STORAGE_KEY) || "[]"); } catch { return []; }
+}
+function tgCacheSave(msgs) {
+  try { localStorage.setItem(TG_STORAGE_KEY, JSON.stringify(msgs.slice(0, TG_MAX_CACHED))); } catch { }
+}
+function tgCacheAdd(msg) {
+  const msgs = tgCacheLoad();
+  if (!msgs.find((m) => m.id === msg.id)) { msgs.unshift(msg); tgCacheSave(msgs); }
+}
+
+let tgSelectedChatId = null;
+let tgAllMessages = [];
+
+function groupByChatId(msgs) {
+  const groups = {};
+  for (const m of msgs) {
+    const p = typeof m.payload === "string" ? JSON.parse(m.payload) : (m.payload || {});
+    const chatId = p.jid || "unknown";
+    if (!groups[chatId]) groups[chatId] = { chatId, name: p.from || chatId, messages: [], lastTs: 0 };
+    groups[chatId].messages.push({ ...m, payload: p });
+    const t = new Date(m.ts).getTime();
+    if (t > groups[chatId].lastTs) groups[chatId].lastTs = t;
+  }
+  return Object.values(groups).sort((a, b) => b.lastTs - a.lastTs);
+}
+
+function renderTelegramContacts(groups) {
+  const el = $("#tg-contacts");
+  if (!el) return;
+  el.innerHTML = "";
+  for (const g of groups) {
+    const item = document.createElement("div");
+    item.className = "wa-contact" + (g.chatId === tgSelectedChatId ? " wa-contact-active" : "");
+    const preview = g.messages[0]?.payload?.body?.slice(0, 40) || "";
+    const ts = g.lastTs ? new Date(g.lastTs).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+    item.innerHTML = `
+      <div class="wa-contact-name">${esc(g.name)}</div>
+      <div class="wa-contact-preview">${esc(preview)}</div>
+      <div class="wa-contact-meta"><span class="wa-contact-count">${g.messages.length}</span> <span class="wa-contact-time">${ts}</span></div>`;
+    item.onclick = () => selectTelegramConversation(g.chatId);
+    el.appendChild(item);
+  }
+}
+
+function selectTelegramConversation(chatId) {
+  tgSelectedChatId = chatId;
+  const groups = groupByChatId(tgAllMessages);
+  renderTelegramContacts(groups);
+  const g = groups.find((x) => x.chatId === chatId);
+  if (!g) return;
+  $("#tg-chat-header").textContent = g.name;
+  renderTelegramMessages(g.messages);
+  $("#tg-reply-bar").style.display = "flex";
+  setupTelegramReplySend(chatId);
+}
+
+function renderTelegramMessages(msgs) {
+  const el = $("#tg-messages");
+  if (!el) return;
+  el.innerHTML = "";
+  const sorted = [...msgs].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  for (const m of sorted) el.appendChild(buildTgMsgEl(m));
+  el.scrollTop = el.scrollHeight;
+}
+
+function setupTelegramReplySend(chatId) {
+  const input = $("#tg-reply-input");
+  const btn = $("#tg-reply-send");
+  if (!input || !btn) return;
+  const handler = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    try {
+      await api("/api/telegram/send", { method: "POST", body: JSON.stringify({ chatId, text }) });
+      tgCacheAdd({ id: Date.now(), ts: new Date().toISOString(), payload: { from: "eu", jid: chatId, body: text, fromMe: true }, soul: "main" });
+      tgAllMessages = tgCacheLoad();
+      const g = groupByChatId(tgAllMessages).find((x) => x.chatId === chatId);
+      if (g) renderTelegramMessages(g.messages);
+    } catch { }
+  };
+  btn.onclick = handler;
+  input.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handler(); };
+}
+
+async function loadTelegramMessages() {
+  const cached = tgCacheLoad();
+  tgAllMessages = cached.length ? cached : [];
+  refreshTelegramView();
+  try {
+    const fresh = await api("/api/telegram/messages?limit=200");
+    if (fresh.length) { tgAllMessages = fresh; tgCacheSave(fresh); refreshTelegramView(); }
+  } catch { }
+}
+
+function refreshTelegramView() {
+  const groups = groupByChatId(tgAllMessages);
+  renderTelegramContacts(groups);
+  if (tgSelectedChatId) {
+    const g = groups.find((x) => x.chatId === tgSelectedChatId);
+    if (g) renderTelegramMessages(g.messages);
+  }
+}
+
+function appendTelegramLog(msg) {
+  tgCacheAdd({ id: msg.id || Date.now(), ts: new Date().toISOString(), payload: { from: msg.from, jid: msg.jid, body: msg.body, fromMe: msg.fromMe }, soul: msg.soul });
+  tgAllMessages = tgCacheLoad();
+  refreshTelegramView();
+}
+
+function buildTgMsgEl(msg) {
+  const p = typeof msg.payload === "string" ? JSON.parse(msg.payload) : (msg.payload || {});
+  const isSent = p.fromMe || p.from === "eu";
+  const el = document.createElement("div");
+  el.className = isSent ? "wa-msg wa-msg-sent" : "wa-msg";
+  el.dataset.eventId = msg.id;
+  const ts = msg.ts ? new Date(msg.ts).toLocaleTimeString("pt-BR") : "";
+  el.innerHTML = `
+    <div class="wa-msg-bubble">
+      <div class="wa-msg-text">${esc(p.body || "")}</div>
+      <div class="wa-msg-footer">
+        <span class="wa-msg-time">${ts}</span>
+        <span class="wa-msg-soul">soul:${esc(msg.soul || "main")}</span>
+      </div>
+    </div>`;
+  return el;
+}
+
+function updateTelegramStatus(status, username) {
+  const el = $("#tg-status");
+  const userEl = $("#tg-username");
+  if (el) {
+    el.textContent = status;
+    el.style.color = status === "conectado" ? "var(--neon-green)" : "var(--text-muted)";
+  }
+  if (userEl) userEl.textContent = username ?? "—";
 }
 
 boot();

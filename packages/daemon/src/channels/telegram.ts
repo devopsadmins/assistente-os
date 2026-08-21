@@ -69,9 +69,18 @@ export class TelegramChannel extends EventEmitter {
     }
 
     this.connected = true;
-    this.username = "bot-telegram";
-    this.jid = botToken;
     this.consecutiveFailures = 0;
+
+    try {
+      const resp = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+      const data: any = await resp.json();
+      if (data.ok) {
+        this.username = data.result.username;
+        this.jid = String(data.result.id);
+      }
+    } catch (err) {
+      console.error("[telegram] Erro ao buscar dados do bot:", err);
+    }
 
     this.config.hub.broadcast({
       type: "telegram.connected",

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { ZipArchive } from "archiver";
 
 const execFileAsync = promisify(execFile);
@@ -17,21 +17,28 @@ export interface BackupResult {
 
 /**
  * Backup completo: souls/, config/.env e demais arquivos de `home` + um dump
- * do Postgres via `pg_dump --format=custom`. Se o pg_dump não estiver instalado
- * no host, usa o cliente de dentro do container Docker do Postgres (detectado
- * via `docker ps`; desative com AOS_DISABLE_DOCKER_FALLBACK=1).
+ * do Postgres via `pg_dump --format=custom`. O ZIP vai para `backupDir` — um
+ * diretório separado de `home` de propósito, para que a retenção (que apaga
+ * arquivos) nunca rode misturada com os dados vivos. Se o pg_dump não estiver
+ * instalado no host, usa o cliente de dentro do container Docker do Postgres
+ * (detectado via `docker ps`; desative com AOS_DISABLE_DOCKER_FALLBACK=1).
  * Restaurar com: `pg_restore --clean --if-exists -d <DATABASE_URL> database.dump`.
  */
-export async function createFullBackup(home: string, databaseUrl: string, now = new Date()): Promise<BackupResult> {
+export async function createFullBackup(
+  home: string,
+  databaseUrl: string,
+  backupDir: string,
+  now = new Date(),
+): Promise<BackupResult> {
   if (!existsSync(home)) throw new Error(`home do Assistente OS não encontrada: ${home}`);
+  await mkdir(backupDir, { recursive: true, mode: 0o700 });
 
   const stamp = now.toISOString().replace(/[:.]/g, "-");
   const runId = randomUUID().slice(0, 8);
-  const outputPath = join(home, `backup-${stamp}-${runId}.zip`);
+  const outputPath = join(backupDir, `backup-${stamp}-${runId}.zip`);
   const partialPath = `${outputPath}.partial`;
-  const outputName = basename(outputPath);
   const dirEntries = await readdir(home, { withFileTypes: true });
-  const included = dirEntries.filter((entry) => !isPreviousBackup(entry.name) && entry.name !== outputName);
+  const included = dirEntries.filter((entry) => !isPreviousBackup(entry.name));
   const staging = await mkdtemp(join(tmpdir(), "assistente-os-backup-"));
   const archive = new ZipArchive({ level: 9 });
   let output: ReturnType<typeof createWriteStream> | undefined;
@@ -96,13 +103,13 @@ export async function createFullBackup(home: string, databaseUrl: string, now = 
   }
 }
 
-export async function pruneOldBackups(home: string, retentionDays: number, now = new Date()): Promise<string[]> {
+export async function pruneOldBackups(backupDir: string, retentionDays: number, now = new Date()): Promise<string[]> {
   const cutoff = now.getTime() - retentionDays * 24 * 60 * 60 * 1000;
-  const entries = await readdir(home, { withFileTypes: true });
+  const entries = await readdir(backupDir, { withFileTypes: true });
   const removed: string[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || !/^backup-.*\.zip$/i.test(entry.name)) continue;
-    const path = join(home, entry.name);
+    const path = join(backupDir, entry.name);
     const info = await stat(path);
     if (info.mtimeMs >= cutoff) continue;
     await rm(path, { force: true });

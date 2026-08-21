@@ -953,6 +953,25 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     return;
   }
 
+  // ── Telegram: histórico de mensagens ─────────────────────────────────
+  if (req.method === "GET" && path === "/api/telegram/messages") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const limit = Math.min(Number(new URL(req.url!, `http://${req.headers.host}`).searchParams.get("limit")) || 100, 500);
+    const { rows } = await pool.query(
+      "SELECT id, ts, payload, soul, status FROM events WHERE type = 'telegram.message' ORDER BY id DESC LIMIT $1",
+      [limit],
+    );
+    sendJson(res, 200, rows.map((r) => ({
+      id: Number(r.id),
+      ts: String(r.ts),
+      payload: r.payload,
+      soul: r.soul,
+      status: r.status,
+    })));
+    return;
+  }
+
   // ── Telegram: status do canal ────────────────────────────────────────
   if (req.method === "GET" && path === "/api/telegram/status") {
     if (!context.telegramChannel) {

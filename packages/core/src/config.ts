@@ -6,6 +6,10 @@ export interface AssistenteOsConfig {
   /** Raiz de tudo: souls/, config.local.json (padrão: ~/.assistant-os) */
   home: string;
   soulsDir: string;
+  /** Diretório dos ZIPs de backup — fora de `home` de propósito, para que a
+   * retenção (que apaga arquivos) nunca rode no mesmo diretório dos dados
+   * vivos (souls/.env/sessões). Padrão: ~/.assistant-os-backups. */
+  backupDir: string;
   /** Connection string do Postgres (env DATABASE_URL). Único banco: agenda/custos/eventos + RAG/grafo. */
   databaseUrl: string;
   ollamaUrl: string;
@@ -62,6 +66,7 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
   return {
     home,
     soulsDir: overrides.soulsDir || join(home, "souls"),
+    backupDir: overrides.backupDir || process.env.ASSISTENTE_OS_BACKUP_DIR || join(homedir(), ".assistant-os-backups"),
     databaseUrl:
       overrides.databaseUrl ||
       process.env.DATABASE_URL ||
