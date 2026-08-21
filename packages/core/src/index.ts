@@ -16,4 +16,5 @@ export * from "./types/agent.js";
 export * from "./security/temp-vault.js";
 export * from "./security/content-filter.js";
 export * from "./governance/audit-trail.js";
+export * from "./governance/golden-rules.js";
 export * from "./familias.js";
