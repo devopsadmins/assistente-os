@@ -8,7 +8,6 @@
  * Suporta tool-calling via tools LangChain.
  */
 import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
@@ -26,14 +25,24 @@ export type { AgentStateType };
  * qwen2.5-coder:3b está puxado) — todo turno de LangGraph terminava em
  * 404 MODEL_NOT_FOUND. Usa a config canônica (mesma de todo o resto do
  * sistema) em vez de reinventar um terceiro par de env vars/defaults.
+ *
+ * Prefere o OpenCode Zen (cloud, tool-calling nativo real) quando
+ * ZEN_API_KEY estiver configurada — modelos locais pequenos no Ollama não
+ * suportam tool-calling de forma confiável (o modelo escreve a chamada
+ * como texto solto em vez de preencher o campo estruturado da resposta),
+ * o que torna as tools do LangGraph inutilizáveis com Ollama sozinho.
+ * Sem a chave, cai de volta pro Ollama local (sem tools funcionais, mas
+ * ainda responde).
  */
 function createLLM(tools?: StructuredTool[]) {
   const config = loadConfig({});
-  const baseUrl = `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
-  const modelName = config.ollamaChatModel;
+  const useZen = Boolean(config.zenApiKey);
+  const baseUrl = useZen ? config.zenBaseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
+  const modelName = useZen ? config.zenChatModel : config.ollamaChatModel;
+  const apiKey = useZen ? config.zenApiKey! : process.env.OPENAI_API_KEY || "ollama";
   const llm = new ChatOpenAI({
     modelName,
-    apiKey: process.env.OPENAI_API_KEY || "ollama",
+    apiKey,
     configuration: { baseURL: baseUrl },
     temperature: 0,
     maxTokens: 1024,
@@ -117,8 +126,41 @@ function buildGenerateNode(tools?: StructuredTool[]) {
   };
 }
 
+/**
+ * Node de execução de ferramentas próprio, no lugar do ToolNode pronto do
+ * LangGraph (@langchain/langgraph/prebuilt) — este grafo usa um `AgentState`
+ * customizado (mensagens em `AgentMessage`, não `BaseMessage` do LangChain),
+ * e ToolNode exige especificamente `BaseMessage[]`/`{messages: BaseMessage[]}`
+ * como entrada. Passar o estado customizado pra ele sempre quebrava com
+ * "ToolNode only accepts BaseMessage[] or { messages: BaseMessage[] } as
+ * input." — só foi notado agora porque o tool-calling nunca tinha chegado
+ * até aqui de verdade (Ollama local não populava toolCalls; ver createLLM).
+ */
 function buildToolNode(tools: StructuredTool[]) {
-  return new ToolNode(tools);
+  const toolsByName = new Map(tools.map((t) => [t.name, t]));
+  return async (state: AgentStateType): Promise<Partial<AgentStateType>> => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    const toolCalls = lastMessage?.toolCalls ?? [];
+
+    const results: AgentStateType["messages"] = [];
+    for (const call of toolCalls) {
+      const tool = toolsByName.get(call.name);
+      let content: string;
+      if (!tool) {
+        content = `Erro: ferramenta "${call.name}" não encontrada.`;
+      } else {
+        try {
+          const result = await tool.invoke(call.args);
+          content = typeof result === "string" ? result : JSON.stringify(result);
+        } catch (err) {
+          content = `Erro ao executar ${call.name}: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+      results.push({ role: "tool", content, toolCallId: call.id });
+    }
+
+    return { messages: results };
+  };
 }
 
 function shouldContinue(state: AgentStateType): string {

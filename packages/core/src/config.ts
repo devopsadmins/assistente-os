@@ -15,6 +15,14 @@ export interface AssistenteOsConfig {
   ollamaUrl: string;
   ollamaChatModel: string;
   ollamaEmbedModel: string;
+  /** OpenCode Zen (https://opencode.ai/zen) — provider cloud OpenAI-compatible,
+   * usado como alternativa ao Ollama local quando tool-calling nativo real é
+   * necessário (Ollama+modelos pequenos locais não suportam de forma
+   * confiável). Sem ZEN_API_KEY configurada, fica undefined e quem consome
+   * cai de volta pro Ollama. */
+  zenApiKey?: string;
+  zenBaseUrl: string;
+  zenChatModel: string;
   /** Ordem do roteador local-first: cada string é um degrau. */
   routerTiers: string[];
   /** Secret compartilhado para verificar webhooks assinados (HMAC-SHA256). */
@@ -74,6 +82,9 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
     ollamaUrl: overrides.ollamaUrl || process.env.OLLAMA_URL || "http://localhost:11434",
     ollamaChatModel: overrides.ollamaChatModel || process.env.OLLAMA_CHAT_MODEL || "qwen2.5-coder:3b",
     ollamaEmbedModel: overrides.ollamaEmbedModel || process.env.OLLAMA_EMBED_MODEL || "nomic-embed-text",
+    zenApiKey: overrides.zenApiKey ?? process.env.ZEN_API_KEY,
+    zenBaseUrl: overrides.zenBaseUrl || process.env.ZEN_BASE_URL || "https://opencode.ai/zen/v1",
+    zenChatModel: overrides.zenChatModel || process.env.ZEN_CHAT_MODEL || "nemotron-3-ultra-free",
     routerTiers: overrides.routerTiers || ["local", "zen", "soul"],
     webhookSecret: overrides.webhookSecret ?? process.env.ASSISTENTE_OS_WEBHOOK_SECRET,
     defaultMaxTurns: overrides.defaultMaxTurns ?? (Number(process.env.ASSISTENTE_OS_MAX_TURNS) || 10),

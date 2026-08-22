@@ -42,14 +42,21 @@ export interface RagContext {
  * Antes lia process.env.OLLAMA_URL/OLLAMA_MODEL direto com um default
  * ("qwen2.5:latest") que não existe no Ollama local — usa a config
  * canônica (mesma do resto do sistema) em vez de reinventar env vars.
+ *
+ * Prefere o OpenCode Zen (cloud) quando ZEN_API_KEY estiver configurada,
+ * pelo mesmo motivo de agent-workflow.ts — mantém o pipeline retrieve+
+ * generate do LangGraph consistente no mesmo provider em vez de misturar
+ * Ollama local (retrieve) com Zen (generate).
  */
 function createLLM() {
   const config = loadConfig({});
-  const baseUrl = `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
-  const modelName = config.ollamaChatModel;
+  const useZen = Boolean(config.zenApiKey);
+  const baseUrl = useZen ? config.zenBaseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
+  const modelName = useZen ? config.zenChatModel : config.ollamaChatModel;
+  const apiKey = useZen ? config.zenApiKey! : process.env.OPENAI_API_KEY || "ollama";
   return new ChatOpenAI({
     modelName,
-    apiKey: process.env.OPENAI_API_KEY || "ollama",
+    apiKey,
     configuration: { baseURL: baseUrl },
     temperature: 0,
     maxTokens: 1024,
@@ -224,11 +231,12 @@ export async function runRagChain(
   ]);
 
   const answer = await chain.invoke({});
+  const usedConfig = loadConfig({});
 
   return {
     answer,
     sources: documents,
-    model: loadConfig({}).ollamaChatModel,
+    model: usedConfig.zenApiKey ? usedConfig.zenChatModel : usedConfig.ollamaChatModel,
     query,
   };
 }
