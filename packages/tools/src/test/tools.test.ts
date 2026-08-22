@@ -279,3 +279,98 @@ test("mcp: agenda_add agenda uma tarefa e agenda_list lista por status", async (
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("mcp: tools/list inclui spec_grill_plan", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 20, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    assert.ok(tools.map((t) => t.name).includes("spec_grill_plan"));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: spec_grill_plan — fluxo completo de duas fases", async () => {
+  const home = await tempHome();
+  // "main" (tempHome) usa DEFAULT_ALLOWED_TOOLS, que não inclui spec_grill_plan
+  // (lista fixa que não é atualizada a cada tool nova) — soul dedicada com
+  // permissão explícita, mesmo padrão de outras tools fora do default.
+  createSoul(home, "grillsoul", { name: "grillsoul", agent: { permissions: { tools: ["spec_grill_plan"] }, guardrails: {} } });
+  const server = new McpServer({ home });
+  const prevUrl = process.env.OLLAMA_URL;
+  process.env.OLLAMA_URL = "http://127.0.0.1:1"; // sem listener: força o fallback determinístico
+  try {
+    const featureDraft = "Adicionar exportação de relatórios em PDF";
+    const phase1 = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 21,
+      method: "tools/call",
+      params: { name: "spec_grill_plan", arguments: { soul: "grillsoul", featureDraft } },
+    });
+    const p1content = (phase1?.result as { content?: { text: string }[] }).content ?? [];
+    const p1parsed = JSON.parse(p1content[0]?.text ?? "{}") as {
+      ok: boolean;
+      questions?: { pergunta: string }[];
+      arquivo: string;
+      buildModeAuthorized?: boolean;
+    };
+    assert.equal(p1parsed.ok, true);
+    assert.ok(p1parsed.questions && p1parsed.questions.length >= 3 && p1parsed.questions.length <= 5);
+    assert.ok(!p1parsed.buildModeAuthorized);
+    assert.match(p1parsed.arquivo, /contexto\.md$/);
+    const fs = await import("node:fs");
+    const afterPhase1 = fs.readFileSync(p1parsed.arquivo, "utf8");
+    assert.ok(afterPhase1.includes("(status: pending)"));
+    assert.ok(afterPhase1.includes(featureDraft));
+
+    // Fase 2 com respostas insuficientes: erro, bloco continua pending
+    const shortAnswers = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 22,
+      method: "tools/call",
+      params: { name: "spec_grill_plan", arguments: { soul: "grillsoul", featureDraft, answers: ["só uma resposta"] } },
+    });
+    assert.ok((shortAnswers?.error as { message?: string } | undefined)?.message?.includes("insuficientes"));
+    assert.ok(fs.readFileSync(p1parsed.arquivo, "utf8").includes("(status: pending)"));
+
+    // Fase 2 completa (>=3 respostas): autoriza
+    const phase2 = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 23,
+      method: "tools/call",
+      params: {
+        name: "spec_grill_plan",
+        arguments: { soul: "grillsoul", featureDraft, answers: ["resposta 1", "resposta 2", "resposta 3"] },
+      },
+    });
+    const p2content = (phase2?.result as { content?: { text: string }[] }).content ?? [];
+    const p2parsed = JSON.parse(p2content[0]?.text ?? "{}") as { ok: boolean; buildModeAuthorized?: boolean };
+    assert.equal(p2parsed.ok, true);
+    assert.equal(p2parsed.buildModeAuthorized, true);
+    const afterPhase2 = fs.readFileSync(p1parsed.arquivo, "utf8");
+    assert.ok(afterPhase2.includes("(status: authorized)"));
+    assert.ok(afterPhase2.includes("resposta 1"));
+  } finally {
+    if (prevUrl === undefined) delete process.env.OLLAMA_URL;
+    else process.env.OLLAMA_URL = prevUrl;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: spec_grill_plan com soul inexistente retorna erro JSON-RPC", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 24,
+      method: "tools/call",
+      params: { name: "spec_grill_plan", arguments: { soul: "nao-existe", featureDraft: "x" } },
+    });
+    assert.ok(res?.error, "esperava erro para soul inexistente");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

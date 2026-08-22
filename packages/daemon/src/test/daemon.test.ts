@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { startDaemon } from "../server.js";
 import { encodeTextFrame } from "../server.js";
 import { runOpenCode } from "../runner.js";
-import { createSoul, recentCalls, signRequest, loadConfig, getPool } from "@assistente-os/core";
+import { createSoul, recentCalls, signRequest, loadConfig, getPool, CONCISE_OUTPUT_DIRECTIVE } from "@assistente-os/core";
 import { tempDaemonHome } from "./pgTestHelper.js";
 
 async function tempHome(): Promise<{ home: string; cleanup: () => Promise<void> }> {
@@ -177,6 +177,7 @@ test("daemon: GET /souls/:id/buffer inspeciona o contexto montado", async () => 
     };
     assert.equal(body.soul, "main");
     assert.ok(body.systemPrompt.includes("assistente principal"));
+    assert.ok(body.systemPrompt.startsWith(CONCISE_OUTPUT_DIRECTIVE), "diretriz FinOps deve ser sempre o prefixo do prompt montado");
     assert.ok(body.contextChars > 0);
     assert.equal(body.tokenEstimate, Math.ceil(body.contextChars / 4));
     assert.ok(body.files.some((f) => f.path.endsWith("perfil.md") && f.chars > 0));
@@ -497,6 +498,26 @@ test("daemon: GET /infra/status expõe souls, ollama, banco, eventos e execution
     assert.ok(typeof body.rag.chunks === "number");
     assert.ok(Array.isArray(body.monitors));
     assert.ok(Array.isArray(body.executions));
+  } finally {
+    await daemon.close();
+    await cleanup();
+  }
+});
+
+test("daemon: GET /llms.txt expõe rotas, tools MCP e souls (loopback, sem token)", async () => {
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home });
+  try {
+    const res = await fetch(`http://127.0.0.1:${daemon.port}/llms.txt`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type") ?? "", /text\/markdown/);
+    const body = await res.text();
+    assert.match(body, /^# Assistente OS/);
+    assert.ok(body.includes("## Rotas ativas"));
+    assert.ok(body.includes("## Catálogo de MCP Tools"));
+    assert.ok(body.includes("spec_grill_plan"));
+    assert.ok(body.includes("## Souls registradas"));
+    assert.ok(body.includes("`main`"));
   } finally {
     await daemon.close();
     await cleanup();

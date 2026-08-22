@@ -27,6 +27,7 @@ import { handleInfra } from "./routes/infra.js";
 import { handleMemory } from "./routes/memory.js";
 import { handleVoice } from "./routes/voice.js";
 import { handlePipelines } from "./routes/pipelines.js";
+import { handleLlmsTxt } from "./routes/llms-txt.js";
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
@@ -429,6 +430,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleMemory,
   handleVoice,
   handlePipelines,
+  handleLlmsTxt,
 ];
 
 async function handle(req: IncomingMessage, res: ServerResponse, context: RequestContext): Promise<void> {

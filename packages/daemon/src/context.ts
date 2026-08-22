@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { todayISODate, getPool, listActiveGoldenRules, type AssistenteOsConfig, type Soul } from "@assistente-os/core";
+import { todayISODate, getPool, listActiveGoldenRules, CONCISE_OUTPUT_DIRECTIVE, type AssistenteOsConfig, type Soul } from "@assistente-os/core";
 import { retrieveContext } from "@assistente-os/memory";
 
 export interface BuiltPromptFile {
@@ -77,10 +77,12 @@ ${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
 ${activeRules.map((r) => `- **${r.topic}:** ${r.ruleText}`).join("\n")}`;
   }
 
-  const prefixParts = [rulesCtx, almaCtx, ragCtx].filter(Boolean);
-  const fullPrompt = prefixParts.length
+  // Diretriz FinOps (output conciso) sempre presente, incondicional, como
+  // primeiro item — sem flag de configuração, vale pra todas as souls.
+  const prefixParts = [CONCISE_OUTPUT_DIRECTIVE, rulesCtx, almaCtx, ragCtx].filter(Boolean);
+  const fullPrompt = prefixParts.length > 1
     ? `${prefixParts.join("\n\n")}\n\n--- Instrução do usuário ---\n${prompt}`
-    : prompt;
+    : `${prefixParts.join("\n\n")}\n\n${prompt}`;
 
   return { almaCtx, ragCtx, fullPrompt, files, verdict, contextChars: fullPrompt.length };
 }

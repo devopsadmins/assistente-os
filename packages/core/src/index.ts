@@ -19,3 +19,4 @@ export * from "./security/content-filter.js";
 export * from "./governance/audit-trail.js";
 export * from "./governance/golden-rules.js";
 export * from "./familias.js";
+export * from "./prompts/system-base.js";

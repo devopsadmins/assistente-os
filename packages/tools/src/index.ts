@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, listActiveGoldenRules } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief } from "@assistente-os/daemon";
+import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, type GrillPlanResult } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { writeFile, unlink } from "node:fs/promises";
@@ -37,6 +37,7 @@ const SOUL_SCOPED_TOOLS = new Set([
   "soul_anotar", "soul_licao", "soul_decidir",
   "soul_record_lesson", "soul_get_lessons",
   "sales_ingest_meeting", "sales_get_lead_brief",
+  "spec_grill_plan",
   "action_execute",
   "browser_navigate", "browser_click", "browser_extract_text",
   "browser_screenshot", "browser_close",
@@ -338,6 +339,19 @@ const TOOLS: Tool[] = [
         leadContact: { type: "string", description: "identificador do lead/contato (nome, telefone, e-mail)" },
       },
       required: ["soul", "leadContact"],
+    },
+  },
+  {
+    name: "spec_grill_plan",
+    description: "Refina requisitos de uma feature em duas fases antes de autorizar o modo build. Sem 'answers': gera 3-5 perguntas de esclarecimento e persiste em contexto.md como pendente. Com 'answers' (mínimo 3): valida e autoriza o plano, retornando buildModeAuthorized=true.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul dona da feature" },
+        featureDraft: { type: "string", description: "descrição da feature a especificar (mesmo texto nas duas fases)" },
+        answers: { type: "array", items: { type: "string" }, description: "respostas às perguntas geradas na Fase 1 (mínimo 3) — presença dispara a Fase 2" },
+      },
+      required: ["soul", "featureDraft"],
     },
   },
   {
@@ -1002,6 +1016,36 @@ export class McpServer {
         if (!leadContact) throw new Error("parâmetro leadContact é obrigatório");
         const brief = await generateCloserBrief(soul.id, leadContact);
         return { ok: true, brief };
+      }
+
+      case "spec_grill_plan": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const featureDraft = typeof args.featureDraft === "string" && args.featureDraft.trim() ? args.featureDraft.trim() : null;
+        if (!featureDraft) throw new Error("parâmetro featureDraft é obrigatório");
+        const soulDir = join(this.config.home, "souls", soul.id);
+        const answers = Array.isArray(args.answers) ? args.answers.filter((a): a is string => typeof a === "string") : undefined;
+
+        let result: GrillPlanResult;
+        if (answers) {
+          const { arquivo } = finalizarPlanoGrill(soulDir, featureDraft, answers);
+          result = { ok: true, soulId: soul.id, buildModeAuthorized: true, arquivo };
+        } else {
+          const questions = await gerarPerguntasGrill(featureDraft);
+          const arquivo = persistirPerguntasGrill(soulDir, featureDraft, questions);
+          result = { ok: true, soulId: soul.id, questions, arquivo };
+        }
+
+        logFullAuditEntry({
+          ts: new Date().toISOString(),
+          sessionId: "mcp-tool",
+          soulId: soul.id,
+          intention: answers ? "spec_grill_plan: plano autorizado (Fase 2)" : "spec_grill_plan: perguntas geradas (Fase 1)",
+          toolsCalled: [name],
+          params: { featureDraft, phase: answers ? 2 : 1 },
+        });
+        return result;
       }
 
       case "agenda_add": {
