@@ -10,3 +10,8 @@ config.local.json
 *.db-shm
 .DS_Store
 logs/
+
+# Artefatos gerados (regeneráveis) — permanecem só no disco local
+docs/graphify-out/
+docs/archify/
+docs/assets/

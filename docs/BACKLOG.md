@@ -136,6 +136,16 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 - [x] **Teste de backup da CLI falha sem `pg_dump`** — Resolvido: o código atual (`backup.ts`) trata ENOENT de `pg_dump` com graceful degradation — o manifest sempre inclui `"database": { ok: false, error: "..." }`. O teste (`backup.test.ts`) valida exatamente esse cenário. Documentação de backup/recovery adicionada em `QUICKSTART.md`.
 - [ ] **Suíte `daemon.test.ts` chama o Ollama real e trava** — os 2 testes de chat desatualizados (já documentados acima) agora aguardam a inferência real em CPU (>1h de suíte; foi preciso matar o processo). Urgente: apontar `OLLAMA_URL` para porta sem listener ou mockar `ollamaChat` nesses testes.
 
+### Conformidade AI-3 (Padrões v4.0) — herdados da spec `archive/docs/newfeatures.md`
+
+Gates de produção ainda abertos (os de limites custo/tokens/turnos já implementados via `sessions`/`execution_logs`; ADR-AI-003 aceito em 2026-08-16):
+
+- [ ] Suíte de testes cross-tenant como evidência do modelo de isolamento entre souls.
+- [ ] Execution manifest reproduzível por release (modelo/prompt/policy/tools/fontes de contexto registrados).
+- [ ] Testes de fallback/kill switch para corte por budget/max-turns.
+- [ ] Inventário de IA com classificação de risco; validar que telemetria não vaza dados de contexto.
+- Revisão agendada do ADR-AI-003: gatilho 2027-02-16.
+
 ### Ações para completar F4 (em ordem de prioridade)
 
 1. [x] **pm2 startup no VPS** — Executado com sucesso. Serviço `pm2-support.service` habilitado no systemd. Daemon sobrevive reboot.
