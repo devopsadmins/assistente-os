@@ -258,11 +258,13 @@ export async function handleMemory(
     }
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
+    const entityFilter = url.searchParams.get("entity")?.trim() || undefined;
+    const qFilter = url.searchParams.get("q")?.trim() || undefined;
     sendJson(res, 200, {
       soul: soul.id,
       entities: await listEntities(pool, soul.id),
       relations: await listRelations(pool, soul.id),
-      observations: await listObservations(pool, soul.id),
+      observations: await listObservations(pool, soul.id, entityFilter, qFilter),
     });
     return true;
   }

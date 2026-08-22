@@ -8,8 +8,9 @@
  * best-effort com fallback para texto transcrito puro.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { todayISODate } from "@assistente-os/core";
 
 /** Estrutura de saída do parser de transcrição */
@@ -201,22 +202,37 @@ export async function parseMeetingTranscript(
   };
 }
 
+/** Descobre os arquivos `sessoes/*-meeting.md` já persistidos para a soul (caminhos relativos ao home). */
+function discoverMeetingPaths(homeDir: string, soulId: string): string[] {
+  const sessoesDir = join(homeDir, "souls", soulId, "sessoes");
+  if (!existsSync(sessoesDir)) return [];
+  try {
+    return readdirSync(sessoesDir)
+      .filter((f) => f.endsWith("-meeting.md"))
+      .map((f) => join("souls", soulId, "sessoes", f));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Generate a closer brief (dossiê pré-call) based on meeting history for a lead.
+ * Sem `meetingPaths` explícito, descobre automaticamente as reuniões já
+ * persistidas em `souls/<soulId>/sessoes/*-meeting.md`.
  */
 export async function generateCloserBrief(
   soulId: string,
   leadContact: string,
-  meetingPaths: string[]
+  meetingPaths?: string[]
 ): Promise<CloserBrief> {
+  const homeDir = process.env.ASSISTENTE_OS_HOME || `${homedir()}/.assistant-os`;
+  const paths = meetingPaths ?? discoverMeetingPaths(homeDir, soulId);
+
   // Read meeting files and parse them
   const meetings: MeetingPayload[] = [];
 
-  for (const relPath of meetingPaths) {
-    const absPath = join(
-      process.env.ASSISTENTE_OS_HOME || `${require("node:os").homedir?.() || "~"}/.assistant-os`,
-      relPath
-    );
+  for (const relPath of paths) {
+    const absPath = join(homeDir, relPath);
     if (existsSync(absPath)) {
       try {
         const { readFile } = await import("node:fs/promises");

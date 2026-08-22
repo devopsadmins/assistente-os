@@ -88,8 +88,9 @@ export function resolveTarget(config: AssistenteOsConfig, soul: Soul, tier: stri
   switch (tier) {
     case "local": {
       const m = config.ollamaChatModel;
-      // opencode-ai usa openai como provider universal para endpoints compatíveis
-      return { tier, provider: "ollama", model: m.includes("/") ? m.replace(/^ollama\//, "openai/") : `openai/${m}` };
+      // provider "ollama" customizado no opencode.jsonc (@ai-sdk/openai-compatible -> OLLAMA_URL/v1)
+      const bare = m.replace(/^(ollama|openai)\//, "");
+      return { tier, provider: "ollama", model: `ollama/${bare}` };
     }
     case "zen":
       return { tier, provider: "zen", model: "zen" };

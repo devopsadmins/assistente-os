@@ -86,7 +86,7 @@ export async function hybridSearch(
 
   if (queryEmbedding) {
     // Buscar no grafo de observações
-    const observations = await listObservations(pool, soul, undefined, 50);
+    const observations = await listObservations(pool, soul, undefined, undefined, 50);
 
     semanticResults = observations
       .filter((obs) => obs.body && obs.body.length > 0)
@@ -275,7 +275,7 @@ export async function indexSoul(
     }
 
     // 5. Indexar relações entre entidades (simples: menção mútua)
-    const allObservations = await listObservations(pool, soul, undefined, 100);
+    const allObservations = await listObservations(pool, soul, undefined, undefined, 100);
     const entityMentions: Record<string, string[]> = {};
 
     allObservations.forEach((obs) => {

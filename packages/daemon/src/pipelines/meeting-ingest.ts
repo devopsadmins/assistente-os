@@ -20,6 +20,8 @@ import {
   appendFileSync
 } from "node:fs";
 import { join, basename } from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { todayISODate } from "@assistente-os/core";
 
 // ── Funções auxiliares de parse (inline - baseadas no meeting-ingest original) ──
@@ -81,6 +83,13 @@ async function parseTranscriptionFile(filePath: string): Promise<string> {
   }
 }
 
+/** Métricas de telemetria/FinOps de uma chamada de extração via LLM. */
+export interface MeetingUsageMetadata {
+  promptTokens?: number;
+  completionTokens?: number;
+  latencyMs: number;
+}
+
 /** Extrai dados estruturados via Ollama LLM usando fetch nativo. */
 async function extractMeetingWithOllama(
   prompt: string,
@@ -93,12 +102,22 @@ async function extractMeetingWithOllama(
   resumo: string;
   rawTranscript?: string;
   fonteArquivo?: string;
+  usage: MeetingUsageMetadata;
 }> {
   const payload = {
     model: chatModel,
     messages: [{ role: "user", content: prompt }],
     stream: false,
   };
+
+  const startedAt = Date.now();
+  const empty = (): { decisoes: string[]; acoes: never[]; objeccoes: string[]; resumo: string; usage: MeetingUsageMetadata } => ({
+    decisoes: [],
+    acoes: [],
+    objeccoes: [],
+    resumo: "",
+    usage: { latencyMs: Date.now() - startedAt },
+  });
 
   // Usar AbortController para timeout
   const ac = new AbortController();
@@ -115,16 +134,16 @@ async function extractMeetingWithOllama(
     clearTimeout(timeoutId);
 
     if (!resp.ok) {
-      return {
-        decisoes: [],
-        acoes: [],
-        objeccoes: [],
-        resumo: "",
-      };
+      return empty();
     }
 
     const data = await resp.json() as any;
     const content = data.message?.content || String(data);
+    const usage: MeetingUsageMetadata = {
+      promptTokens: typeof data.prompt_eval_count === "number" ? data.prompt_eval_count : undefined,
+      completionTokens: typeof data.eval_count === "number" ? data.eval_count : undefined,
+      latencyMs: Date.now() - startedAt,
+    };
 
     try {
       const parsed = JSON.parse(content);
@@ -133,25 +152,16 @@ async function extractMeetingWithOllama(
         acoes: parsed.acoes || [],
         objeccoes: parsed.objeccoes || [],
         resumo: parsed.resumo || "",
+        usage,
       };
     } catch (err) {
       console.error("LLM output não é JSON válido na meeting extraction");
-      return {
-        decisoes: [],
-        acoes: [],
-        objeccoes: [],
-        resumo: "",
-      };
+      return { ...empty(), usage };
     }
   } catch (err) {
     // Ollama offline ou erro de rede
     console.debug("Ollama unavailable in meeting extract:", (err as Error).message);
-    return {
-      decisoes: [],
-      acoes: [],
-      objeccoes: [],
-      resumo: "",
-    };
+    return empty();
   }
 }
 
@@ -165,6 +175,7 @@ interface MeetingPayload {
   resumo?: string;
   rawTranscript?: string;
   fonteArquivo?: string;
+  usage?: MeetingUsageMetadata;
 }
 
 /**
@@ -210,6 +221,14 @@ function meetingPayloadToMarkdown(payload: MeetingPayload): string {
     resumoBlock = "## Resumo\n" + payload.resumo + "\n";
   }
 
+  const usageLines: string[] = [];
+  if (payload.usage) {
+    if (payload.usage.promptTokens !== undefined) usageLines.push("- prompt_tokens: " + payload.usage.promptTokens);
+    if (payload.usage.completionTokens !== undefined) usageLines.push("- completion_tokens: " + payload.usage.completionTokens);
+    usageLines.push("- latency_ms: " + payload.usage.latencyMs);
+  }
+  const usageBlock = usageLines.length > 0 ? "## Telemetria\n" + usageLines.join("\n") + "\n" : "";
+
   const metadataBlock =
     "---\n*Extraída automaticamente via pipeline meeting-ingest em " +
     todayISODate() +
@@ -223,6 +242,7 @@ function meetingPayloadToMarkdown(payload: MeetingPayload): string {
     acoesBlock +
     objeccoesBlock +
     resumoBlock +
+    usageBlock +
     metadataBlock;
 
   return entry;
@@ -237,9 +257,7 @@ export async function meetingIngestPipeline(
   meetingPath: string;
   meetingPayload: MeetingPayload;
 }> {
-  const homeDir =
-    process.env.ASSISTENTE_OS_HOME ||
-    (require("node:os").homedir?.() || "~") + "/.assistant-os";
+  const homeDir = process.env.ASSISTENTE_OS_HOME || `${homedir()}/.assistant-os`;
 
   const _core = await import("@assistente-os/core");
   let targetSoulId = soulId || _core.getActiveSoul(homeDir) || "main";
@@ -298,7 +316,9 @@ ${rawTranscript}`;
 
 // ── Teste standalone ─────────────────────────────────────────────────
 
-if (require.main === module) {
+const isMainModule = process.argv[1] ? fileURLToPath(import.meta.url) === process.argv[1] : false;
+
+if (isMainModule) {
   ;(async () => {
     const sampleVTT = `WEBVTT
 

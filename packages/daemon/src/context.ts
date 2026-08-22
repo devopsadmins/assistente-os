@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { todayISODate, getPool, type AssistenteOsConfig, type Soul } from "@assistente-os/core";
+import { todayISODate, getPool, listActiveGoldenRules, type AssistenteOsConfig, type Soul } from "@assistente-os/core";
 import { retrieveContext } from "@assistente-os/memory";
 
 export interface BuiltPromptFile {
@@ -29,7 +29,7 @@ export async function buildPrompt(options: {
   config: AssistenteOsConfig;
   withRag?: boolean;
 }): Promise<BuiltPrompt> {
-  const { soul, prompt, config, withRag = true } = options;
+  const { home, soul, prompt, config, withRag = true } = options;
   const today = todayISODate();
   const sessionPath = join(soul.dir, "sessoes", `${today}.md`);
   const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8").trim() : "");
@@ -70,7 +70,14 @@ ${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
     }
   }
 
-  const prefixParts = [almaCtx, ragCtx].filter(Boolean);
+  let rulesCtx = "";
+  const activeRules = listActiveGoldenRules(home);
+  if (activeRules.length > 0) {
+    rulesCtx = `## Regras de Ouro (obrigatórias — aprendidas de incidentes anteriores e aprovadas pelo usuário)
+${activeRules.map((r) => `- **${r.topic}:** ${r.ruleText}`).join("\n")}`;
+  }
+
+  const prefixParts = [rulesCtx, almaCtx, ragCtx].filter(Boolean);
   const fullPrompt = prefixParts.length
     ? `${prefixParts.join("\n\n")}\n\n--- Instrução do usuário ---\n${prompt}`
     : prompt;

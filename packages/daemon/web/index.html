@@ -247,6 +247,12 @@
         </div>
         <div class="box">
           <h3>Observações</h3>
+          <form id="graph-obs-filter" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+            <input id="graph-obs-q" type="text" placeholder="buscar no texto..." style="flex:1; min-width:120px; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-size:12px;" />
+            <input id="graph-obs-entity" type="text" placeholder="origem (ex: whatsapp)" style="width:140px; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-size:12px;" />
+            <button type="submit" class="wa-btn" style="font-size:12px;">Filtrar</button>
+            <button type="button" id="graph-obs-clear" class="wa-btn" style="font-size:12px;">Limpar</button>
+          </form>
           <ul id="graph-observations" class="graph-list"></ul>
         </div>
       </div>

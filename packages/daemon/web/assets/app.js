@@ -544,7 +544,13 @@ async function loadGraph() {
     ["#graph-entities", "#graph-relations", "#graph-observations"].forEach((sel) => ($(sel).innerHTML = `<li class="muted">selecione uma soul</li>`));
     return;
   }
-  const g = await api(`/souls/${encodeURIComponent(state.active)}/graph`).catch(() => null);
+  const q = $("#graph-obs-q")?.value.trim() || "";
+  const entity = $("#graph-obs-entity")?.value.trim() || "";
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (entity) params.set("entity", entity);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const g = await api(`/souls/${encodeURIComponent(state.active)}/graph${qs}`).catch(() => null);
   if (!g) {
     ["#graph-entities", "#graph-relations", "#graph-observations"].forEach((sel) => ($(sel).innerHTML = `<li class="muted">grafo indisponível</li>`));
     return;
@@ -565,8 +571,18 @@ async function loadGraph() {
           </li>`,
       )
       .join("")
-    : `<li class="muted">sem observações</li>`;
+    : `<li class="muted">${q || entity ? "nenhuma observação bate com o filtro" : "sem observações"}</li>`;
 }
+
+$("#graph-obs-filter")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  loadGraph();
+});
+$("#graph-obs-clear")?.addEventListener("click", () => {
+  $("#graph-obs-q").value = "";
+  $("#graph-obs-entity").value = "";
+  loadGraph();
+});
 
 /* ---------- langgraph ---------- */
 let lgActiveNode = null;

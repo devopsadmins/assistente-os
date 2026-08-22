@@ -104,7 +104,7 @@ test("roteador local-first escolhe o primeiro degrau que responde", async () => 
 test("resolveTarget monta target correto por degrau", () => {
   const cfg = loadConfig({ home: tempHome("tgt").dir });
   const soul = { id: "s1", dir: "x", config: { name: "s1", provider: "zen-s1", models: { chat: "m1" } } };
-  assert.deepEqual(resolveTarget(cfg, soul, "local"), { tier: "local", provider: "ollama", model: `openai/${cfg.ollamaChatModel}` });
+  assert.deepEqual(resolveTarget(cfg, soul, "local"), { tier: "local", provider: "ollama", model: `ollama/${cfg.ollamaChatModel}` });
   assert.deepEqual(resolveTarget(cfg, soul, "zen"), { tier: "zen", provider: "zen", model: "zen" });
   assert.deepEqual(resolveTarget(cfg, soul, "soul"), { tier: "soul", provider: "zen-s1", model: "m1" });
 });

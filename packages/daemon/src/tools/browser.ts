@@ -23,6 +23,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { createHash } from "node:crypto";
+import { registrarLicao, soulDir } from "@assistente-os/core";
 
 // ── Tipos ──────────────────────────────────────────────────────────────
 
@@ -561,6 +562,18 @@ export async function executeDynamicFix(
       await import("node:fs/promises").then(fs => fs.writeFile(helpersFile, JSON.stringify(helpers, null, 2)));
     } catch (storageErr) {
       console.debug(`Could not store helper script: ${(storageErr as Error).message}`);
+    }
+
+    // Loop de lições: registra a estratégia validada em licoes.md da soul,
+    // associada ao domínio, para que futuras navegações no mesmo site
+    // já apareçam no contexto persistente da alma.
+    try {
+      const domain = new URL(page.url()).hostname;
+      const home = process.env.ASSISTENTE_OS_HOME || `${homedir()}/.assistant-os`;
+      const dir = soulDir(join(home, "souls"), soulId);
+      registrarLicao(dir, `[browser-fix:${domain}] ${reason} → ${scriptContent.slice(0, 300)}`);
+    } catch (lessonErr) {
+      console.debug(`Could not record browser-fix lesson: ${(lessonErr as Error).message}`);
     }
 
     return {

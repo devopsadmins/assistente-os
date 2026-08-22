@@ -75,16 +75,26 @@ export async function listRelations(pool: Pool, soul: string, limit = 200): Prom
   return rows.map((r) => ({ from: r.from_name, rel: r.rel, to: r.to_name, properties: r.properties }));
 }
 
-export async function listObservations(pool: Pool, soul: string, entity?: string, limit = 100): Promise<Observation[]> {
-  const { rows } = entity
-    ? await pool.query<{ entity_name: string; body: string; ts: string; source: string | null }>(
-        "SELECT entity_name, body, ts, source FROM observations WHERE soul = $1 AND entity_name = $2 ORDER BY id DESC LIMIT $3",
-        [soul, entity, limit],
-      )
-    : await pool.query<{ entity_name: string; body: string; ts: string; source: string | null }>(
-        "SELECT entity_name, body, ts, source FROM observations WHERE soul = $1 ORDER BY id DESC LIMIT $2",
-        [soul, limit],
-      );
+/**
+ * Lista observações da soul, com filtro opcional por origem (`entity`, ex.:
+ * "whatsapp") e/ou busca textual em `body` (`q`, via ILIKE).
+ */
+export async function listObservations(pool: Pool, soul: string, entity?: string, q?: string, limit = 100): Promise<Observation[]> {
+  const conditions = ["soul = $1"];
+  const params: unknown[] = [soul];
+  if (entity) {
+    params.push(entity);
+    conditions.push(`entity_name = $${params.length}`);
+  }
+  if (q) {
+    params.push(`%${q}%`);
+    conditions.push(`body ILIKE $${params.length}`);
+  }
+  params.push(limit);
+  const { rows } = await pool.query<{ entity_name: string; body: string; ts: string; source: string | null }>(
+    `SELECT entity_name, body, ts, source FROM observations WHERE ${conditions.join(" AND ")} ORDER BY id DESC LIMIT $${params.length}`,
+    params,
+  );
   return rows.map((r) => ({ entity: r.entity_name, body: r.body, ts: r.ts, source: r.source ?? undefined }));
 }
 

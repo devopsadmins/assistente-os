@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution } from "@assistente-os/core";
+import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, listActiveGoldenRules } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose } from "@assistente-os/daemon";
+import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
+import { writeFile, unlink } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { EOL } from "node:os";
+import { EOL, tmpdir } from "node:os";
 import { WebApi } from "azure-devops-node-api";
 import { GitRepository, GitPullRequest, GitPullRequestSearchCriteria } from "azure-devops-node-api/interfaces/GitInterfaces.js";
 import { TeamProjectReference } from "azure-devops-node-api/interfaces/CoreInterfaces.js";
@@ -35,9 +36,11 @@ const SOUL_SCOPED_TOOLS = new Set([
   "soul_context", "soul_chat",
   "soul_anotar", "soul_licao", "soul_decidir",
   "soul_record_lesson", "soul_get_lessons",
+  "sales_ingest_meeting", "sales_get_lead_brief",
   "action_execute",
   "browser_navigate", "browser_click", "browser_extract_text",
   "browser_screenshot", "browser_close",
+  "browser_get_accessibility_tree", "browser_execute_fix", "browser_audited_screenshot",
   "ado_list_projects", "ado_list_repositories", "ado_list_work_items",
   "ado_create_work_item", "ado_get_work_item", "ado_update_work_item",
   "ado_list_pipelines", "ado_run_pipeline",
@@ -227,7 +230,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "soul_record_lesson",
-    description: "Registra um incidente de agente (erro + causa raiz + regra corretiva) em licoes.md da soul; promove automaticamente a regra global após 3 reincidências do mesmo tópico.",
+    description: "Registra um incidente de agente (erro + causa raiz + regra corretiva) em licoes.md da soul; após 3 reincidências do mesmo tópico, cria uma proposta de regra global aguardando aprovação humana (guardian_pending_rules/guardian_approve_rule).",
     inputSchema: {
       type: "object",
       properties: {
@@ -265,6 +268,76 @@ const TOOLS: Tool[] = [
         testResults: { type: "string", description: "resultado dos testes (opcional)" },
       },
       required: ["taskId", "targetAgent", "changesSummary"],
+    },
+  },
+  {
+    name: "guardian_promote_golden_rule",
+    description: "Propõe manualmente uma regra de ouro (fora do gatilho automático de 3 reincidências). A proposta fica pendente em guardian_pending_rules até ser aprovada com guardian_approve_rule — nada é aplicado automaticamente.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "tópico normalizado da regra" },
+        ruleText: { type: "string", description: "texto da regra proposta" },
+        reason: { type: "string", description: "motivo/justificativa da proposta" },
+      },
+      required: ["topic", "ruleText", "reason"],
+    },
+  },
+  {
+    name: "guardian_pending_rules",
+    description: "Lista propostas de regra de ouro aguardando aprovação ou rejeição humana.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "guardian_approve_rule",
+    description: "Aprova uma proposta pendente: grava a regra em .opencode/rules/golden-rules.md, AGENTS.md e no índice ativo consumido pelo prompt de todas as souls.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "id da proposta pendente (ver guardian_pending_rules)" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "guardian_reject_rule",
+    description: "Rejeita uma proposta pendente: marca como decidida sem aplicar nem propagar nada.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "id da proposta pendente (ver guardian_pending_rules)" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "guardian_get_golden_rules",
+    description: "Retorna a lista consolidada de regras de ouro já aprovadas e em vigor.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "sales_ingest_meeting",
+    description: "Ingere uma transcrição de reunião/call (vtt/srt/txt), extrai decisões/ações/objeções via LLM local e persiste em souls/<soul>/sessoes/YYYY-MM-DD-meeting.md.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul dona da reunião" },
+        transcriptContent: { type: "string", description: "conteúdo bruto da transcrição" },
+        format: { type: "string", description: "formato da transcrição", enum: ["vtt", "srt", "txt"] },
+      },
+      required: ["soul", "transcriptContent", "format"],
+    },
+  },
+  {
+    name: "sales_get_lead_brief",
+    description: "Gera um dossiê pré-call (objeções e decisões anteriores) para um lead a partir do histórico de reuniões já ingeridas da soul.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul" },
+        leadContact: { type: "string", description: "identificador do lead/contato (nome, telefone, e-mail)" },
+      },
+      required: ["soul", "leadContact"],
     },
   },
   {
@@ -490,6 +563,41 @@ const TOOLS: Tool[] = [
       type: "object",
       properties: {
         taskId: { type: "string", description: "ID da tarefa (opcional)" },
+      },
+    },
+  },
+  {
+    name: "browser_get_accessibility_tree",
+    description: "Retorna a árvore de acessibilidade (AccessibilityNode) da página ativa — navegação semântica resiliente a variações de CSS/IDs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "ID da tarefa (opcional, default: 'default')" },
+      },
+    },
+  },
+  {
+    name: "browser_execute_fix",
+    description: "Injeta um trecho de JavaScript na página ativa para contornar um bloqueio (overlay, popup, z-index). Scripts bem-sucedidos ficam em cache e a estratégia é registrada em licoes.md da soul.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "ID da tarefa" },
+        scriptContent: { type: "string", description: "código JavaScript a executar no contexto da página" },
+        reason: { type: "string", description: "motivo/objetivo da injeção" },
+      },
+      required: ["taskId", "scriptContent", "reason"],
+    },
+  },
+  {
+    name: "browser_audited_screenshot",
+    description: "Captura screenshot da página ativa com timestamp, hash SHA-256 e metadata para auditoria/relatórios.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "ID da tarefa (opcional, default: 'default')" },
+        fullPage: { type: "boolean", description: "Screenshot da página inteira (default: false)", default: false },
+        metadata: { type: "object", description: "metadata adicional a anexar ao registro de auditoria" },
       },
     },
   },
@@ -808,9 +916,8 @@ export class McpServer {
         if (!agentId || !topic || !mistake || !rootCause || !correctiveRule) {
           throw new Error("parâmetros agentId, topic, mistake, rootCause e correctiveRule são obrigatórios");
         }
-        const repoRoot = process.env.ASSISTENTE_OS_REPO_ROOT || process.cwd();
-        const result = recordAgentIncident(this.config.home, repoRoot, soul.id, { agentId, topic, mistake, rootCause, correctiveRule });
-        return { ok: true, promoted: result.promoted };
+        const result = recordAgentIncident(this.config.home, soul.id, { agentId, topic, mistake, rootCause, correctiveRule });
+        return { ok: true, proposed: result.proposed };
       }
 
       case "soul_get_lessons": {
@@ -832,6 +939,69 @@ export class McpServer {
         const testResults = typeof args.testResults === "string" ? args.testResults : undefined;
         const result = await auditExecution({ taskId, targetAgent, changesSummary, testResults });
         return { ok: true, ...result };
+      }
+
+      case "guardian_promote_golden_rule": {
+        const topic = typeof args.topic === "string" && args.topic.trim() ? args.topic.trim() : null;
+        const ruleText = typeof args.ruleText === "string" && args.ruleText.trim() ? args.ruleText.trim() : null;
+        const reason = typeof args.reason === "string" && args.reason.trim() ? args.reason.trim() : null;
+        if (!topic || !ruleText || !reason) {
+          throw new Error("parâmetros topic, ruleText e reason são obrigatórios");
+        }
+        const rule = proposeRule(this.config.home, topic, ruleText, reason);
+        return { ok: true, rule };
+      }
+
+      case "guardian_pending_rules": {
+        return { ok: true, pending: listPendingRules(this.config.home) };
+      }
+
+      case "guardian_approve_rule": {
+        const id = typeof args.id === "string" && args.id.trim() ? args.id.trim() : null;
+        if (!id) throw new Error("parâmetro id é obrigatório");
+        const repoRoot = process.env.ASSISTENTE_OS_REPO_ROOT || process.cwd();
+        const rule = approveRule(this.config.home, repoRoot, id);
+        return { ok: true, rule };
+      }
+
+      case "guardian_reject_rule": {
+        const id = typeof args.id === "string" && args.id.trim() ? args.id.trim() : null;
+        if (!id) throw new Error("parâmetro id é obrigatório");
+        rejectRule(this.config.home, id);
+        return { ok: true };
+      }
+
+      case "guardian_get_golden_rules": {
+        return { ok: true, rules: listActiveGoldenRules(this.config.home) };
+      }
+
+      case "sales_ingest_meeting": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const transcriptContent = typeof args.transcriptContent === "string" && args.transcriptContent.trim() ? args.transcriptContent : null;
+        const format = typeof args.format === "string" ? args.format : null;
+        if (!transcriptContent || !format || !["vtt", "srt", "txt"].includes(format)) {
+          throw new Error("parâmetros transcriptContent e format ('vtt'|'srt'|'txt') são obrigatórios");
+        }
+        const tempPath = join(tmpdir(), `sales-ingest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${format}`);
+        await writeFile(tempPath, transcriptContent, "utf8");
+        try {
+          const result = await meetingIngestPipeline(tempPath, soul.id);
+          return { ok: true, meetingPath: result.meetingPath, meetingPayload: result.meetingPayload };
+        } finally {
+          await unlink(tempPath).catch(() => {});
+        }
+      }
+
+      case "sales_get_lead_brief": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const leadContact = typeof args.leadContact === "string" && args.leadContact.trim() ? args.leadContact.trim() : null;
+        if (!leadContact) throw new Error("parâmetro leadContact é obrigatório");
+        const brief = await generateCloserBrief(soul.id, leadContact);
+        return { ok: true, brief };
       }
 
       case "agenda_add": {
@@ -1194,6 +1364,31 @@ export class McpServer {
         const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
         this.authorizeAgentSoul(name);
         return await browserClose(taskId);
+      }
+
+      case "browser_get_accessibility_tree": {
+        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
+        this.authorizeAgentSoul(name);
+        return await getAccessibilityTree(taskId);
+      }
+
+      case "browser_execute_fix": {
+        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
+        const scriptContent = typeof args.scriptContent === "string" && args.scriptContent.trim() ? args.scriptContent.trim() : null;
+        const reason = typeof args.reason === "string" && args.reason.trim() ? args.reason.trim() : null;
+        if (!taskId || !scriptContent || !reason) {
+          throw new Error("parâmetros taskId, scriptContent e reason são obrigatórios");
+        }
+        this.authorizeAgentSoul(name);
+        return await executeDynamicFix(taskId, scriptContent, reason);
+      }
+
+      case "browser_audited_screenshot": {
+        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
+        const fullPage = typeof args.fullPage === "boolean" ? args.fullPage : false;
+        const metadata = args.metadata && typeof args.metadata === "object" ? args.metadata as Record<string, unknown> : undefined;
+        this.authorizeAgentSoul(name);
+        return await captureAuditedScreenshot(taskId, metadata, fullPage);
       }
 
       default:
