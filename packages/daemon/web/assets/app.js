@@ -143,6 +143,17 @@ function connectWs() {
         const row = document.querySelector(`.soul-item[data-soul="${CSS.escape(msg.soul)}"]`);
         if (row) row.querySelector(".soul-status").textContent = msg.code === 0 && !msg.timedOut ? "✓ ok" : "✗ erro";
         if ($("#tab-dashboard").classList.contains("active")) loadDashboard();
+        if (msg.soul === state.active) {
+          const ok = msg.code === 0 && !msg.timedOut;
+          appendStepLog({
+            module: "chat",
+            message: `Concluído (tier ${msg.tier}, ${ok ? "sucesso" : msg.timedOut ? "timeout" : "erro"})`,
+            level: ok ? undefined : "err",
+          });
+        }
+      }
+      if (msg.type === "chat.step") {
+        if (msg.soul === state.active) appendStepLog(msg);
       }
       if (msg.type === "monitor.updated" || msg.type === "event.received" || msg.type === "event.processed") {
         if ($("#tab-observability").classList.contains("active")) loadObservability();
@@ -157,7 +168,13 @@ function connectWs() {
         // exibida agora — sem isso, qualquer alma rodando LangGraph em
         // paralelo (outra sessão, WhatsApp, etc.) contaminava o grafo de
         // quem estava olhando uma alma diferente.
-        if (msg.soul === state.active) renderLangGraphStep(msg);
+        if (msg.soul === state.active) {
+          renderLangGraphStep(msg);
+          appendStepLog({
+            module: `langgraph:${msg.node || "?"}`,
+            message: `iteração ${msg.iterationCount}, ${msg.messageCount} mensagem(ns)${msg.toolCalls?.length ? `, ${msg.toolCalls.length} tool call(s)` : ""}`,
+          });
+        }
       }
       if (msg.type === "whatsapp.qr") {
         renderWhatsAppQR(msg.qr);
@@ -333,6 +350,25 @@ function addMsg(kind, html) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
+/* ---------- log de execução do chat (steps em tempo real) ---------- */
+const MAX_STEPLOG_LINES = 300;
+function clearStepLog() {
+  const body = $("#chat-steplog-body");
+  if (body) body.innerHTML = "";
+}
+function appendStepLog({ ts, module, message, level }) {
+  const body = $("#chat-steplog-body");
+  if (!body) return;
+  const time = new Date(ts || Date.now()).toLocaleTimeString("pt-BR", { hour12: false });
+  const line = document.createElement("div");
+  line.className = `chat-steplog-line${level === "err" ? " err" : ""}`;
+  line.innerHTML = `<span class="steplog-ts">${esc(time)}</span><span class="steplog-mod">${esc(module || "?")}</span><span class="steplog-msg">${esc(message || "")}</span>`;
+  body.appendChild(line);
+  while (body.children.length > MAX_STEPLOG_LINES) body.removeChild(body.firstChild);
+  body.scrollTop = body.scrollHeight;
+}
+$("#chat-steplog-clear")?.addEventListener("click", clearStepLog);
+
 async function sendChat(prompt) {
   if (!state.active) {
     addMsg("err", "Selecione uma soul na sidebar antes de enviar.");
@@ -345,6 +381,8 @@ async function sendChat(prompt) {
   sendBtn.disabled = true;
   addMsg("user", esc(prompt));
   addMsg("meta", "processando…");
+  clearStepLog();
+  appendStepLog({ module: "chat", message: "Enviando prompt…" });
   try {
     const body = await api(`/souls/${encodeURIComponent(state.active)}/chat`, {
       method: "POST",

@@ -1,5 +1,8 @@
 import type { Pool } from "pg";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { nowIso } from "./costs.js";
+import { isValidSoulId } from "./souls.js";
 
 export interface Familia {
   id: number;
@@ -7,11 +10,26 @@ export interface Familia {
   nomeFamilia: string;
   nomeCrianca: string | null;
   soulId: string;
-  status: "pendente" | "ativo" | "suspenso";
+  status: "pendente" | "ativo" | "suspenso" | "encerrado";
   anamnesePhase: number;
   questionnaireData: Record<string, unknown>;
+  baseLegal: string;
+  baseLegalSensivel: string;
+  finalidade: string;
+  encerradoEm: string | null;
+  retencaoAte: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Prazo de retenção pós-encerramento, em dias (LGPD art. 18 VI). Configurável via FAMILIAS_RETENCAO_DIAS. */
+export const FAMILIAS_RETENCAO_DIAS_PADRAO = 1825;
+
+export function familiasRetencaoDias(): number {
+  const raw = process.env.FAMILIAS_RETENCAO_DIAS;
+  if (!raw) return FAMILIAS_RETENCAO_DIAS_PADRAO;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : FAMILIAS_RETENCAO_DIAS_PADRAO;
 }
 
 /**
@@ -108,6 +126,119 @@ export async function contarFamiliasAtivas(pool: Pool): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
+/**
+ * Encerra o acompanhamento de uma família: status → 'encerrado' e retencao_ate =
+ * agora + prazo (default familiasRetencaoDias()). A eliminação em si só acontece
+ * quando o sweep roda após o vencimento — ou imediatamente via excluirFamilia().
+ */
+export async function encerrarFamilia(
+  pool: Pool,
+  id: number,
+  opts: { retencaoDias?: number } = {},
+): Promise<Familia | null> {
+  const dias = opts.retencaoDias ?? familiasRetencaoDias();
+  const agora = nowIso();
+  const retencaoAte = new Date(Date.now() + dias * 86400000).toISOString();
+  const { rows } = await pool.query<FamiliaRow>(
+    `UPDATE familias
+     SET status = 'encerrado', encerrado_em = $1, retencao_ate = $2, updated_at = $1
+     WHERE id = $3
+     RETURNING *`,
+    [agora, retencaoAte, id],
+  );
+  return rows[0] ? rowToFamilia(rows[0]) : null;
+}
+
+/** Famílias encerradas cujo prazo de retenção já venceu (alvo do sweep). */
+export async function listarFamiliasVencidas(pool: Pool): Promise<Familia[]> {
+  const { rows } = await pool.query<FamiliaRow>(
+    "SELECT * FROM familias WHERE status = 'encerrado' AND retencao_ate IS NOT NULL AND retencao_ate <= now() ORDER BY id",
+  );
+  return rows.map(rowToFamilia);
+}
+
+export interface ExclusaoFamilia {
+  familiaId: number;
+  soulId: string;
+  /** Linhas apagadas por tabela (apenas tabelas com rowCount > 0). */
+  linhasPorTabela: Record<string, number>;
+  soulDirRemovido: boolean;
+}
+
+/**
+ * Eliminação total dos dados da família (LGPD art. 18 VI), em cascata por soul:
+ * logs/sessões/eventos/agenda/fila de extração/memória (observações, relações,
+ * entidades, embeddings RAG), checkpoints do agente e a própria linha de familias —
+ * tudo numa transação; por fim remove o diretório da soul em disco.
+ * Métricas operacionais sem conteúdo pessoal (cost_calls, router_history) são preservadas.
+ */
+export async function excluirFamilia(
+  pool: Pool,
+  soulsRoot: string,
+  id: number,
+): Promise<ExclusaoFamilia | null> {
+  const familia = await buscarFamiliaPorId(pool, id);
+  if (!familia) return null;
+  const soulId = familia.soulId;
+  if (!isValidSoulId(soulId)) throw new Error(`soulId inválido para exclusão: ${JSON.stringify(soulId)}`);
+
+  // [tabela, coluna] — execution_logs antes de sessions (FK sessions.id).
+  const alvos: Array<[string, string]> = [
+    ["execution_logs", "soul"],
+    ["sessions", "soul"],
+    ["events", "soul"],
+    ["agenda", "soul"],
+    ["entity_extraction_queue", "soul"],
+    ["observations", "soul"],
+    ["relations", "soul"],
+    ["entities", "soul"],
+    ["chunks", "soul"],
+    ["agent_checkpoints", "soul_id"],
+  ];
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const linhasPorTabela: Record<string, number> = {};
+    for (const [tabela, coluna] of alvos) {
+      const r = await client.query(`DELETE FROM ${tabela} WHERE ${coluna} = $1`, [soulId]);
+      if ((r.rowCount ?? 0) > 0) linhasPorTabela[tabela] = r.rowCount!;
+    }
+    const rf = await client.query("DELETE FROM familias WHERE id = $1", [id]);
+    linhasPorTabela["familias"] = rf.rowCount ?? 0;
+    await client.query("COMMIT");
+
+    let soulDirRemovido = false;
+    const dir = join(soulsRoot, soulId);
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+      soulDirRemovido = true;
+    }
+    return { familiaId: id, soulId, linhasPorTabela, soulDirRemovido };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Rotina de retenção (idempotente): exclui em cascata toda família encerrada
+ * cujo retencao_ate já venceu. Chamada pelo daemon num timer diário.
+ */
+export async function sweepRetencaoFamilias(
+  pool: Pool,
+  soulsRoot: string,
+): Promise<ExclusaoFamilia[]> {
+  const vencidas = await listarFamiliasVencidas(pool);
+  const resultados: ExclusaoFamilia[] = [];
+  for (const f of vencidas) {
+    resultados.push((await excluirFamilia(pool, soulsRoot, f.id))!);
+  }
+  return resultados;
+}
+
 // --- internals ---
 
 interface FamiliaRow {
@@ -119,6 +250,11 @@ interface FamiliaRow {
   status: string;
   anamnese_phase: number;
   questionnaire_data: string | Record<string, unknown>;
+  base_legal: string;
+  base_legal_sensivel: string;
+  finalidade: string;
+  encerrado_em: string | null;
+  retencao_ate: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -143,6 +279,11 @@ function rowToFamilia(row: FamiliaRow): Familia {
     status: String(row.status) as Familia["status"],
     anamnesePhase: Number(row.anamnese_phase),
     questionnaireData: data,
+    baseLegal: String(row.base_legal),
+    baseLegalSensivel: String(row.base_legal_sensivel),
+    finalidade: String(row.finalidade),
+    encerradoEm: row.encerrado_em ? String(row.encerrado_em) : null,
+    retencaoAte: row.retencao_ate ? String(row.retencao_ate) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

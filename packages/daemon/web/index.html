@@ -176,6 +176,15 @@
         <textarea id="chat-input" rows="2" placeholder="Escreva para a soul… (Enter envia, Shift+Enter quebra linha)"></textarea>
         <button id="chat-send" type="submit"><svg class="ic"><use href="#i-send"/></svg>Enviar</button>
       </form>
+      <div id="chat-steplog" class="chat-steplog">
+        <div class="chat-steplog-head">
+          <span>Log de execução</span>
+          <button id="chat-steplog-clear" type="button" class="chat-steplog-clear">limpar</button>
+        </div>
+        <div id="chat-steplog-body" class="chat-steplog-body mono">
+          <span class="muted">os passos da próxima execução aparecem aqui em tempo real…</span>
+        </div>
+      </div>
     </section>
 
     <section id="tab-memory" class="panel">

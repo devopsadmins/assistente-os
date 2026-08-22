@@ -2,11 +2,11 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { statSync, readFileSync, existsSync } from "node:fs";
-import { dirname, extname, normalize, resolve, sep } from "node:path";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
 import { browserShutdown } from "./tools/browser.js";
-import { loadConfig, getPool, runMigrations, addEvent, logger } from "@assistente-os/core";
+import { loadConfig, getPool, runMigrations, addEvent, logger, sweepRetencaoFamilias } from "@assistente-os/core";
 import { processPendingEvents } from "./events.js";
 import { processDueAgenda } from "./agenda.js";
 import { processEntityExtractionJobs } from "./entityExtraction.js";
@@ -293,6 +293,26 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     }).catch(() => {});
   }, 30_000);
   eventTimer.unref?.();
+  // Rotina de retenção LGPD (familias): primeira varredura logo após o boot
+  // (migrações já aplicadas) e depois uma vez por dia. Exclui em cascata as
+  // famílias encerradas cujo retencao_ate venceu — ver ADR-PRIV-001.
+  const sweepRetencao = () => {
+    const config = loadConfig({ home });
+    return sweepRetencaoFamilias(getPool(config.databaseUrl), join(home, "souls"));
+  };
+  void sweepRetencao()
+    .then((purgados) => {
+      for (const p of purgados) logger.info({ familiaId: p.familiaId, soulId: p.soulId }, "retenção familias: família eliminada");
+    })
+    .catch((err) => logger.error({ err }, "sweep de retenção de famílias falhou"));
+  const retencaoTimer = setInterval(() => {
+    void sweepRetencao()
+      .then((purgados) => {
+        for (const p of purgados) logger.info({ familiaId: p.familiaId, soulId: p.soulId }, "retenção familias: família eliminada");
+      })
+      .catch((err) => logger.error({ err }, "sweep de retenção de famílias falhou"));
+  }, 86_400_000);
+  retencaoTimer.unref?.();
   // Adicionar suporte ao canal Telegram na loop de respostas pendentes
   const telegramResponse = telegramChannel
     ? ((eventId: number, stdout: string) => void telegramChannel!.processResponse(eventId, stdout))

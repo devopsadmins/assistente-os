@@ -238,4 +238,26 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_entity_extraction_queue_soul ON entity_extraction_queue (soul, ts);
     `,
   },
+  {
+    // Gate G3 do Bloco G da norma v4.0: a tabela familias trata dado pessoal de
+    // crianças (telefone, nomes) e dado sensível de saúde (anamnese/questionário)
+    // sem base legal, finalidade ou retenção definidas. Esta migration adiciona as
+    // colunas de governança de privacidade; o ciclo de vida (encerrarFamilia/
+    // excluirFamilia/sweepRetencaoFamilias) vive em familias.ts.
+    id: "0008_familias_privacidade",
+    sql: `
+      ALTER TABLE familias
+        ADD COLUMN IF NOT EXISTS base_legal TEXT NOT NULL DEFAULT 'consentimento_responsavel',
+        ADD COLUMN IF NOT EXISTS base_legal_sensivel TEXT NOT NULL DEFAULT 'tutela_saude_profissional',
+        ADD COLUMN IF NOT EXISTS finalidade TEXT NOT NULL DEFAULT 'psicoterapia_familiar_infanto_juvenil',
+        ADD COLUMN IF NOT EXISTS encerrado_em TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS retencao_ate TIMESTAMPTZ;
+      COMMENT ON TABLE familias IS 'Famílias em acompanhamento (canal WhatsApp). Base legal: consentimento dos responsáveis (LGPD art. 7º I c/c art. 14) para contato/onboarding e tutela da saúde por profissional (art. 11 II f) para dados de anamnese. Retenção: durante o acompanhamento; exclusão total em cascata após retencao_ate (default FAMILIAS_RETENCAO_DIAS=1825 dias após encerramento). Ver docs/adr/ADR-PRIV-001.md.';
+      COMMENT ON COLUMN familias.base_legal IS 'Base legal do dado pessoal comum (telefone/nomes): consentimento dos responsáveis — LGPD art. 7º I c/c art. 14.';
+      COMMENT ON COLUMN familias.base_legal_sensivel IS 'Base legal do dado sensível de saúde (anamnese/questionário): tutela da saúde por profissional — LGPD art. 11 II f.';
+      COMMENT ON COLUMN familias.finalidade IS 'Finalidade do tratamento: psicoterapia familiar e infanto-juvenil.';
+      COMMENT ON COLUMN familias.encerrado_em IS 'Data de encerramento do acompanhamento; dispara a contagem do prazo de retenção.';
+      COMMENT ON COLUMN familias.retencao_ate IS 'Prazo final de retenção; após essa data a rotina de retenção exclui o registro e todos os dados derivados da soul.';
+    `,
+  },
 ];

@@ -477,6 +477,39 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .chat-form { display: flex; gap: 10px; }
 .chat-form textarea { flex: 1; resize: vertical; }
 
+.chat-steplog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-lg);
+  margin-top: 0.8rem;
+  overflow: hidden;
+}
+.chat-steplog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid var(--border-base);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.chat-steplog-clear { padding: 0.15rem 0.5rem; font-size: 0.6rem; }
+.chat-steplog-body {
+  height: 16vh;
+  min-height: 90px;
+  overflow-y: auto;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.7rem;
+  line-height: 1.6;
+}
+.chat-steplog-line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-word; }
+.chat-steplog-line .steplog-ts { color: var(--text-muted); flex-shrink: 0; }
+.chat-steplog-line .steplog-mod { color: var(--neon-cyan); flex-shrink: 0; text-transform: uppercase; font-size: 0.62rem; }
+.chat-steplog-line .steplog-msg { color: var(--text-primary); }
+.chat-steplog-line.err .steplog-msg { color: var(--neon-red); }
+
 button {
   background: var(--bg-elevated);
   color: var(--neon-cyan);

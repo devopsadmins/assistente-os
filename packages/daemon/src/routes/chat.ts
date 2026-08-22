@@ -144,6 +144,15 @@ export async function handleChat(
       sendJson(res, 404, { error: "soul não encontrada" });
       return true;
     }
+    // Passos do pipeline de chat, transmitidos ao vivo pro painel "Log de
+    // execução" da UI (consumido em app.js via WS, evento "chat.step").
+    const emitStep = (module: string, message: string, level?: "err") => {
+      try {
+        hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level });
+      } catch {
+        /* ws opcional */
+      }
+    };
 
     const config = await loadConfig({ home });
     const pool = getPool(config.databaseUrl);
@@ -162,15 +171,31 @@ export async function handleChat(
         return true;
       }
       const promptsUsed = await bumpSessionPrompt(pool, session.id);
+      emitStep("chat", `Prompt recebido (turno ${promptsUsed}/${session.maxTurns})`);
 
       // ---- Sanitização de secrets no prompt do usuário ----
       const promptSanitized = sanitizeUserPrompt(prompt, { taskId: String(session.id), soulId: soul.id });
       if (promptSanitized.count > 0) {
         logger.warn(`[content-filter] ${promptSanitized.count} secret(s) detectado(s) no prompt da soul ${soul.id}`);
       }
+      emitStep(
+        "seguranca",
+        promptSanitized.count > 0 ? `${promptSanitized.count} segredo(s) redigido(s) no prompt` : "nenhum segredo detectado no prompt",
+      );
 
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
       const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config });
+      {
+        const verdict = built.verdict as { ok: boolean; sources?: unknown[]; motivo?: string } | null;
+        const filesLoaded = built.files.filter((f) => f.chars > 0).length;
+        const ragMsg =
+          verdict == null
+            ? "RAG não avaliado"
+            : verdict.ok
+              ? `RAG: contexto relevante encontrado (${verdict.sources?.length ?? 0} fonte(s))`
+              : `RAG: ${verdict.motivo ?? "sem contexto relevante"}`;
+        emitStep("rag", `${ragMsg}; ${filesLoaded} arquivo(s) de contexto persistente carregado(s)`);
+      }
 
       // route() sonda cada degrau (sem executar o prompt) e cai para o próximo se o
       // degrau local não responder; a execução real acontece uma única vez, abaixo,
@@ -189,6 +214,10 @@ export async function handleChat(
       }
       const model = requestedModel ?? orchDecision.model;
       const tier = requestedTier ?? decision.target.tier;
+      emitStep(
+        "router",
+        `tier selecionado: ${tier} → ${decision.target.provider}/${model} (${decision.reason ?? `modo ${orchDecision.mode}`})`,
+      );
       const startedAt = Date.now();
       let result: { code: number; stdout: string; stderr: string; timedOut: boolean; toolCalls?: Array<{ name: string; args: Record<string, unknown>; result: string }> };
       if (decision.target.provider === "ollama") {
@@ -203,6 +232,7 @@ export async function handleChat(
         // /api/chat do Ollama via fetch, sem passar pelo opencode — Ollama
         // não entende esse prefixo (nem "openai/"), só o nome puro do model.
         const ollamaModel = (requestedModel ?? decision.target.model).replace(/^(ollama|openai)\//, "");
+        emitStep("ollama", `chamando Ollama (${ollamaModel}), timeout ${timeoutSeconds}s`);
         result = await ollamaChat(
           baseUrl,
           {
@@ -216,6 +246,7 @@ export async function handleChat(
           timeoutSeconds * 1000,
         );
       } else if (decision.target.provider === "langgraph") {
+        emitStep("langgraph", `iniciando execução LangGraph (modo ${langgraphMode ?? "tools"})`);
         result = await runLangGraphAgentStream(pool, {
           soul: soul.id,
           prompt: promptSanitized.sanitized,
@@ -238,6 +269,7 @@ export async function handleChat(
           },
         });
       } else {
+        emitStep("opencode", `executando via opencode (${model})`);
         const env = { ...(process.env as Record<string, string>) };
         result = await run!(built.fullPrompt, {
           cwd: soul.dir,
@@ -248,6 +280,15 @@ export async function handleChat(
           env,
         });
       }
+      emitStep(
+        decision.target.provider,
+        result.code === 0 && !result.timedOut
+          ? `execução concluída em ${Date.now() - startedAt}ms`
+          : result.timedOut
+            ? `timeout após ${Date.now() - startedAt}ms`
+            : `erro na execução (código ${result.code})`,
+        result.code === 0 && !result.timedOut ? undefined : "err",
+      );
       await recordCostCall(pool, {
         soul: soul.id,
         provider: decision.target.provider,
@@ -271,6 +312,7 @@ export async function handleChat(
         status: result.code === 0 && !result.timedOut ? "ok" : "failed",
         note: `latency_ms=${Date.now() - startedAt}`,
       });
+      emitStep("persistencia", "custo e execução registrados");
       // evento WS de conclusão (fire-and-forget; não bloqueia a resposta)
       try {
         hub.broadcast({ type: "chat.done", soul: soul.id, code: result.code, timedOut: result.timedOut, tier: tier });
@@ -285,6 +327,7 @@ export async function handleChat(
         try {
           anotar(soul.dir, `Interação: ${prompt.slice(0, 200)}${prompt.length > 200 ? "…" : ""}`);
           memorizado = true;
+          emitStep("memoria", "interação memorizada na sessão do dia");
         } catch {
           /* fall-through: chat responde mesmo se o write-back falhar */
         }

@@ -1,5 +1,15 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { getPool, loadConfig, listarFamilias, buscarFamiliaPorId, criarFamilia, contarFamiliasAtivas } from "@assistente-os/core";
+import { join } from "node:path";
+import {
+  getPool,
+  loadConfig,
+  listarFamilias,
+  buscarFamiliaPorId,
+  criarFamilia,
+  contarFamiliasAtivas,
+  encerrarFamilia,
+  excluirFamilia,
+} from "@assistente-os/core";
 import { sendJson, type RequestContext } from "./shared.js";
 
 /** Rotas de famílias (onboarding do canal WhatsApp familiar): /familias, /familias/:id, /familias/:id/onboarding */
@@ -28,6 +38,39 @@ export async function handleFamilias(
     const pool = getPool(config.databaseUrl);
     const id = Number(familiaMatch[1]);
     const familia = await buscarFamiliaPorId(pool, id);
+    if (!familia) {
+      sendJson(res, 404, { error: "família não encontrada" });
+      return true;
+    }
+    sendJson(res, 200, familia);
+    return true;
+  }
+
+  // Eliminação total (LGPD art. 18 VI): cascata por soul + diretório em disco.
+  if (familiaMatch && req.method === "DELETE") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const id = Number(familiaMatch[1]);
+    try {
+      const resultado = await excluirFamilia(pool, join(home, "souls"), id);
+      if (!resultado) {
+        sendJson(res, 404, { error: "família não encontrada" });
+        return true;
+      }
+      sendJson(res, 200, resultado);
+    } catch (err) {
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  // Encerra o acompanhamento (dispara contagem de retenção; sweep elimina depois).
+  const encerrarMatch = path.match(/^\/familias\/(\d+)\/encerrar$/);
+  if (encerrarMatch && req.method === "POST") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const id = Number(encerrarMatch[1]);
+    const familia = await encerrarFamilia(pool, id);
     if (!familia) {
       sendJson(res, 404, { error: "família não encontrada" });
       return true;
