@@ -59,6 +59,7 @@ export const DEFAULT_ALLOWED_TOOLS: ToolPattern[] = [
   "action_execute",
   "costs_summary",
   "router_status",
+  "spec_grill_plan",
 ];
 
 export const DEFAULT_GUARDRAILS: AgentGuardrails = {
