@@ -117,7 +117,11 @@ let _ws = null;
 let _wsReconnectDelay = 1000;
 function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  _ws = new WebSocket(`${proto}://${location.host}`);
+  // o handshake WS do browser não aceita headers customizados, então o token
+  // vai na query string (ver isWsAuthorized() no server.ts).
+  const token = getDaemonToken();
+  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+  _ws = new WebSocket(`${proto}://${location.host}/${qs}`);
   const ws = _ws;
   ws.onopen = () => {
     $("#ws-info").textContent = "ws: on";
@@ -1262,11 +1266,13 @@ function selectConversation(jid) {
   renderContacts(groups);
   const g = groups.find((x) => x.jid === jid);
   if (!g) return;
-  $("#wa-chat-header").textContent = g.name;
+  $("#wa-chat-header-title").textContent = g.name;
   renderMessages(g.messages);
   $("#wa-reply-bar").style.display = "flex";
   setupReplySend(jid);
+  $("#wa-layout")?.classList.add("conversation-open");
 }
+$("#wa-back-btn")?.addEventListener("click", () => $("#wa-layout")?.classList.remove("conversation-open"));
 
 function renderMessages(msgs) {
   const el = $("#wa-messages");
@@ -1323,6 +1329,15 @@ function appendWhatsAppLog(msg) {
   refreshWhatsAppView();
 }
 
+function waMediaUrl(file) {
+  // <img>/<audio>/<video> buscam sozinhos, sem header Authorization
+  // customizado — o token vai na query string (aceito só pra /media/ em
+  // isAuthorized(), server.ts).
+  const token = getDaemonToken();
+  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `/api/whatsapp/media/${esc(file)}${qs}`;
+}
+
 function buildWaMsgEl(msg) {
   const p = typeof msg.payload === "string" ? JSON.parse(msg.payload) : (msg.payload || {});
   const isSent = p.fromMe || p.from === "eu";
@@ -1332,15 +1347,15 @@ function buildWaMsgEl(msg) {
   const ts = msg.ts ? new Date(msg.ts).toLocaleTimeString("pt-BR") : "";
   let mediaHtml = "";
   if (p.mediaType === "image" && p.mediaFile) {
-    mediaHtml = `<div class="wa-msg-media"><img src="/api/whatsapp/media/${esc(p.mediaFile)}" loading="lazy" onclick="window.open(this.src)" style="max-width:200px;max-height:200px;border-radius:4px;cursor:pointer;" /></div>`;
+    mediaHtml = `<div class="wa-msg-media"><img src="${waMediaUrl(p.mediaFile)}" loading="lazy" onclick="window.open(this.src)" style="max-width:200px;max-height:200px;border-radius:4px;cursor:pointer;" /></div>`;
     if (p.caption) mediaHtml += `<div class="wa-msg-caption">${esc(p.caption)}</div>`;
   } else if (p.mediaType === "audio" && p.mediaFile) {
-    mediaHtml = `<div class="wa-msg-media"><audio controls preload="none" src="/api/whatsapp/media/${esc(p.mediaFile)}" style="height:32px;max-width:260px;"></audio></div>`;
+    mediaHtml = `<div class="wa-msg-media"><audio controls preload="none" src="${waMediaUrl(p.mediaFile)}" style="height:32px;max-width:260px;"></audio></div>`;
   } else if (p.mediaType === "video" && p.mediaFile) {
-    mediaHtml = `<div class="wa-msg-media"><video controls preload="none" src="/api/whatsapp/media/${esc(p.mediaFile)}" style="max-width:260px;border-radius:4px;"></video></div>`;
+    mediaHtml = `<div class="wa-msg-media"><video controls preload="none" src="${waMediaUrl(p.mediaFile)}" style="max-width:260px;border-radius:4px;"></video></div>`;
     if (p.caption) mediaHtml += `<div class="wa-msg-caption">${esc(p.caption)}</div>`;
   } else if (p.mediaType === "document" && p.mediaFile) {
-    mediaHtml = `<div class="wa-msg-media"><a href="/api/whatsapp/media/${esc(p.mediaFile)}" target="_blank" class="wa-btn">📄 ${esc(p.caption || p.mediaFile)}</a></div>`;
+    mediaHtml = `<div class="wa-msg-media"><a href="${waMediaUrl(p.mediaFile)}" target="_blank" class="wa-btn">📄 ${esc(p.caption || p.mediaFile)}</a></div>`;
   }
   el.innerHTML = `
     <div class="wa-msg-bubble">
@@ -1521,7 +1536,10 @@ function updateWhatsAppStatus(status, phone) {
     el.textContent = status;
     el.style.color = status === "conectado" ? "var(--neon-green)" : "var(--text-muted)";
   }
-  if (phoneEl) phoneEl.textContent = phone ?? "—";
+  if (phoneEl) {
+    phoneEl.textContent = phone ?? "—";
+    phoneEl.title = phone ?? "";
+  }
   if (status === "conectado") {
     const wrap = $("#wa-qr-wrap");
     if (wrap) wrap.style.display = "none";
@@ -1583,11 +1601,13 @@ function selectTelegramConversation(chatId) {
   renderTelegramContacts(groups);
   const g = groups.find((x) => x.chatId === chatId);
   if (!g) return;
-  $("#tg-chat-header").textContent = g.name;
+  $("#tg-chat-header-title").textContent = g.name;
   renderTelegramMessages(g.messages);
   $("#tg-reply-bar").style.display = "flex";
   setupTelegramReplySend(chatId);
+  $("#tg-layout")?.classList.add("conversation-open");
 }
+$("#tg-back-btn")?.addEventListener("click", () => $("#tg-layout")?.classList.remove("conversation-open"));
 
 function renderTelegramMessages(msgs) {
   const el = $("#tg-messages");
@@ -1668,7 +1688,10 @@ function updateTelegramStatus(status, username) {
     el.textContent = status;
     el.style.color = status === "conectado" ? "var(--neon-green)" : "var(--text-muted)";
   }
-  if (userEl) userEl.textContent = username ?? "—";
+  if (userEl) {
+    userEl.textContent = username ?? "—";
+    userEl.title = username ?? "";
+  }
 }
 
 boot();
