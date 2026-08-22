@@ -38,12 +38,24 @@ export class WsHub {
   private clients = new Set<Duplex>();
   private server: ReturnType<typeof createServer>;
 
-  constructor(server: ReturnType<typeof createServer>) {
+  /**
+   * `token`, se fornecido, exige `?token=` na URL de conexão — o handshake WS
+   * do browser não permite headers customizados, então o Bearer usado no
+   * fetch() não se aplica aqui. Sem isso, qualquer cliente que alcançasse a
+   * porta recebia todos os broadcasts (chat, custos, passos do grafo) mesmo
+   * com ASSISTENTE_OS_DAEMON_TOKEN configurado.
+   */
+  constructor(server: ReturnType<typeof createServer>, token?: string) {
     this.server = server;
     server.on("upgrade", (req, socket) => {
       const key = req.headers["sec-websocket-key"];
       if (typeof key !== "string" || req.headers["sec-websocket-version"] !== "13") {
         socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      if (token && !isWsAuthorized(req, token)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
       }
@@ -139,7 +151,9 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
   const { port = 4310, home, host = "127.0.0.1" } = options;
   const token = options.token ?? process.env.ASSISTENTE_OS_DAEMON_TOKEN;
   if (!isLoopback(host) && !token) {
-    logger.warn("AVISO: Daemon escutando fora de localhost sem ASSISTENTE_OS_DAEMON_TOKEN configurado. Certifique-se de que está protegido por um proxy/tunnel.");
+    throw new Error(
+      `Recusando iniciar: host="${host}" não é loopback e ASSISTENTE_OS_DAEMON_TOKEN não está configurado — o daemon ficaria exposto sem autenticação. Configure o token ou restrinja host para 127.0.0.1.`,
+    );
   }
   const startupConfig = loadConfig({ home });
 
@@ -172,7 +186,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
   });
-  const hub = new WsHub(server);
+  const hub = new WsHub(server, token);
 
   // Run migrations in background (non-blocking)
   runMigrationsWithRetry().catch((err) => {
@@ -367,12 +381,17 @@ const MIME: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+// Arquivos estáticos na raiz que o browser busca sozinho (sem header Authorization
+// customizado) — precisam ficar fora do middleware de Bearer token, senão o
+// manifest e o service worker nunca carregam e a instalação como PWA quebra.
+const PUBLIC_ROOT_FILES = new Set(["/manifest.json", "/sw.js"]);
+
 /** Serve arquivo estático da interface web (index.html em /, assets sob /assets). */
 function serveStatic(req: IncomingMessage, res: ServerResponse, webDir: string): boolean {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
   const url = new URL(req.url ?? "/", "http://localhost");
   const pathname = url.pathname;
-  if (!pathname.startsWith("/assets/") && pathname !== "/") return false;
+  if (!pathname.startsWith("/assets/") && pathname !== "/" && !PUBLIC_ROOT_FILES.has(pathname)) return false;
   const rel = pathname === "/" ? "index.html" : pathname.slice(1);
   const target = normalize(resolve(webDir, rel));
   const rootPrefix = webDir.endsWith(sep) ? webDir : webDir + sep;
@@ -423,7 +442,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
 
   // Exige Bearer token quando ASSISTENTE_OS_DAEMON_TOKEN está configurado.
   // /health fica público (infra/monitoramento); demais rotas exigem o token.
-  if (token && path !== "/health" && !isAuthorized(req, token)) {
+  if (token && path !== "/health" && !isAuthorized(req, token, path)) {
     sendJson(res, 401, { error: "não autorizado" });
     return;
   }
@@ -446,10 +465,29 @@ function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
-function isAuthorized(req: IncomingMessage, token: string): boolean {
+function isAuthorized(req: IncomingMessage, token: string, path: string): boolean {
   const auth = req.headers.authorization;
-  if (typeof auth !== "string" || !auth.startsWith("Bearer ")) return false;
-  const provided = Buffer.from(auth.slice(7), "utf8");
+  if (typeof auth === "string" && auth.startsWith("Bearer ")) {
+    const provided = Buffer.from(auth.slice(7), "utf8");
+    const expected = Buffer.from(token, "utf8");
+    if (provided.length === expected.length && timingSafeEqual(provided, expected)) return true;
+  }
+  // <img>/<audio>/<video> não conseguem mandar Authorization customizado —
+  // aceita o token via query string só pra rotas de mídia (não globalmente,
+  // pra não vazar o token no log de "incoming request" de toda requisição).
+  if (path.includes("/media/")) {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const provided = Buffer.from(url.searchParams.get("token") ?? "", "utf8");
+    const expected = Buffer.from(token, "utf8");
+    if (provided.length === expected.length && timingSafeEqual(provided, expected)) return true;
+  }
+  return false;
+}
+
+/** Equivalente a isAuthorized() para o handshake WS, que não permite headers customizados. */
+function isWsAuthorized(req: IncomingMessage, token: string): boolean {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const provided = Buffer.from(url.searchParams.get("token") ?? "", "utf8");
   const expected = Buffer.from(token, "utf8");
   return provided.length === expected.length && timingSafeEqual(provided, expected);
 }

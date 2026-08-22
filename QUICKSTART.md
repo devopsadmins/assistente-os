@@ -244,7 +244,15 @@ curl http://127.0.0.1:4310/health
 
 ### Acesso remoto (Cloudflare Tunnel)
 
+O `docker compose` lê `TUNNEL_TOKEN` de `.env` na raiz do repo — que deve ser
+um symlink pro `.env` real da instalação (`~/.assistant-os/.env`), pra cada
+clone/máquina usar suas próprias credenciais sem nada de secreto no git:
+
 ```bash
+# Setup (uma vez por clone)
+ln -s ~/.assistant-os/.env .env
+echo "TUNNEL_TOKEN=<seu token do Cloudflare Zero Trust>" >> ~/.assistant-os/.env
+
 # Via Docker Compose
 docker compose up -d tunnel
 

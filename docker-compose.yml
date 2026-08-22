@@ -49,7 +49,14 @@ services:
     restart: unless-stopped
     command: tunnel run
     environment:
-      - TUNNEL_TOKEN=eyJhIjoiMzgwMDE2MjU4M2YyMzk2NjM1MjNkNDNhNDUxMTZiYTYiLCJ0IjoiMGYzZWQ4NGEtN2NjNC00MTE4LTk1MDktNzM5MjY0NjE2MjI1IiwicyI6ImdZRldsYTRMVHlDWUFrSnNIdjQvQ2swamk2KzhFdlpZaWFCQ2JVelA0azdyVWRSeTBtN3BObnhwTEw1Ty9rejJZLzg1RUc4Z296Unp5ZmJOWk1MWFJ3PT0ifQ==
+      # Nunca hardcoded aqui — o token anterior estava em texto plano e
+      # precisou ser rotacionado. O `docker compose` só lê .env do diretório
+      # do projeto, então .env aqui na raiz é um symlink pro perfil real da
+      # instalação (~/.assistant-os/.env, mesmo arquivo que o daemon usa) —
+      # é o que permite distribuir este repo em várias máquinas, cada uma
+      # com suas próprias credenciais. Setup (uma vez por clone):
+      #   ln -s ~/.assistant-os/.env .env
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:?defina TUNNEL_TOKEN em ~/.assistant-os/.env (veja o symlink .env desta pasta)}
     depends_on:
       - daemon
 
