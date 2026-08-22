@@ -1,0 +1,58 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img "Assistente OS" [ref=e5]
+      - heading ">_ Assistente OS" [level=1] [ref=e7]
+    - button "Menu" [ref=e8] [cursor=pointer]
+  - complementary [ref=e11]:
+    - generic [ref=e12]:
+      - img "Assistente OS" [ref=e13]
+      - generic [ref=e14]:
+        - heading ">_ Assistente OS" [level=1] [ref=e15]
+        - generic [ref=e16]: online
+    - generic [ref=e17]:
+      - generic [ref=e18]: SOULS
+      - searchbox "buscar soul…" [ref=e21]
+    - list [ref=e22]
+    - generic [ref=e23]:
+      - generic [ref=e24]: "daemon: assistente-os · 14 souls"
+      - generic [ref=e25]: "ws: on"
+      - button "🔑" [ref=e26] [cursor=pointer]
+  - main [ref=e27]:
+    - navigation [ref=e28]:
+      - button "C&C Node" [ref=e29] [cursor=pointer]
+      - button "Chat" [ref=e32] [cursor=pointer]
+      - button "Memória" [ref=e35] [cursor=pointer]
+      - button "Grafo" [ref=e38] [cursor=pointer]
+      - button "LangGraph" [ref=e41] [cursor=pointer]
+      - button "Buffer" [ref=e44] [cursor=pointer]
+      - button "Motores LLM" [ref=e47] [cursor=pointer]
+      - button "MCP" [ref=e50] [cursor=pointer]
+      - button "WhatsApp" [ref=e53] [cursor=pointer]
+      - button "Telegram" [ref=e56] [cursor=pointer]
+      - button "Telemetria" [ref=e58] [cursor=pointer]
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - generic [ref=e63]: Command & Control · Almas do Acervo
+        - heading "▸ Consciências em serviço" [level=2] [ref=e64]:
+          - text: ▸ Consciências
+          - generic [ref=e65]: em serviço
+        - generic [ref=e66]: Gerencie agentes (almas), sessões e memórias persistentes.Cada alma é um perfil vivo de conhecimento.
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - generic [ref=e69]: ALMAS / AGENTES
+          - generic [ref=e70]: "0"
+        - generic [ref=e71]:
+          - generic [ref=e72]: SESSÕES TOTAIS
+          - generic [ref=e73]: —
+        - generic [ref=e74]:
+          - generic [ref=e75]: ALMA ATIVA
+          - generic [ref=e76]: —
+        - generic [ref=e77]:
+          - generic [ref=e78]: MOTOR ATIVO
+          - generic [ref=e79]: soul
+      - generic [ref=e82]:
+        - button "TODAS" [ref=e83] [cursor=pointer]
+        - button "ATIVA" [ref=e84] [cursor=pointer]
+        - button "INATIVAS" [ref=e85] [cursor=pointer]
+    - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸

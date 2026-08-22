@@ -1,0 +1,18 @@
+[     141ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/manifest.json:0
+[     142ms] [ERROR] Manifest fetch from http://127.0.0.1:4310/manifest.json failed, code 401 @ http://127.0.0.1:4310/:0
+[     368ms] [ERROR] A bad HTTP response code (401) was received when fetching the script. @ :0
+[     545ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/souls:0
+[     545ms] [ERROR] Falha ao registrar SW: TypeError: Failed to register a ServiceWorker for scope ('http://127.0.0.1:4310/') with script ('http://127.0.0.1:4310/sw.js'): A bad HTTP response code (401) was received when fetching the script. @ http://127.0.0.1:4310/:449
+[     631ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/api/whatsapp/status:0
+[     632ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/api/telegram/status:0
+[     640ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/manifest.json:0
+[     643ms] [ERROR] Manifest fetch from http://127.0.0.1:4310/manifest.json failed, code 401 @ http://127.0.0.1:4310/:0
+[     678ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/router/status:0
+[     678ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/api/whatsapp/messages?limit=200:0
+[     767ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/sessions/stats:0
+[   86333ms] [ERROR] A bad HTTP response code (401) was received when fetching the script. @ :0
+[   86352ms] [ERROR] Falha ao registrar SW: TypeError: Failed to register a ServiceWorker for scope ('http://127.0.0.1:4310/') with script ('http://127.0.0.1:4310/sw.js'): A bad HTTP response code (401) was received when fetching the script. @ http://127.0.0.1:4310/:449
+[   86359ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/manifest.json:0
+[   86359ms] [ERROR] Manifest fetch from http://127.0.0.1:4310/manifest.json failed, code 401 @ http://127.0.0.1:4310/:0
+[   86428ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4310/manifest.json:0
+[   86429ms] [ERROR] Manifest fetch from http://127.0.0.1:4310/manifest.json failed, code 401 @ http://127.0.0.1:4310/:0
