@@ -197,7 +197,12 @@ export async function handleChat(
           baseUrl = baseUrl.replace("host.docker.internal", "192.168.65.254");
         }
 
-        const ollamaModel = (requestedModel ?? decision.target.model).replace(/^openai\//, "");
+        // resolveTarget() (core/router.ts) prefixa o model com "ollama/" de
+        // propósito — é a sintaxe que o opencode espera pro provider "ollama"
+        // customizado no opencode.jsonc. Mas aqui a chamada é direta pro
+        // /api/chat do Ollama via fetch, sem passar pelo opencode — Ollama
+        // não entende esse prefixo (nem "openai/"), só o nome puro do model.
+        const ollamaModel = (requestedModel ?? decision.target.model).replace(/^(ollama|openai)\//, "");
         result = await ollamaChat(
           baseUrl,
           {
