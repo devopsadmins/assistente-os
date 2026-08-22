@@ -415,7 +415,9 @@ async function loadBuffer() {
   }
   $("#buffer-box").innerHTML = `<span class="muted">lendo…</span>`;
   try {
-    const b = await api(`/souls/${encodeURIComponent(state.active)}/buffer`);
+    const currentPrompt = $("#chat-input")?.value?.trim() ?? "";
+    const qs = currentPrompt ? `?prompt=${encodeURIComponent(currentPrompt)}` : "";
+    const b = await api(`/souls/${encodeURIComponent(state.active)}/buffer${qs}`);
     const nonEmpty = (b.files || []).filter((f) => f.chars > 0);
     const buf = [];
     buf.push(`
