@@ -16,13 +16,21 @@ import { RunnableSequence } from "@langchain/core/runnables";
 import type { StructuredTool } from "@langchain/core/tools";
 import { runRagChain } from "./rag-chain.js";
 import { AgentState, type AgentStateType } from "./agent-state.js";
-import type { Pool } from "@assistente-os/core";
+import { loadConfig, type Pool } from "@assistente-os/core";
 
 export type { AgentStateType };
 
+/**
+ * Antes lia process.env.OLLAMA_URL/OLLAMA_MODEL direto, com um default
+ * hardcoded ("qwen2.5:latest") que não existe no Ollama local (só
+ * qwen2.5-coder:3b está puxado) — todo turno de LangGraph terminava em
+ * 404 MODEL_NOT_FOUND. Usa a config canônica (mesma de todo o resto do
+ * sistema) em vez de reinventar um terceiro par de env vars/defaults.
+ */
 function createLLM(tools?: StructuredTool[]) {
-  const baseUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434/v1";
-  const modelName = process.env.OLLAMA_MODEL || "qwen2.5:latest";
+  const config = loadConfig({});
+  const baseUrl = `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
+  const modelName = config.ollamaChatModel;
   const llm = new ChatOpenAI({
     modelName,
     apiKey: process.env.OPENAI_API_KEY || "ollama",
@@ -249,9 +257,32 @@ export async function* runAgentStream(
 
   const config = { configurable: { thread_id: threadId ?? `soul-${soul}` } };
 
-  for await (const step of graph.stream(initialState, config)) {
-    const node = Object.keys(step)[0] ?? "unknown";
-    const state = (step as Record<string, AgentStateType>)[node] ?? initialState;
+  // graph.stream() retorna uma Promise<IterableReadableStream>, não o
+  // stream diretamente — sem o await, for-await tentava iterar a própria
+  // Promise (que não é async-iterable) e falhava sempre, tornando esta
+  // função inutilizável em qualquer chamada real.
+  //
+  // O streamMode padrão do LangGraph.js é "updates": cada passo do stream
+  // traz só o retorno PARCIAL do nó que rodou (ex.: { context: "..." } do
+  // node "retrieve", sem `messages`) — mas langgraph-runner.ts assume o
+  // estado completo a cada passo (event.state.messages.length), o que
+  // quebrava com "Cannot read properties of undefined (reading 'length')"
+  // assim que o primeiro passo parcial chegava. Em vez de depender do modo
+  // multi-stream ["updates","values"] do LangGraph (cuja ordem de entrega
+  // dos dois streams não é algo que eu queira assumir sem testar), a
+  // atualização parcial de cada passo é mesclada manualmente no estado
+  // acumulado aqui, espelhando os reducers de agent-state.ts (messages
+  // concatena, os demais campos sobrescrevem).
+  const stream = await graph.stream(initialState, config);
+  let state: AgentStateType = { ...initialState };
+  for await (const step of stream) {
+    const node = Object.keys(step as object)[0] ?? "unknown";
+    const partial = ((step as Record<string, Partial<AgentStateType>>)[node] ?? {}) as Partial<AgentStateType>;
+    state = {
+      ...state,
+      ...partial,
+      messages: partial.messages ? [...state.messages, ...partial.messages] : state.messages,
+    };
     yield { node, state, ts: Date.now() };
   }
 }

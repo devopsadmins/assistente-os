@@ -14,7 +14,7 @@ import type { Embedder } from "./embedders.js";
 import { search } from "./indexer.js";
 import { langchainTemplates } from "./prompt-templates.js";
 import { getEmbedder } from "./embedder-provider.js";
-import type { Pool } from "@assistente-os/core";
+import { loadConfig, type Pool } from "@assistente-os/core";
 
 export interface RagChunk {
   doc: string;
@@ -38,9 +38,15 @@ export interface RagContext {
   hasRelevantDocs: boolean;
 }
 
+/**
+ * Antes lia process.env.OLLAMA_URL/OLLAMA_MODEL direto com um default
+ * ("qwen2.5:latest") que não existe no Ollama local — usa a config
+ * canônica (mesma do resto do sistema) em vez de reinventar env vars.
+ */
 function createLLM() {
-  const baseUrl = process.env.OLLAMA_URL || "http://127.0.0.1:11434/v1";
-  const modelName = process.env.OLLAMA_MODEL || "qwen2.5:latest";
+  const config = loadConfig({});
+  const baseUrl = `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
+  const modelName = config.ollamaChatModel;
   return new ChatOpenAI({
     modelName,
     apiKey: process.env.OPENAI_API_KEY || "ollama",
@@ -222,7 +228,7 @@ export async function runRagChain(
   return {
     answer,
     sources: documents,
-    model: process.env.OLLAMA_MODEL || "qwen2.5:latest",
+    model: loadConfig({}).ollamaChatModel,
     query,
   };
 }

@@ -153,7 +153,11 @@ function connectWs() {
         loadMemoryStatus();
       }
       if (msg.type === "graph.step") {
-        renderLangGraphStep(msg);
+        // Só atualiza a visualização se o passo for da alma que está sendo
+        // exibida agora — sem isso, qualquer alma rodando LangGraph em
+        // paralelo (outra sessão, WhatsApp, etc.) contaminava o grafo de
+        // quem estava olhando uma alma diferente.
+        if (msg.soul === state.active) renderLangGraphStep(msg);
       }
       if (msg.type === "whatsapp.qr") {
         renderWhatsAppQR(msg.qr);
@@ -217,6 +221,7 @@ function selectSoul(id) {
   renderSouls();
   if ($("#tab-memory").classList.contains("active")) loadMemoryStatus();
   if ($("#tab-graph").classList.contains("active")) loadGraph();
+  if ($("#tab-langgraph").classList.contains("active")) loadLangGraph();
   toggleMenu(true);
 }
 
@@ -692,6 +697,11 @@ function renderLangGraphSvg(mode, activeNode) {
 }
 
 async function loadLangGraph() {
+  // Sempre limpa passos/ferramentas da alma anterior — sem isso, ao trocar
+  // de alma, o painel continuava mostrando o histórico de execução de quem
+  // estava selecionado antes, misturando dados de almas diferentes.
+  $("#lg-steps").innerHTML = "";
+  $("#lg-tools").textContent = "Nenhuma ferramenta executada";
   if (!state.active) {
     ["#langgraph-svg", "#lg-steps", "#lg-tools"].forEach((sel) => ($(sel).innerHTML = ""));
     $("#langgraph-status").textContent = "Selecione uma soul";

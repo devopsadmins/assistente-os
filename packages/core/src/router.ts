@@ -30,6 +30,21 @@ export interface RouteDecision {
  * colaterais (por exemplo, um prompt que pode alterar arquivos). `route()`
  * continua existindo para sondas que são comprovadamente seguras de repetir.
  */
+/** Grava uma escolha de roteador no histórico (kernel.db), imutável. */
+export async function recordRouterSelection(
+  pool: Pool,
+  soul: Soul,
+  target: RouteTarget,
+  reason: string,
+  status: "selected" | "ok" | "fail" = "selected",
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO router_history (ts, soul, tier, provider, model, status, latency_ms, reason)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, status, null, reason],
+  );
+}
+
 export async function selectRoute(
   pool: Pool,
   config: AssistenteOsConfig,
@@ -38,11 +53,7 @@ export async function selectRoute(
 ): Promise<RouteDecision> {
   const tier = tiers[0] ?? "soul";
   const target = resolveTarget(config, soul, tier);
-  await pool.query(
-    `INSERT INTO router_history (ts, soul, tier, provider, model, status, latency_ms, reason)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, "selected", null, "seleção sem sonda"],
-  );
+  await recordRouterSelection(pool, soul, target, "seleção sem sonda");
   return { target };
 }
 

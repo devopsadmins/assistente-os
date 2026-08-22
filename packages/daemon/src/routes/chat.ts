@@ -14,6 +14,8 @@ import {
   logger,
   sanitizeUserPrompt,
   sanitizeLLMResponse,
+  resolveTarget,
+  recordRouterSelection,
 } from "@assistente-os/core";
 import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
@@ -174,7 +176,17 @@ export async function handleChat(
       // degrau local não responder; a execução real acontece uma única vez, abaixo,
       // no degrau vencedor.
       const orchDecision = await routeFromPrompt(pool, config, soul, promptSanitized.sanitized, makeLocalFallbackProbe(config.ollamaUrl), explicitMode);
-      const decision = orchDecision.route;
+      // tier "langgraph" pedido explicitamente pela UI/API força o degrau —
+      // o roteador automático (routeFromPrompt) nunca escolhe "langgraph"
+      // sozinho (não é um dos tiers configurados em config.routerTiers), então
+      // sem este override o pedido do usuário era ignorado e a resposta ainda
+      // rodava no degrau normal (ollama/zen/soul).
+      let decision = orchDecision.route;
+      if (requestedTier === "langgraph") {
+        const forcedTarget = resolveTarget(config, soul, "langgraph");
+        await recordRouterSelection(pool, soul, forcedTarget, "tier explícito do usuário: langgraph");
+        decision = { target: forcedTarget };
+      }
       const model = requestedModel ?? orchDecision.model;
       const tier = requestedTier ?? decision.target.tier;
       const startedAt = Date.now();
