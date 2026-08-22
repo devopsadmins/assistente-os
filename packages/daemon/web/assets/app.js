@@ -1348,7 +1348,7 @@ async function waAddKnowledge(eventId) {
   const payload = p ? (typeof p.payload === "string" ? JSON.parse(p.payload) : (p.payload || {})) : {};
   if (title) title.textContent = "Adicionar à alma";
   if (context) context.textContent = payload.body || "";
-  textarea.value = "";
+  textarea.value = payload.body || "";
   textarea.placeholder = "Observação para adicionar ao grafo...";
   textarea.focus();
   if (!emojiBar.dataset.loaded) {
@@ -1376,7 +1376,7 @@ async function waAddKnowledge(eventId) {
   if (emojiBar) emojiBar.style.display = "none";
   const sendHandler = async () => {
     const body = textarea.value.trim();
-    if (!body) return;
+    if (!body) { alert("Escreva algo antes de enviar."); return; }
     const soul = soulSelect?.value || state.active || "main";
     const entity = entityInput?.value?.trim() || "whatsapp";
     overlay.classList.remove("open");
