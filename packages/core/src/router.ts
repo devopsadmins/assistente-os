@@ -23,13 +23,6 @@ export interface RouteDecision {
   reason?: string;
 }
 
-/**
- * Seleciona o primeiro degrau configurado sem executar uma tarefa.
- *
- * Use esta função quando a operação que seguirá a seleção tiver efeitos
- * colaterais (por exemplo, um prompt que pode alterar arquivos). `route()`
- * continua existindo para sondas que são comprovadamente seguras de repetir.
- */
 /** Grava uma escolha de roteador no histórico (kernel.db), imutável. */
 export async function recordRouterSelection(
   pool: Pool,
@@ -45,16 +38,27 @@ export async function recordRouterSelection(
   );
 }
 
+/**
+ * Seleciona um degrau configurado, com sonda opcional e fallback pro próximo
+ * degrau se o atual não responder.
+ *
+ * Sem `probe`, mantém o comportamento histórico (pega o primeiro degrau sem
+ * checar disponibilidade) — é o que `agenda.ts`/`events.ts` querem, já que a
+ * tarefa disparada em seguida tem efeitos colaterais e não deve ser tentada
+ * contra vários provedores. Com `probe`, delega pra `route()` (mesma sonda
+ * barata do modo "pro") — usado pelo chat em modo "fast", que antes escolhia
+ * o degrau "local" incondicionalmente e nunca caía pro próximo se o Ollama
+ * estivesse fora do ar, quebrando o fallback local-first que é a proposta
+ * central do roteador.
+ */
 export async function selectRoute(
   pool: Pool,
   config: AssistenteOsConfig,
   soul: Soul,
   tiers: string[] = config.routerTiers,
+  probe: RouterProbe = async () => ({ ok: true }),
 ): Promise<RouteDecision> {
-  const tier = tiers[0] ?? "soul";
-  const target = resolveTarget(config, soul, tier);
-  await recordRouterSelection(pool, soul, target, "seleção sem sonda");
-  return { target };
+  return route(pool, config, soul, probe, tiers);
 }
 
 /**

@@ -42,6 +42,7 @@ export class TelegramChannel extends EventEmitter {
   private lastUpdateId = 0;
   private consecutiveFailures = 0;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollAbort: AbortController | null = null;
   private pendingResponses = new Map<number, { chatId: string; ts: number }>();
   private static readonly PENDING_RESPONSE_TTL_MS = 15 * 60 * 1000;
 
@@ -97,6 +98,12 @@ export class TelegramChannel extends EventEmitter {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
+    // Sem isso, um getUpdates em voo (long-poll de até 30s) ficava aberto até
+    // o Telegram expirar por conta própria — um restart no meio de um poll
+    // deixava o slot "ocupado" e o processo novo tomava 409 Conflict até
+    // essa janela órfã esgotar sozinha (era exatamente o que via em produção).
+    this.pollAbort?.abort();
+    this.pollAbort = null;
     this.connected = false;
     this.username = undefined;
     this.jid = undefined;
@@ -140,6 +147,8 @@ export class TelegramChannel extends EventEmitter {
   }
 
   private async doPoll(): Promise<void> {
+    const abort = new AbortController();
+    this.pollAbort = abort;
     try {
       const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getUpdates`;
       const params = new URLSearchParams({
@@ -149,7 +158,7 @@ export class TelegramChannel extends EventEmitter {
       });
       const fullUrl = `${url}?${params.toString()}`;
 
-      const resp = await fetch(fullUrl);
+      const resp = await fetch(fullUrl, { signal: abort.signal });
       if (!resp.ok) {
         const errTxt = await resp.text();
         // 409 Conflict: outro processo está usando o mesmo offset, resetamos
@@ -180,6 +189,7 @@ export class TelegramChannel extends EventEmitter {
 
       this.pollTimer = setTimeout(() => this.doPoll(), POLLING_INTERVAL_MS);
     } catch (err) {
+      if (abort.signal.aborted) return; // stop() chamado de propósito — não reagenda
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error("[telegram] Erro no polling:", errorMsg);
       this.consecutiveFailures++;

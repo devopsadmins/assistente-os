@@ -146,8 +146,10 @@ export async function routeWithMode(
   let routeDecision: RouteDecision;
 
   if (modeSelection === "fast") {
-    // Fast: sonda barata, sem probe real
-    routeDecision = await selectRoute(pool, config, soul);
+    // Fast: mesma sonda barata do pro mode, mas ainda cai pro próximo degrau
+    // se o local não responder (selectRoute() delega pra route() quando
+    // recebe um probe — sem isso, fast mode nunca tinha fallback de verdade).
+    routeDecision = await selectRoute(pool, config, soul, config.routerTiers, probe);
   } else {
     // Pro: roteamento completo com probe
     routeDecision = await route(pool, config, soul, probe);
@@ -180,7 +182,7 @@ export async function routeFromPrompt(
   let routeDecision: RouteDecision;
 
   if (mode === "fast") {
-    routeDecision = await selectRoute(pool, config, soul);
+    routeDecision = await selectRoute(pool, config, soul, config.routerTiers, probe);
   } else {
     routeDecision = await route(pool, config, soul, probe);
   }

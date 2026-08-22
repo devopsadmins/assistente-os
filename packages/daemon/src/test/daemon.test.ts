@@ -107,14 +107,16 @@ test("daemon: chat executa o prompt uma única vez e registra a chamada", async 
     const body = (await res.json()) as { ok: boolean; stdout: string; tier: string };
     assert.equal(body.ok, true);
     assert.equal(body.stdout, "resposta");
-    assert.equal(body.tier, "local");
+    // OLLAMA_URL aponta pra porta sem listener: o roteador sonda, o local
+    // falha e cai pro degrau "zen" (que aqui é servido pelo run() injetado).
+    assert.equal(body.tier, "zen");
 
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
     const entries = await recentCalls(pool, "main");
     assert.equal(entries.length, 1);
     assert.equal(entries[0]?.status, "ok");
-    assert.equal(entries[0]?.provider, "ollama");
+    assert.equal(entries[0]?.provider, "zen");
   } finally {
     delete process.env.OLLAMA_URL;
     await daemon.close();
@@ -122,14 +124,15 @@ test("daemon: chat executa o prompt uma única vez e registra a chamada", async 
   }
 });
 
-test("daemon: token protege todas as rotas quando configurado", async () => {
+test("daemon: token protege as rotas, exceto /health (público de propósito p/ monitoramento)", async () => {
   const { home, cleanup } = await tempHome();
   const daemon = await startDaemon({ port: 0, home, token: "segredo-de-teste" });
   try {
     const base = `http://127.0.0.1:${daemon.port}`;
-    assert.equal((await fetch(`${base}/health`)).status, 401);
+    assert.equal((await fetch(`${base}/health`)).status, 200);
+    assert.equal((await fetch(`${base}/souls`)).status, 401);
     assert.equal(
-      (await fetch(`${base}/health`, { headers: { authorization: "Bearer segredo-de-teste" } })).status,
+      (await fetch(`${base}/souls`, { headers: { authorization: "Bearer segredo-de-teste" } })).status,
       200,
     );
   } finally {
@@ -192,6 +195,11 @@ test("daemon: chat retorna limite e segunda mensagem bate no maxTurns", async ()
   const { home, cleanup } = await tempHome();
   createSoul(home, "limits", { name: "limits", maxTurns: 1 });
   writeFileSync(join(home, "souls", "limits", "perfil.md"), "# limits\n\nsoul de teste\n");
+  // Sem isso, o roteador (com sonda ativa) escolhe "local" de verdade quando
+  // há um Ollama real acessível no ambiente — o run() injetado (que simula o
+  // degrau "zen") nunca seria chamado, e o teste ficaria dependente de o
+  // Ollama do ambiente estar fora do ar ou não.
+  process.env.OLLAMA_URL = "http://127.0.0.1:1";
   let calls = 0;
   const daemon = await startDaemon({
     port: 0,
@@ -224,6 +232,7 @@ test("daemon: chat retorna limite e segunda mensagem bate no maxTurns", async ()
     assert.equal(secondBody.maxTurns, 1);
     assert.equal(calls, 1);
   } finally {
+    delete process.env.OLLAMA_URL;
     await daemon.close();
     await cleanup();
   }

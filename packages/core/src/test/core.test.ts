@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addAgendaItem, claimDueAgenda, finishAgendaItem, getAgendaItems } from "../kernelDb.js";
 import { recordCostCall, sumCostBySoul, recentCalls } from "../costs.js";
-import { route, resolveTarget, selectRoute } from "../router.js";
+import { route, resolveTarget, selectRoute, type RouterProbe } from "../router.js";
 import { createSoul, listSouls, getSoul, setActiveSoul, getActiveSoul, ensureSoulFiles } from "../souls.js";
 import { loadConfig } from "../config.js";
 import { createTestSchema } from "./pgTestHelper.js";
@@ -109,16 +109,33 @@ test("resolveTarget monta target correto por degrau", () => {
   assert.deepEqual(resolveTarget(cfg, soul, "soul"), { tier: "soul", provider: "zen-s1", model: "m1" });
 });
 
-test("selectRoute registra seleção sem executar sonda", async () => {
+test("selectRoute sem probe pega o primeiro degrau sem checar disponibilidade", async () => {
   const testDb = await createTestSchema();
   try {
     const cfg = loadConfig({ home: tempHome("select-route").dir, routerTiers: ["zen", "soul"] });
     const soul = { id: "s1", dir: "x", config: { name: "s1" } };
+    // Sem probe explícito, usa o default "sempre ok" — mesmo comportamento
+    // histórico (sem sonda de verdade), preservado pra quem chama selectRoute
+    // sem probe (agenda.ts/events.ts: a tarefa disparada em seguida tem
+    // efeitos colaterais, não deve ser tentada contra vários provedores).
     const decision = await selectRoute(testDb.pool, cfg, soul);
     assert.equal(decision.target.tier, "zen");
-    const { rows } = await testDb.pool.query<{ status: string; reason: string }>("SELECT status, reason FROM router_history");
-    assert.equal(rows[0]?.status, "selected");
-    assert.equal(rows[0]?.reason, "seleção sem sonda");
+    const { rows } = await testDb.pool.query<{ status: string; reason: string | null }>("SELECT status, reason FROM router_history");
+    assert.equal(rows[0]?.status, "ok");
+    assert.equal(rows[0]?.reason, null);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("selectRoute com probe cai pro próximo degrau se o atual falhar", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const cfg = loadConfig({ home: tempHome("select-route-probe").dir, routerTiers: ["local", "zen"] });
+    const soul = { id: "s1", dir: "x", config: { name: "s1" } };
+    const probe: RouterProbe = async (target) => (target.provider === "ollama" ? { ok: false, reason: "indisponível" } : { ok: true });
+    const decision = await selectRoute(testDb.pool, cfg, soul, cfg.routerTiers, probe);
+    assert.equal(decision.target.tier, "zen");
   } finally {
     await testDb.cleanup();
   }
