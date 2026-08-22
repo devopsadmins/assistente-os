@@ -295,16 +295,23 @@ ${rawTranscript}`;
   const meetingPath = join(meetingDir, "sessoes", todayISODate() + "-meeting.md");
   writeFileSync(meetingPath, markdown, "utf8");
 
-  // 4. Trigger reindex RAG (best-effort)
+  // 4. Persistir no grafo da soul (dispara extração de entidades/relações
+  // em background via addObservation — ver packages/memory/src/graph.ts).
   try {
-    const { getPool } = await import("@assistente-os/core");
-    const pool = getPool(
-      "postgres://assistente_os:assistente_os@localhost:5432/assistente_os"
-    );
-    await import("@assistente-os/memory");
+    const { getPool, loadConfig } = await import("@assistente-os/core");
+    const { addObservation } = await import("@assistente-os/memory");
+    const meetingConfig = loadConfig({ home: homeDir });
+    const pool = getPool(meetingConfig.databaseUrl);
+    const summaryParts = [
+      meetingPayload.resumo,
+      ...(meetingPayload.decisoes ?? []),
+    ].filter(Boolean);
+    if (summaryParts.length > 0) {
+      await addObservation(pool, targetSoulId, meetingPayload.fonteArquivo ?? "reuniao", summaryParts.join("\n"), "meeting-ingest");
+    }
   } catch (err) {
     console.debug(
-      "Meeting RAG reindex skipped (offline/fallback):" + (err as Error).message
+      "Meeting: falha ao persistir observação no grafo (non-fatal):" + (err as Error).message
     );
   }
 

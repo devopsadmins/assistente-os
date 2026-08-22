@@ -8,6 +8,7 @@ export * from "./router.js";
 export * from "./migration.js";
 export * from "./webhook.js";
 export * from "./events.js";
+export * from "./entityQueue.js";
 export * from "./sessions.js";
 export * from "./monitors.js";
 export * from "./logger.js";

@@ -214,4 +214,28 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_soul ON agent_checkpoints (soul_id);
     `,
   },
+  {
+    // Fila dedicada para extração de entidades/relações via LLM, disparada a
+    // partir de addObservation() (memory/graph.ts). Não reaproveita `events`
+    // porque processPendingEvents() roda TODO evento pelo pipeline pesado de
+    // agente completo (buildPrompt/selectRoute/run), sem branch por tipo.
+    id: "0007_entity_extraction_queue",
+    sql: `
+      CREATE TABLE IF NOT EXISTS entity_extraction_queue (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        ts TIMESTAMPTZ NOT NULL,
+        soul TEXT NOT NULL,
+        entity_name TEXT NOT NULL,
+        body TEXT NOT NULL,
+        source TEXT,
+        observation_id BIGINT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempt INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        processed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_entity_extraction_queue_status ON entity_extraction_queue (status);
+      CREATE INDEX IF NOT EXISTS idx_entity_extraction_queue_soul ON entity_extraction_queue (soul, ts);
+    `,
+  },
 ];

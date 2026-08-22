@@ -260,10 +260,13 @@ export async function handleMemory(
     const pool = getPool(config.databaseUrl);
     const entityFilter = url.searchParams.get("entity")?.trim() || undefined;
     const qFilter = url.searchParams.get("q")?.trim() || undefined;
+    const entitiesQ = url.searchParams.get("entities_q")?.trim() || undefined;
+    const entitiesKind = url.searchParams.get("entities_kind")?.trim() || undefined;
+    const relationsQ = url.searchParams.get("relations_q")?.trim() || undefined;
     sendJson(res, 200, {
       soul: soul.id,
-      entities: await listEntities(pool, soul.id),
-      relations: await listRelations(pool, soul.id),
+      entities: await listEntities(pool, soul.id, entitiesQ, entitiesKind),
+      relations: await listRelations(pool, soul.id, relationsQ),
       observations: await listObservations(pool, soul.id, entityFilter, qFilter),
     });
     return true;

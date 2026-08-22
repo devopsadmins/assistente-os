@@ -9,6 +9,7 @@ import { browserShutdown } from "./tools/browser.js";
 import { loadConfig, getPool, runMigrations, addEvent, logger } from "@assistente-os/core";
 import { processPendingEvents } from "./events.js";
 import { processDueAgenda } from "./agenda.js";
+import { processEntityExtractionJobs } from "./entityExtraction.js";
 import { checkMonitors } from "./monitors.js";
 import { VoiceHandler } from "./voice.js";
 import { WhatsAppChannel } from "./channels/whatsapp.js";
@@ -300,6 +301,17 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     void processDueAgenda({ home, run: runFn, onDone: onAgendaDone }).catch(() => {});
   }, 30_000);
   agendaTimer.unref?.();
+  const onEntityExtractionDone = (job: { id: number; soul: string; status: string }) => {
+    try {
+      hub.broadcast({ type: "entity_extraction.processed", job });
+    } catch {
+      /* ws opcional */
+    }
+  };
+  const entityExtractionTimer = setInterval(() => {
+    void processEntityExtractionJobs({ home, onDone: onEntityExtractionDone }).catch(() => {});
+  }, 20_000);
+  entityExtractionTimer.unref?.();
   return {
     port: actualPort,
     hub,
@@ -311,6 +323,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
         clearInterval(monitorTimer);
         clearInterval(eventTimer);
         clearInterval(agendaTimer);
+        clearInterval(entityExtractionTimer);
         voiceHandler?.stop();
         void whatsappChannel?.stop();
         void telegramChannel?.stop();

@@ -239,10 +239,32 @@
       <div class="graph-cols">
         <div class="box">
           <h3>Entidades</h3>
+          <form id="graph-entities-filter" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+            <input id="graph-entities-q" type="text" placeholder="buscar nome..." style="flex:1; min-width:100px; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-size:12px;" />
+            <select id="graph-entities-kind" style="padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-size:12px;">
+              <option value="">todos os tipos</option>
+              <option value="person">person</option>
+              <option value="organization">organization</option>
+              <option value="project">project</option>
+              <option value="product">product</option>
+              <option value="decision">decision</option>
+              <option value="deadline">deadline</option>
+              <option value="location">location</option>
+              <option value="document">document</option>
+              <option value="other">other</option>
+            </select>
+            <button type="submit" class="wa-btn" style="font-size:12px;">Filtrar</button>
+            <button type="button" id="graph-entities-clear" class="wa-btn" style="font-size:12px;">Limpar</button>
+          </form>
           <ul id="graph-entities" class="graph-list"></ul>
         </div>
         <div class="box">
           <h3>Relações</h3>
+          <form id="graph-relations-filter" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+            <input id="graph-relations-q" type="text" placeholder="buscar..." style="flex:1; min-width:120px; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-size:12px;" />
+            <button type="submit" class="wa-btn" style="font-size:12px;">Filtrar</button>
+            <button type="button" id="graph-relations-clear" class="wa-btn" style="font-size:12px;">Limpar</button>
+          </form>
           <ul id="graph-relations" class="graph-list"></ul>
         </div>
         <div class="box">

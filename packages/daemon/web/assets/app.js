@@ -546,9 +546,15 @@ async function loadGraph() {
   }
   const q = $("#graph-obs-q")?.value.trim() || "";
   const entity = $("#graph-obs-entity")?.value.trim() || "";
+  const entitiesQ = $("#graph-entities-q")?.value.trim() || "";
+  const entitiesKind = $("#graph-entities-kind")?.value.trim() || "";
+  const relationsQ = $("#graph-relations-q")?.value.trim() || "";
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (entity) params.set("entity", entity);
+  if (entitiesQ) params.set("entities_q", entitiesQ);
+  if (entitiesKind) params.set("entities_kind", entitiesKind);
+  if (relationsQ) params.set("relations_q", relationsQ);
   const qs = params.toString() ? `?${params.toString()}` : "";
   const g = await api(`/souls/${encodeURIComponent(state.active)}/graph${qs}`).catch(() => null);
   if (!g) {
@@ -557,10 +563,10 @@ async function loadGraph() {
   }
   $("#graph-entities").innerHTML = g.entities.length
     ? g.entities.map((en) => `<li><span class="chip">${esc(en.kind)}</span> ${esc(en.name)}</li>`).join("")
-    : `<li class="muted">sem entidades</li>`;
+    : `<li class="muted">${entitiesQ || entitiesKind ? "nenhuma entidade bate com o filtro" : "sem entidades"}</li>`;
   $("#graph-relations").innerHTML = g.relations.length
     ? g.relations.map((r) => `<li>${esc(r.from)} <span class="rel">→ ${esc(r.rel)} →</span> ${esc(r.to)}</li>`).join("")
-    : `<li class="muted">sem relações</li>`;
+    : `<li class="muted">${relationsQ ? "nenhuma relação bate com o filtro" : "sem relações"}</li>`;
   $("#graph-observations").innerHTML = g.observations.length
     ? g.observations
       .map(
@@ -581,6 +587,24 @@ $("#graph-obs-filter")?.addEventListener("submit", (e) => {
 $("#graph-obs-clear")?.addEventListener("click", () => {
   $("#graph-obs-q").value = "";
   $("#graph-obs-entity").value = "";
+  loadGraph();
+});
+
+$("#graph-entities-filter")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  loadGraph();
+});
+$("#graph-entities-clear")?.addEventListener("click", () => {
+  $("#graph-entities-q").value = "";
+  $("#graph-entities-kind").value = "";
+  loadGraph();
+});
+$("#graph-relations-filter")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  loadGraph();
+});
+$("#graph-relations-clear")?.addEventListener("click", () => {
+  $("#graph-relations-q").value = "";
   loadGraph();
 });
 

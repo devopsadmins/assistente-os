@@ -80,6 +80,44 @@ test("grafo: entidades, relações e observações isolados por soul", async () 
   }
 });
 
+test("addObservation: enfileira extração de entidades (corpo longo o suficiente), retorna o id da observação", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const longBody = "Reunião com a empresa Acme sobre o projeto de migração.";
+    const shortBody = "ok";
+
+    const obsId = await addObservation(testDb.pool, "s1", "reuniao", longBody, "whatsapp");
+    assert.equal(typeof obsId, "number");
+    assert.ok(obsId > 0);
+
+    const { rows: queuedLong } = await testDb.pool.query(
+      "SELECT * FROM entity_extraction_queue WHERE soul = $1 AND observation_id = $2",
+      ["s1", obsId],
+    );
+    assert.equal(queuedLong.length, 1);
+    assert.equal(queuedLong[0].status, "pending");
+    assert.equal(queuedLong[0].body, longBody);
+
+    // Corpo curto demais: não enfileira.
+    await addObservation(testDb.pool, "s1", "trivial", shortBody);
+    const { rows: countAfterShort } = await testDb.pool.query(
+      "SELECT COUNT(*) AS c FROM entity_extraction_queue WHERE soul = $1",
+      ["s1"],
+    );
+    assert.equal(Number(countAfterShort[0].c), 1);
+
+    // enqueueExtraction: false suprime mesmo com corpo longo.
+    await addObservation(testDb.pool, "s1", "sem-extracao", longBody, undefined, { enqueueExtraction: false });
+    const { rows: countAfterOptOut } = await testDb.pool.query(
+      "SELECT COUNT(*) AS c FROM entity_extraction_queue WHERE soul = $1",
+      ["s1"],
+    );
+    assert.equal(Number(countAfterOptOut[0].c), 1);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
 test("cosine retorna 0 para vetores incompatíveis e 1 para idênticos", () => {
   assert.equal(cosine([1, 0], [1, 0]), 1);
   assert.equal(cosine([1, 0], [0, 1]), 0);

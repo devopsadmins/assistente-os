@@ -9,4 +9,5 @@ export * from "./agent-workflow.js";
 export * from "./advanced-rag.js";
 export * from "./indexer.js";
 export * from "./graph.js";
+export * from "./entity-extraction.js";
 export * from "./relevance.js";

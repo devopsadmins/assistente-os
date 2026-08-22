@@ -1,4 +1,5 @@
-import type { Pool } from "@assistente-os/core";
+import { enqueueEntityExtraction, type Pool } from "@assistente-os/core";
+import { MIN_BODY_LENGTH_FOR_EXTRACTION } from "./entity-extraction.js";
 
 export interface Entity {
   name: string;
@@ -49,28 +50,75 @@ export async function upsertRelation(
   );
 }
 
-export async function addObservation(pool: Pool, soul: string, entity: string, body: string, source?: string): Promise<void> {
-  await pool.query("INSERT INTO observations (soul, entity_name, body, ts, source) VALUES ($1, $2, $3, $4, $5)", [
-    soul,
-    entity,
-    body,
-    new Date().toISOString(),
-    source ?? null,
-  ]);
+/**
+ * Grava uma observação e, por padrão, enfileira extração de entidades/relações
+ * via LLM em background (packages/memory/src/entity-extraction.ts,
+ * processada por packages/daemon/src/entityExtraction.ts). Esse é o ponto
+ * único de disparo — todo ponto de entrada atual (modal "Adicionar à alma",
+ * tools observation_add) e qualquer futuro que passe a chamar addObservation
+ * ganha extração automaticamente, sem precisar religar em cada lugar novo.
+ *
+ * `options.enqueueExtraction: false` existe para um futuro script de
+ * importação em massa não afogar a fila.
+ */
+export async function addObservation(
+  pool: Pool,
+  soul: string,
+  entity: string,
+  body: string,
+  source?: string,
+  options?: { enqueueExtraction?: boolean },
+): Promise<number> {
+  const { rows } = await pool.query<{ id: string }>(
+    "INSERT INTO observations (soul, entity_name, body, ts, source) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+    [soul, entity, body, new Date().toISOString(), source ?? null],
+  );
+  const observationId = Number(rows[0]!.id);
+
+  const shouldEnqueue = options?.enqueueExtraction ?? true;
+  if (shouldEnqueue && body.trim().length >= MIN_BODY_LENGTH_FOR_EXTRACTION) {
+    try {
+      await enqueueEntityExtraction(pool, soul, entity, body, source ?? null, observationId);
+    } catch (err) {
+      console.error(`[graph] Falha ao enfileirar extração de entidades (non-fatal): ${(err as Error).message}`);
+    }
+  }
+
+  return observationId;
 }
 
-export async function listEntities(pool: Pool, soul: string, limit = 100): Promise<Entity[]> {
+/** Lista entidades da soul, com filtro opcional por nome (`q`, ILIKE) e/ou `kind` exato. */
+export async function listEntities(pool: Pool, soul: string, q?: string, kind?: string, limit = 100): Promise<Entity[]> {
+  const conditions = ["soul = $1"];
+  const params: unknown[] = [soul];
+  if (q) {
+    params.push(`%${q}%`);
+    conditions.push(`name ILIKE $${params.length}`);
+  }
+  if (kind) {
+    params.push(kind);
+    conditions.push(`kind = $${params.length}`);
+  }
+  params.push(limit);
   const { rows } = await pool.query<{ name: string; kind: string; properties: Record<string, unknown> | null }>(
-    "SELECT name, kind, properties FROM entities WHERE soul = $1 ORDER BY name LIMIT $2",
-    [soul, limit],
+    `SELECT name, kind, properties FROM entities WHERE ${conditions.join(" AND ")} ORDER BY name LIMIT $${params.length}`,
+    params,
   );
   return rows.map((r) => ({ name: r.name, kind: r.kind, properties: r.properties }));
 }
 
-export async function listRelations(pool: Pool, soul: string, limit = 200): Promise<Relation[]> {
+/** Lista relações da soul, com filtro opcional de busca textual (`q`) em from/rel/to. */
+export async function listRelations(pool: Pool, soul: string, q?: string, limit = 200): Promise<Relation[]> {
+  const conditions = ["soul = $1"];
+  const params: unknown[] = [soul];
+  if (q) {
+    params.push(`%${q}%`);
+    conditions.push(`(from_name ILIKE $${params.length} OR rel ILIKE $${params.length} OR to_name ILIKE $${params.length})`);
+  }
+  params.push(limit);
   const { rows } = await pool.query<{ from_name: string; rel: string; to_name: string; properties: Record<string, unknown> | null }>(
-    "SELECT from_name, rel, to_name, properties FROM relations WHERE soul = $1 ORDER BY id LIMIT $2",
-    [soul, limit],
+    `SELECT from_name, rel, to_name, properties FROM relations WHERE ${conditions.join(" AND ")} ORDER BY id LIMIT $${params.length}`,
+    params,
   );
   return rows.map((r) => ({ from: r.from_name, rel: r.rel, to: r.to_name, properties: r.properties }));
 }

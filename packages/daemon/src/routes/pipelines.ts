@@ -32,7 +32,6 @@ export async function handlePipelines(
           sendJson(res, 500, { error: "Pipeline failed" });
         }
       });
-      sendJson(res, 202, { status: "queued", message: "Pipeline email iniciada" });
     } catch (err) {
       sendJson(res, 400, { error: "Invalid request" });
     }
@@ -62,7 +61,6 @@ export async function handlePipelines(
           sendJson(res, 500, { error: "Pipeline failed" });
         }
       });
-      sendJson(res, 202, { status: "queued", message: "Pipeline meeting iniciada" });
     } catch (err) {
       sendJson(res, 400, { error: "Invalid request" });
     }
