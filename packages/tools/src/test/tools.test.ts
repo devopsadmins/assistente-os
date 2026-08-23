@@ -374,3 +374,138 @@ test("mcp: spec_grill_plan com soul inexistente retorna erro JSON-RPC", async ()
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+function extractApprovalCode(text: string | null): string | null {
+  if (text === null) return null;
+  const m = text.match(/Código de aprovação: (\d{6})/);
+  return m ? (m[1] ?? null) : null;
+}
+
+/**
+ * Stub de `fetch` para capturar o código de aprovação que `notifyGuardianApproval`
+ * (chamado internamente por proposeRule/resendApprovalCode) envia por Telegram —
+ * o código nunca é devolvido pelas tools MCP ao agente, só chega em claro aqui.
+ */
+async function withCapturedApprovalCode<T>(fn: () => Promise<T>): Promise<{ result: T; code: string | null }> {
+  const originalFetch = globalThis.fetch;
+  process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  process.env.GUARDIAN_APPROVAL_CHAT_ID = "test-chat";
+  let capturedText: string | null = null;
+  globalThis.fetch = (async (_url: unknown, opts?: { body?: string }) => {
+    try {
+      const body = JSON.parse(opts?.body ?? "{}") as { text?: string };
+      capturedText = body.text ?? null;
+    } catch {
+      capturedText = null;
+    }
+    return { ok: true } as Response;
+  }) as typeof fetch;
+  try {
+    const result = await fn();
+    const code = extractApprovalCode(capturedText);
+    return { result, code };
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.GUARDIAN_APPROVAL_CHAT_ID;
+  }
+}
+
+test("mcp: guardian_promote_golden_rule -> guardian_pending_rules não expõe hash; approve exige código correto", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  // guardian_approve_rule usa ASSISTENTE_OS_REPO_ROOT || process.cwd() como
+  // repoRoot pra gravar .opencode/rules/golden-rules.md e AGENTS.md — sem
+  // isolar aqui, o teste escreveria esses arquivos no repo real (cwd de
+  // quem roda `npm test`), não num diretório descartável.
+  const repoRoot = mkdtempSync(join(tmpdir(), "aos-mcp-reporoot-"));
+  const prevRepoRoot = process.env.ASSISTENTE_OS_REPO_ROOT;
+  process.env.ASSISTENTE_OS_REPO_ROOT = repoRoot;
+  try {
+    const { result: proposeRes, code } = await withCapturedApprovalCode(() =>
+      server.handleMessage({
+        jsonrpc: "2.0",
+        id: 25,
+        method: "tools/call",
+        params: { name: "guardian_promote_golden_rule", arguments: { topic: "topico-mcp", ruleText: "regra mcp", reason: "teste mcp" } },
+      }),
+    );
+    assert.match(code ?? "", /^\d{6}$/, "código de aprovação deveria ter sido capturado da notificação");
+    const proposeContent = (proposeRes?.result as { content?: { text: string }[] }).content ?? [];
+    const parsedPropose = JSON.parse(proposeContent[0]?.text ?? "{}") as { ok: boolean; rule: { id: string; approvalCodeHash?: string } };
+    assert.equal(parsedPropose.ok, true);
+    assert.equal(parsedPropose.rule.approvalCodeHash, undefined, "o hash do código não deve ser exposto ao agente");
+    const ruleId = parsedPropose.rule.id;
+
+    const pendingRes = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 26,
+      method: "tools/call",
+      params: { name: "guardian_pending_rules", arguments: {} },
+    });
+    const pendingContent = (pendingRes?.result as { content?: { text: string }[] }).content ?? [];
+    const parsedPending = JSON.parse(pendingContent[0]?.text ?? "{}") as { pending: { id: string; approvalCodeHash?: string }[] };
+    assert.equal(parsedPending.pending.length, 1);
+    assert.equal(parsedPending.pending[0]!.approvalCodeHash, undefined);
+
+    const resNoCode = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 27,
+      method: "tools/call",
+      params: { name: "guardian_approve_rule", arguments: { id: ruleId } },
+    });
+    assert.ok(resNoCode?.error, "esperava erro sem código");
+
+    const wrongCode = code === "111111" ? "222222" : "111111";
+    const resWrongCode = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 28,
+      method: "tools/call",
+      params: { name: "guardian_approve_rule", arguments: { id: ruleId, code: wrongCode } },
+    });
+    assert.ok(resWrongCode?.error, "esperava erro com código errado");
+
+    const resApprove = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 29,
+      method: "tools/call",
+      params: { name: "guardian_approve_rule", arguments: { id: ruleId, code } },
+    });
+    const approveContent = (resApprove?.result as { content?: { text: string }[] }).content ?? [];
+    const parsedApprove = JSON.parse(approveContent[0]?.text ?? "{}") as { ok: boolean; rule: { topic: string } };
+    assert.equal(parsedApprove.ok, true);
+    assert.equal(parsedApprove.rule.topic, "topico-mcp");
+  } finally {
+    if (prevRepoRoot === undefined) delete process.env.ASSISTENTE_OS_REPO_ROOT;
+    else process.env.ASSISTENTE_OS_REPO_ROOT = prevRepoRoot;
+    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: soul_generate_aiia grava AIIA.md real da soul", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    // soul_generate_aiia não entra em DEFAULT_ALLOWED_TOOLS (menor privilégio
+    // por padrão) — a soul precisa declará-la explicitamente.
+    createSoul(home, "main", { name: "main", description: "soul principal", agent: { permissions: { tools: ["soul_generate_aiia"] }, guardrails: {} } });
+    const res = await server.handleMessage({
+      jsonrpc: "2.0",
+      id: 30,
+      method: "tools/call",
+      params: { name: "soul_generate_aiia", arguments: { soul: "main" } },
+    });
+    const content = (res?.result as { content?: { text: string }[] }).content ?? [];
+    const parsed = JSON.parse(content[0]?.text ?? "{}") as { ok: boolean; path: string };
+    assert.equal(parsed.ok, true);
+    assert.match(parsed.path, /AIIA\.md$/);
+
+    const fs = await import("node:fs");
+    const written = fs.readFileSync(parsed.path, "utf8");
+    assert.match(written, /# AIIA — Avaliação de Impacto Algorítmico/);
+    assert.match(written, /\*\*Soul:\*\* main/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

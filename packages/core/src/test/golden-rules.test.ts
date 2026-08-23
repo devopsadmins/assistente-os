@@ -10,6 +10,7 @@ import {
   listPendingRules,
   approveRule,
   rejectRule,
+  resendApprovalCode,
   listActiveGoldenRules,
   proposeRule,
 } from "../governance/golden-rules.js";
@@ -25,6 +26,43 @@ function tempSetup(): { configHome: string; repoRoot: string; soulId: string } {
 function cleanup(configHome: string, repoRoot: string): void {
   rmSync(configHome, { recursive: true, force: true });
   rmSync(repoRoot, { recursive: true, force: true });
+}
+
+function extractApprovalCode(text: string | null): string | null {
+  if (text === null) return null;
+  const m = text.match(/Código de aprovação: (\d{6})/);
+  return m ? (m[1] ?? null) : null;
+}
+
+/**
+ * Stub de `fetch` para capturar o código de aprovação enviado por
+ * `notifyGuardianApproval` via Telegram (o código só existe em claro nessa
+ * notificação — nunca é persistido). `fn` deve disparar exatamente uma
+ * proposta/reenvio de código dentro do escopo.
+ */
+function withCapturedApprovalCode<T>(fn: () => T): { result: T; code: string | null } {
+  const originalFetch = globalThis.fetch;
+  process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  process.env.GUARDIAN_APPROVAL_CHAT_ID = "test-chat";
+  let capturedText: string | null = null;
+  globalThis.fetch = (async (_url: unknown, opts?: { body?: string }) => {
+    try {
+      const body = JSON.parse(opts?.body ?? "{}") as { text?: string };
+      capturedText = body.text ?? null;
+    } catch {
+      capturedText = null;
+    }
+    return { ok: true } as Response;
+  }) as typeof fetch;
+  try {
+    const result = fn();
+    const code = extractApprovalCode(capturedText);
+    return { result, code };
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.GUARDIAN_APPROVAL_CHAT_ID;
+  }
 }
 
 const INCIDENT = {
@@ -97,15 +135,31 @@ test("evaluateAndPromoteRules não duplica proposta já feita (idempotente)", ()
   }
 });
 
+test("proposeRule grava só o hash do código de aprovação, nunca o valor em claro", () => {
+  const { configHome, repoRoot } = tempSetup();
+  try {
+    const { code } = withCapturedApprovalCode(() => proposeRule(configHome, "topico-hash", "regra", "motivo"));
+    assert.match(code ?? "", /^\d{6}$/);
+
+    const [pending] = listPendingRules(configHome);
+    assert.equal(pending!.approvalCodeHash.length, 64); // sha256 hex
+    assert.notEqual(pending!.approvalCodeHash, code);
+    assert.ok(new Date(pending!.approvalCodeExpiresAt).getTime() > Date.now());
+  } finally {
+    cleanup(configHome, repoRoot);
+  }
+});
+
 test("approveRule grava golden-rules.md/AGENTS.md e o índice ativo; marca a proposta como aprovada", () => {
   const { configHome, repoRoot, soulId } = tempSetup();
   try {
     recordAgentIncident(configHome, soulId, INCIDENT);
     recordAgentIncident(configHome, soulId, INCIDENT);
-    recordAgentIncident(configHome, soulId, INCIDENT);
+    const { code } = withCapturedApprovalCode(() => recordAgentIncident(configHome, soulId, INCIDENT));
+    assert.match(code ?? "", /^\d{6}$/);
     const [pending] = listPendingRules(configHome);
 
-    const rule = approveRule(configHome, repoRoot, pending!.id);
+    const rule = approveRule(configHome, repoRoot, pending!.id, code!);
     assert.equal(rule.topic, "shell-injection");
 
     const rulesPath = join(repoRoot, ".opencode", "rules", "golden-rules.md");
@@ -122,7 +176,59 @@ test("approveRule grava golden-rules.md/AGENTS.md e o índice ativo; marca a pro
 
     // Já decidida — não pode ser aprovada/rejeitada de novo.
     assert.deepEqual(listPendingRules(configHome), []);
-    assert.throws(() => approveRule(configHome, repoRoot, pending!.id));
+    assert.throws(() => approveRule(configHome, repoRoot, pending!.id, code!));
+  } finally {
+    cleanup(configHome, repoRoot);
+  }
+});
+
+test("approveRule com código errado lança erro e não aplica a regra", () => {
+  const { configHome, repoRoot } = tempSetup();
+  try {
+    const { code } = withCapturedApprovalCode(() => proposeRule(configHome, "topico-y", "regra y", "motivo"));
+    const [pending] = listPendingRules(configHome);
+    const wrongCode = code === "111111" ? "222222" : "111111";
+
+    assert.throws(() => approveRule(configHome, repoRoot, pending!.id, wrongCode));
+    assert.equal(listActiveGoldenRules(configHome).length, 0);
+    // Proposta continua pendente — código errado não decide a proposta.
+    assert.equal(listPendingRules(configHome).length, 1);
+  } finally {
+    cleanup(configHome, repoRoot);
+  }
+});
+
+test("approveRule com código expirado marca a proposta como expired e não aplica nada", () => {
+  const { configHome, repoRoot } = tempSetup();
+  try {
+    // "0" cairia no fallback `Number(env) || 24` (0 é falsy em JS); "-1" gera
+    // um approvalCodeExpiresAt no passado sem depender do fallback.
+    process.env.GUARDIAN_APPROVAL_TTL_HOURS = "-1";
+    const { code } = withCapturedApprovalCode(() => proposeRule(configHome, "topico-z", "regra z", "motivo"));
+    delete process.env.GUARDIAN_APPROVAL_TTL_HOURS;
+    const [pending] = listPendingRules(configHome);
+
+    assert.throws(() => approveRule(configHome, repoRoot, pending!.id, code!), /expirado/);
+    assert.equal(listActiveGoldenRules(configHome).length, 0);
+    assert.equal(listPendingRules(configHome).length, 0); // não é mais "pending", virou "expired"
+  } finally {
+    delete process.env.GUARDIAN_APPROVAL_TTL_HOURS;
+    cleanup(configHome, repoRoot);
+  }
+});
+
+test("resendApprovalCode invalida o código anterior e emite um novo", () => {
+  const { configHome, repoRoot } = tempSetup();
+  try {
+    const { code: firstCode } = withCapturedApprovalCode(() => proposeRule(configHome, "topico-w", "regra w", "motivo"));
+    const [pending] = listPendingRules(configHome);
+
+    const { code: secondCode } = withCapturedApprovalCode(() => resendApprovalCode(configHome, pending!.id));
+    assert.match(secondCode ?? "", /^\d{6}$/);
+
+    assert.throws(() => approveRule(configHome, repoRoot, pending!.id, firstCode!));
+    const rule = approveRule(configHome, repoRoot, pending!.id, secondCode!);
+    assert.equal(rule.topic, "topico-w");
   } finally {
     cleanup(configHome, repoRoot);
   }
@@ -131,13 +237,41 @@ test("approveRule grava golden-rules.md/AGENTS.md e o índice ativo; marca a pro
 test("rejectRule marca a proposta como rejeitada sem aplicar nada", () => {
   const { configHome, repoRoot } = tempSetup();
   try {
-    const rule = proposeRule(configHome, "topico-x", "regra x", "acionamento manual");
-    rejectRule(configHome, rule.id);
+    const { result, code } = withCapturedApprovalCode(() =>
+      proposeRule(configHome, "topico-x", "regra x", "acionamento manual"),
+    );
+    const ruleId = result.rule.id;
+    rejectRule(configHome, ruleId, code!);
 
     assert.deepEqual(listPendingRules(configHome), []);
     assert.deepEqual(listActiveGoldenRules(configHome), []);
     assert.equal(existsSync(join(repoRoot, ".opencode", "rules", "golden-rules.md")), false);
-    assert.throws(() => rejectRule(configHome, rule.id));
+    assert.throws(() => rejectRule(configHome, ruleId, code!));
+  } finally {
+    cleanup(configHome, repoRoot);
+  }
+});
+
+test("rejectRule exige código de aprovação válido", () => {
+  const { configHome, repoRoot } = tempSetup();
+  try {
+    const { code } = withCapturedApprovalCode(() => proposeRule(configHome, "topico-v", "regra v", "motivo"));
+    const [pending] = listPendingRules(configHome);
+    const wrongCode = code === "111111" ? "222222" : "111111";
+
+    assert.throws(() => rejectRule(configHome, pending!.id, wrongCode));
+    assert.equal(listPendingRules(configHome).length, 1);
+  } finally {
+    cleanup(configHome, repoRoot);
+  }
+});
+
+test("notifyGuardianApproval não lança mesmo sem TELEGRAM_BOT_TOKEN/GUARDIAN_APPROVAL_CHAT_ID configurados", () => {
+  const { configHome, repoRoot } = tempSetup();
+  try {
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.GUARDIAN_APPROVAL_CHAT_ID;
+    assert.doesNotThrow(() => proposeRule(configHome, "topico-sem-telegram", "regra", "motivo"));
   } finally {
     cleanup(configHome, repoRoot);
   }

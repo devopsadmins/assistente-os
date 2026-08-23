@@ -18,6 +18,10 @@ import {
   decidir,
   addAgendaItem,
   getAgendaItems,
+  listPendingRules,
+  approveRule,
+  rejectRule,
+  resendApprovalCode,
 } from "@assistente-os/core";
 import {
   indexDirectory,
@@ -55,6 +59,12 @@ Uso:
                                 agenda uma tarefa (soul "-" = nenhuma)
   os agenda list [pending|done|all]
                                 lista itens da agenda (padrão: pending)
+  os guardian pending          lista propostas de regra aguardando aprovação
+  os guardian approve <id> <código>
+                                aprova uma proposta (código enviado por Telegram)
+  os guardian reject <id> <código>
+                                rejeita uma proposta
+  os guardian resend <id>      gera e reenvia um novo código de aprovação
   os daemon [port]             inicia o daemon REST+WS (padrão 4310)
   os voice                     inicia o pipeline de voz (VAD + STT + TTS)
   os backup                    gera um ZIP completo do perfil, RAG e conhecimento em
@@ -64,7 +74,9 @@ Uso:
 Variáveis de ambiente: ASSISTENTE_OS_HOME (padrão ~/.assistant-os),
 ASSISTENTE_OS_BACKUP_DIR (padrão ~/.assistant-os-backups),
 OLLAMA_URL, OLLAMA_CHAT_MODEL, OLLAMA_EMBED_MODEL, AOS_HOST,
-ASSISTENTE_OS_DAEMON_TOKEN, VOICE_ENABLED.
+ASSISTENTE_OS_DAEMON_TOKEN, VOICE_ENABLED,
+GUARDIAN_APPROVAL_CHAT_ID (chat id do Telegram que recebe códigos de aprovação do Guardian),
+GUARDIAN_APPROVAL_TTL_HOURS (validade do código, padrão 24h).
 `;
 
 async function main(): Promise<void> {
@@ -345,6 +357,68 @@ async function main(): Promise<void> {
       }
 
       console.log("uso: os agenda add <soul|-> <título> [--due <iso>] [corpo...] | os agenda list [pending|done|all]");
+      return;
+    }
+
+    case "guardian": {
+      const sub = args[0];
+      const repoRoot = process.env.ASSISTENTE_OS_REPO_ROOT || process.cwd();
+
+      if (sub === "pending" || sub === undefined) {
+        const pending = listPendingRules(config.home);
+        if (pending.length === 0) {
+          console.log("(nenhuma proposta pendente)");
+          return;
+        }
+        for (const rule of pending) {
+          console.log(`#${rule.id} [${rule.topic}] ${rule.ruleText}`);
+          console.log(`  motivo: ${rule.reason}`);
+          console.log(`  criada em ${rule.createdAt}; código válido até ${rule.approvalCodeExpiresAt}`);
+        }
+        return;
+      }
+
+      if (sub === "approve" || sub === "reject") {
+        const id = args[1];
+        const code = args[2];
+        if (!id || !code) {
+          console.log(`uso: os guardian ${sub} <id> <código>`);
+          process.exitCode = 1;
+          return;
+        }
+        try {
+          if (sub === "approve") {
+            const rule = approveRule(config.home, repoRoot, id, code);
+            console.log(`regra aprovada e aplicada: [${rule.topic}] ${rule.ruleText}`);
+          } else {
+            rejectRule(config.home, id, code);
+            console.log(`proposta ${id} rejeitada`);
+          }
+        } catch (err: any) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (sub === "resend") {
+        const id = args[1];
+        if (!id) {
+          console.log("uso: os guardian resend <id>");
+          process.exitCode = 1;
+          return;
+        }
+        try {
+          resendApprovalCode(config.home, id);
+          console.log(`novo código gerado e enviado por Telegram (se GUARDIAN_APPROVAL_CHAT_ID estiver configurado) para a proposta ${id}`);
+        } catch (err: any) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      console.log("uso: os guardian pending | os guardian approve <id> <código> | os guardian reject <id> <código> | os guardian resend <id>");
       return;
     }
 

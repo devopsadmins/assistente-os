@@ -16,6 +16,7 @@ import {
   sanitizeLLMResponse,
   resolveTarget,
   recordRouterSelection,
+  logFullAuditEntry,
 } from "@assistente-os/core";
 import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
@@ -181,6 +182,34 @@ export async function handleChat(
       emitStep(
         "seguranca",
         promptSanitized.count > 0 ? `${promptSanitized.count} segredo(s) redigido(s) no prompt` : "nenhum segredo detectado no prompt",
+      );
+
+      // ---- Detecção de prompt injection (defesa em profundidade — regex, não bloqueia sozinha) ----
+      const injection = promptSanitized.injection;
+      if (injection?.detected) {
+        logger.warn(
+          `[prompt-injection] ${injection.matches.length} padrão(ões) detectado(s) (severidade máx: ${injection.maxSeverity}) no prompt da soul ${soul.id}`,
+        );
+        logFullAuditEntry({
+          ts: new Date().toISOString(),
+          sessionId: String(session.id),
+          soulId: soul.id,
+          intention: `ALERTA: possível prompt injection (severidade ${injection.maxSeverity})`,
+          toolsCalled: [],
+          params: { patterns: injection.matches.map((m) => m.name) },
+        });
+        const modo = process.env.PROMPT_INJECTION_MODO || "aviso";
+        if (modo === "recusar" && injection.maxSeverity === "high") {
+          sendJson(res, 400, {
+            error: "prompt recusado: padrão de possível prompt injection detectado",
+            patterns: injection.matches.map((m) => m.name),
+          });
+          return true;
+        }
+      }
+      emitStep(
+        "seguranca",
+        injection?.detected ? `possível prompt injection detectada (${injection.maxSeverity})` : "nenhum padrão de prompt injection detectado",
       );
 
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----

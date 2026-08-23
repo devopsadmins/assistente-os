@@ -15,10 +15,17 @@
  * todas as souls e pro AGENTS.md sem ninguém revisar é o tipo de coisa que
  * vira ruído/cerimônia sem controle. O motor ainda detecta e agrupa padrões
  * sozinho; só a aplicação final passa por `approveRule`.
+ *
+ * A aprovação é tecnicamente imposta, não só convencional: `proposeRule`
+ * gera um código de uso único (nunca persistido em claro) e notifica o dono
+ * via Telegram; `approveRule`/`rejectRule` exigem esse código. Isso impede
+ * que o próprio agente LLM — que tem acesso às mesmas tools MCP — aprove
+ * suas próprias propostas sem um humano de fato ter visto o código.
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { randomInt, createHash, timingSafeEqual } from "node:crypto";
 import { todayISODate, nowISO, registrarLicao } from "../alma.js";
 import { soulDir } from "../souls.js";
 
@@ -51,8 +58,12 @@ export interface GoldenRule {
 export interface PendingRule extends GoldenRule {
   id: string;
   createdAt: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "expired";
   decidedAt?: string;
+  /** SHA-256 hex do código de aprovação (prova de revisão humana) — nunca o valor em claro. */
+  approvalCodeHash: string;
+  /** ISO 8601 — depois disso o código não decide mais a proposta; use resendApprovalCode. */
+  approvalCodeExpiresAt: string;
 }
 
 export interface AuditExecutionInput {
@@ -177,16 +188,115 @@ function nextPendingId(): string {
   return `gr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// ── Código de aprovação (prova técnica de revisão humana) ───────────────
+//
+// approveRule/rejectRule não confiam mais só em "quem chamou a tool" — o
+// próprio agente LLM tem acesso às mesmas tools MCP que um humano, então
+// allowlist por soul não impede autoaprovação. O código de 6 dígitos é
+// gerado aqui, nunca persistido em claro (só o hash), e só chega em claro a
+// quem recebe a notificação do Guardian (Telegram) ou consulta via CLI/
+// resendApprovalCode. Sem o código certo, approveRule/rejectRule falham.
+
+function generateApprovalCode(): string {
+  return String(randomInt(100000, 1000000));
+}
+
+function hashApprovalCode(code: string): string {
+  return createHash("sha256").update(code).digest("hex");
+}
+
+function verifyApprovalCode(code: string, storedHash: string): boolean {
+  const a = Buffer.from(hashApprovalCode(code), "hex");
+  const b = Buffer.from(storedHash, "hex");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+/** Validade do código de aprovação, em horas (env GUARDIAN_APPROVAL_TTL_HOURS, default 24). Lida a cada chamada, não em import — permite configurar/testar sem reiniciar o processo. */
+function approvalCodeTtlHours(): number {
+  return Number(process.env.GUARDIAN_APPROVAL_TTL_HOURS) || 24;
+}
+
+function approvalCodeExpiresAt(): string {
+  return new Date(Date.now() + approvalCodeTtlHours() * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * Notifica o dono do sistema via Telegram com o código de aprovação em claro
+ * — único lugar (fora da memória do processo) onde o valor puro existe.
+ * Best-effort/non-fatal: sem TELEGRAM_BOT_TOKEN/GUARDIAN_APPROVAL_CHAT_ID
+ * configurados, ou em falha de rede, a proposta continua consultável via
+ * guardian_pending_rules/`os guardian pending`, e resendApprovalCode gera
+ * um código novo a qualquer momento.
+ */
+async function notifyGuardianApproval(rule: PendingRule, code: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.GUARDIAN_APPROVAL_CHAT_ID;
+  if (!token || !chatId) {
+    console.error(
+      "[golden-rules] Notificação de aprovação pulada (non-fatal): TELEGRAM_BOT_TOKEN/GUARDIAN_APPROVAL_CHAT_ID não configurados.",
+    );
+    return;
+  }
+
+  const text = [
+    "🛡️ Guardian — proposta de regra de ouro aguardando aprovação",
+    `Tópico: ${rule.topic}`,
+    `Regra: ${rule.ruleText}`,
+    `Motivo: ${rule.reason}`,
+    `ID: ${rule.id}`,
+    `Código de aprovação: ${code}`,
+    `Válido até: ${rule.approvalCodeExpiresAt}`,
+    "",
+    `Aprove com: os guardian approve ${rule.id} ${code}`,
+  ].join("\n");
+
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+    if (!resp.ok) {
+      console.error(`[golden-rules] Falha ao notificar aprovação via Telegram (non-fatal): HTTP ${resp.status}`);
+    }
+  } catch (err) {
+    console.error(`[golden-rules] Falha ao notificar aprovação via Telegram (non-fatal): ${(err as Error).message}`);
+  }
+}
+
 /**
  * Cria uma proposta de regra pendente de aprovação — seja pelo motor
  * automático (3+ reincidências) ou por acionamento manual do Guardian.
+ * Gera e envia (best-effort) um código de aprovação de uso único; o valor
+ * em claro é devolvido aqui e nunca mais persistido — quem chama precisa
+ * repassá-lo por um canal que o agente LLM não controla (ex.: não incluir
+ * no retorno de uma tool MCP consumida pelo próprio agente).
  */
-export function proposeRule(configHome: string, topic: string, ruleText: string, reason: string): PendingRule {
+export function proposeRule(
+  configHome: string,
+  topic: string,
+  ruleText: string,
+  reason: string,
+): { rule: PendingRule; code: string } {
   const pending = readPendingRules(configHome);
-  const rule: PendingRule = { id: nextPendingId(), topic, ruleText, reason, createdAt: nowISO(), status: "pending" };
+  const code = generateApprovalCode();
+  const rule: PendingRule = {
+    id: nextPendingId(),
+    topic,
+    ruleText,
+    reason,
+    createdAt: nowISO(),
+    status: "pending",
+    approvalCodeHash: hashApprovalCode(code),
+    approvalCodeExpiresAt: approvalCodeExpiresAt(),
+  };
   pending.push(rule);
   writePendingRules(configHome, pending);
-  return rule;
+  void notifyGuardianApproval(rule, code).catch((err) => {
+    console.error(`[golden-rules] notifyGuardianApproval falhou (non-fatal): ${(err as Error).message}`);
+  });
+  return { rule, code };
 }
 
 /** Lista propostas aguardando aprovação (ou rejeição) humana. */
@@ -194,11 +304,50 @@ export function listPendingRules(configHome: string): PendingRule[] {
   return readPendingRules(configHome).filter((r) => r.status === "pending");
 }
 
-/** Aprova uma proposta: grava a regra global (arquivos + índice ativo) e marca a proposta como decidida. */
-export function approveRule(configHome: string, repoRoot: string, id: string): GoldenRule {
+/**
+ * Gera um novo código de aprovação para uma proposta pendente (invalida o
+ * anterior) e reenvia a notificação — usado quando a notificação original
+ * falhou ou o código expirou.
+ */
+export function resendApprovalCode(configHome: string, id: string): { code: string } {
   const pending = readPendingRules(configHome);
   const rule = pending.find((r) => r.id === id && r.status === "pending");
   if (!rule) throw new Error(`proposta de regra não encontrada ou já decidida: ${id}`);
+
+  const code = generateApprovalCode();
+  const updatedRule: PendingRule = {
+    ...rule,
+    approvalCodeHash: hashApprovalCode(code),
+    approvalCodeExpiresAt: approvalCodeExpiresAt(),
+  };
+  const updated = pending.map((r) => (r.id === id ? updatedRule : r));
+  writePendingRules(configHome, updated);
+  void notifyGuardianApproval(updatedRule, code).catch((err) => {
+    console.error(`[golden-rules] notifyGuardianApproval falhou (non-fatal): ${(err as Error).message}`);
+  });
+  return { code };
+}
+
+function checkApprovalCode(configHome: string, pending: PendingRule[], rule: PendingRule, code: string): void {
+  if (new Date(rule.approvalCodeExpiresAt).getTime() < Date.now()) {
+    const expired = pending.map((r) => (r.id === rule.id ? { ...r, status: "expired" as const, decidedAt: nowISO() } : r));
+    writePendingRules(configHome, expired);
+    throw new Error(`código de aprovação expirado para a proposta ${rule.id}; use guardian_resend_approval_code`);
+  }
+  if (!verifyApprovalCode(code, rule.approvalCodeHash)) {
+    throw new Error("código de aprovação inválido");
+  }
+}
+
+/**
+ * Aprova uma proposta: exige o código de aprovação (prova de revisão humana),
+ * grava a regra global (arquivos + índice ativo) e marca a proposta como decidida.
+ */
+export function approveRule(configHome: string, repoRoot: string, id: string, code: string): GoldenRule {
+  const pending = readPendingRules(configHome);
+  const rule = pending.find((r) => r.id === id && r.status === "pending");
+  if (!rule) throw new Error(`proposta de regra não encontrada ou já decidida: ${id}`);
+  checkApprovalCode(configHome, pending, rule, code);
 
   const golden: GoldenRule = { topic: rule.topic, ruleText: rule.ruleText, reason: rule.reason };
   enforceGlobalRules(configHome, repoRoot, golden);
@@ -208,11 +357,12 @@ export function approveRule(configHome: string, repoRoot: string, id: string): G
   return golden;
 }
 
-/** Rejeita uma proposta: marca como decidida sem gravar/propagar nada. */
-export function rejectRule(configHome: string, id: string): void {
+/** Rejeita uma proposta: exige o código de aprovação, marca como decidida sem gravar/propagar nada. */
+export function rejectRule(configHome: string, id: string, code: string): void {
   const pending = readPendingRules(configHome);
   const rule = pending.find((r) => r.id === id && r.status === "pending");
   if (!rule) throw new Error(`proposta de regra não encontrada ou já decidida: ${id}`);
+  checkApprovalCode(configHome, pending, rule, code);
 
   const updated = pending.map((r) => (r.id === id ? { ...r, status: "rejected" as const, decidedAt: nowISO() } : r));
   writePendingRules(configHome, updated);

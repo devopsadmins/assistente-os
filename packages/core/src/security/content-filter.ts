@@ -9,6 +9,7 @@
  */
 
 import { storeCredential } from "./temp-vault.js";
+import { detectPromptInjection, type InjectionDetectionResult } from "./prompt-injection.js";
 
 // ── Padrões de detecção ──────────────────────────────────────────────
 
@@ -89,6 +90,8 @@ export interface SanitizeResult {
   sanitized: string;
   detected: Array<{ name: string; original: string; taskId?: string }>;
   count: number;
+  /** Só populado por sanitizeUserPrompt — detecção de prompt injection no lado de entrada. */
+  injection?: InjectionDetectionResult;
 }
 
 // ── Funções principais ───────────────────────────────────────────────
@@ -158,13 +161,15 @@ export function detectSecrets(
 
 /**
  * Sanitiza o prompt do usuário antes de enviar ao LLM.
- * Remove headers de autenticação, tokens de API, etc.
+ * Remove headers de autenticação, tokens de API, etc., e roda o detector de
+ * prompt injection (injection) — só no lado de entrada, não em respostas do LLM.
  */
 export function sanitizeUserPrompt(
   prompt: string,
   options?: { taskId?: string; soulId?: string },
 ): SanitizeResult {
-  return sanitizeText(prompt, options);
+  const result = sanitizeText(prompt, options);
+  return { ...result, injection: detectPromptInjection(prompt) };
 }
 
 /**

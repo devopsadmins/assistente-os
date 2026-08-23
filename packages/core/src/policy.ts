@@ -63,6 +63,7 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "soul_decidir", level: "L2" },
   { pattern: "soul_record_lesson", level: "L2" },
   { pattern: "memory_index", level: "L2" },
+  { pattern: "soul_generate_aiia", level: "L2" },
 
   // L2 — leituras a sistemas externos (classificação fechada com o usuário)
   { pattern: "ado_list_projects", level: "L2" },
