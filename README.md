@@ -29,7 +29,7 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ opencode                                                     │
-│   ├─ MCP assistente-os ─── packages/tools (stdio, 45 tools) │
+│   ├─ MCP assistente-os ─── packages/tools (stdio, 47 tools) │
 │   └─ providers zen-* ──── 7 chaves OpenCode Zen (grátis)    │
 └─────────────────────┬────────────────────────────────────────┘
                       │
@@ -58,12 +58,14 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 
 | Pacote | Papel | Capacidades |
 |---|---|---|
-| `core` | Kernel | Config, souls, kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), migração, content filter (12 padrões), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules |
+| `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), migração, content filter (12 padrões de segredo + detector de prompt injection), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
 | `memory` | RAG + Grafo | Chunks + embeddings (Ollama ou fallback Xenova/ILIKE), LangChain LCEL RAG, LangGraph agent workflow com tool-calling, grafo de entidades/relações/observações, gate de relevância |
-| `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection |
-| `tools` | MCP server | 45 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, router, monitores, guardian (golden rules), sales intelligence, spec grill |
-| `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs, agenda, daemon, voice, backup, help |
+| `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection, log de debug de retrieval RAG (method/score por fonte) no audit trail |
+| `tools` | MCP server | 47 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
+| `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs, agenda, guardian, daemon, voice, backup, help |
 | `voice` | Pipeline de voz | VAD (hysteresis), AudioRecorder (sox), STT (Whisper local via @xenova/transformers), TTS (say.js) |
+
+Serviço auxiliar fora dos workspaces npm: `services/soul-rag-watcher` — observa `souls/*/` e pede `memory_index` via MCP quando `.md`/`.txt` mudam (zero dependência do monorepo, só stdio JSON-RPC), rodando como app separado no PM2.
 
 ## Capacidades
 
@@ -71,11 +73,14 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 
 Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contexto, lições, pessoas, soul.md) em `~/.assistant-os/souls/<id>/`.
 
-- **15 souls ativas** nesta instalação: aprendizado, cidadeplaza, consultoria_ia, desenvolvimento, escrita, gestaoobrigacoes, investimentos, iso, kinetiswan, main, mente_inclusiva, ministro_louvor, segundo-cerebro, slcia, suriel
+- **16 souls ativas** nesta instalação: aprendizado, cidadeplaza, consultoria_ia, desenvolvimento, escrita, gestaoobrigacoes, grillsoul, investimentos, iso, kinetiswan, main, mente_inclusiva, ministro_louvor, segundo-cerebro, slcia, suriel
 - **Permissões Zero Trust**: cada soul declara (ou herda `DEFAULT_ALLOWED_TOOLS`) a allowlist de tools que pode chamar, com wildcards (`memory:*`, `ado_*`)
+- **Catálogo de capabilities L1/L2/L3** (`policy.ts`): cada tool tem um nível de risco fechado e versionado (leitura local, escrita local reversível, efeito externo/alto privilégio); `authorizeExecution()` combina autonomy da soul (`suggest`/`ask`/`auto`), `approvalPolicy` e budget numa decisão pura e testável
+- **Criação atômica de souls** (`createSoulFull`): monta config + 5 arquivos de alma + 3 diretórios (`sessoes/`, `sources/`, `decisoes/`) num diretório temporário e só publica via `rename()` exclusivo — corrida no mesmo id nunca deixa diretório residual. Validação centralizada via `SoulSpec` (`soul-spec.ts`): limites de tamanho de arquivo (32KB) e total (128KB), até 20 skills, até 10 conectores, capabilities restritas ao catálogo conhecido, `planHash` determinístico para dry-run vs. commit
 - **Config por soul**: provider, modelos, dailyLimit, maxTurns, guardrails de agente
 - **Active tracking**: `active.json` no home directory
 - **Markdown memory**: anotar (notas diárias), registrarLicao (lições), decidir (ADR decisions)
+- **AIIA.md por soul**: relatório de impacto algorítmico gerado sob demanda (tool `soul_generate_aiia`), compondo capabilities/guardrails efetivos, dados pessoais e base legal (quando a soul é do tipo `familia_<telefone>`) e regras de ouro ativas — 100% de dados já existentes no sistema, idempotente
 
 ### RAG + Knowledge Graph
 
@@ -84,6 +89,8 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **Grafo de conhecimento**: entidades, relações, observações em Postgres
 - **Gate de relevância**: threshold configurável com modos (recusar/aviso/livre)
 - **Busca híbrida**: vetorial + literal com scores
+- **Debug controlado de retrieval**: cada fonte recuperada carrega `method` (`semantic`/`literal`/`hybrid`) e `score`; o daemon grava isso no audit trail existente a cada chat com RAG — dá visibilidade sobre degradação silenciosa pra busca literal (ex.: embedder de indexação incompatível com o de consulta) sem precisar de infraestrutura de observabilidade nova
+- **Testes de fidelidade RAG**: grounding lexical determinístico (sempre roda no CI) + juiz LLM opcional via Ollama (pergunta binária se a resposta é sustentada só pelo contexto recuperado; auto-skip quando Ollama não está disponível)
 
 ### LangGraph Agent
 
@@ -111,12 +118,14 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **Zero Trust permissions**: allowlist por soul para tools, skills, diretórios externos
 - **API e WebSocket autenticados**: Bearer token em todas as rotas exceto `/health`; o WebSocket (que não aceita headers customizados) aceita o mesmo token via `?token=` na URL de conexão
 - **Boot-guard**: recusa subir em host não-loopback sem token configurado, em vez de logar aviso e continuar exposto
-- **Content filter**: 12 padrões (OpenAI, Anthropic, Azure PAT, GitHub, AWS, private keys, passwords, JWT, connection strings)
+- **Content filter**: 12 padrões de segredo (OpenAI, Anthropic, Azure PAT, GitHub, AWS, private keys, passwords, JWT, connection strings), mascarados nos dois sentidos (prompt do usuário e resposta do LLM)
+- **Detecção de prompt injection**: 11 padrões heurísticos PT/EN (`prompt-injection.ts`) — "ignore instruções anteriores", extração de system prompt, jailbreak de roleplay (DAN), injeção de tag `[SYSTEM]`, payload base64 suspeito. Roda no lado de entrada (`sanitizeUserPrompt`), loga no audit trail e, com `PROMPT_INJECTION_MODO=recusar`, bloqueia a chamada em severidade alta (default: `aviso`, só loga)
+- **Aprovação humana imposta no Guardian**: propor uma regra de ouro (`guardian_promote_golden_rule`) gera um código de aprovação de 6 dígitos (hash SHA-256, nunca persistido em claro), enviado por Telegram (`GUARDIAN_APPROVAL_CHAT_ID`) com expiração (`GUARDIAN_APPROVAL_TTL_HOURS`, default 24h). `guardian_approve_rule`/`guardian_reject_rule` exigem esse código com comparação em tempo constante — o próprio agente LLM não consegue mais autoaprovar suas próprias propostas, mesmo tendo acesso às mesmas tools MCP. Aprovação alternativa via `os guardian approve/reject <id> <código>` no terminal
 - **Temp vault**: credenciais em memória com purge automático
 - **HMAC webhooks**: SHA-256 com verificação de timestamp
 - **Zip-slip protection**: sanitização de nomes de arquivo no upload
 - **Agent guardrails**: maxTurns, maxIterations, ragThreshold, dailyLimitTokens
-- **Audit trail**: compliance ISO/IEC 42001 (`logFullAuditEntry`)
+- **Audit trail**: compliance ISO/IEC 42001 (`logFullAuditEntry`), incluindo alertas de prompt injection e debug de retrieval RAG
 - **Credenciais por instalação**: tokens/segredos só em `~/.assistant-os/.env` (nunca no repo) — inclusive o token do Cloudflare Tunnel, lido via symlink `.env` na raiz
 
 ### Interface Web (11 abas, PWA responsiva)
@@ -184,14 +193,14 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 | POST | `/api/pipelines/meeting-ingest` \| `/email-ingest` | Ingestão de reuniões/e-mails |
 | WS | `/` | WebSocket de eventos em tempo real (token via `?token=`) |
 
-### MCP Tools (45 tools)
+### MCP Tools (47 tools)
 
-**Soul**: `souls_list`, `soul_context`, `soul_chat`, `soul_anotar`, `soul_licao`, `soul_decidir`, `soul_record_lesson`, `soul_get_lessons`
+**Soul**: `souls_list`, `soul_context`, `soul_chat`, `soul_anotar`, `soul_licao`, `soul_decidir`, `soul_record_lesson`, `soul_get_lessons`, `soul_generate_aiia`
 **Memória**: `memory_search`, `memory_index`, `memory_status`
 **Grafo**: `graph_list`, `observation_add`
 **Agenda**: `agenda_add`, `agenda_list`
 **Custos/Infra**: `costs_summary`, `router_status`, `action_execute`
-**Guardian (golden rules)**: `guardian_audit_execution`, `guardian_promote_golden_rule`, `guardian_pending_rules`, `guardian_approve_rule`, `guardian_reject_rule`, `guardian_get_golden_rules`
+**Guardian (golden rules)**: `guardian_audit_execution`, `guardian_promote_golden_rule`, `guardian_pending_rules`, `guardian_approve_rule`, `guardian_reject_rule`, `guardian_resend_approval_code`, `guardian_get_golden_rules` — `approve`/`reject` exigem o código de aprovação enviado por Telegram, nunca devolvido pelas próprias tools
 **Sales Intelligence**: `sales_ingest_meeting`, `sales_get_lead_brief`
 **Spec Grill**: `spec_grill_plan` (refinamento de requisitos em duas fases antes de autorizar modo build)
 **Azure DevOps**: `ado_list_projects`, `ado_list_repositories`, `ado_list_work_items`, `ado_create_work_item`, `ado_get_work_item`, `ado_update_work_item`, `ado_list_pipelines`, `ado_run_pipeline`, `ado_list_pull_requests`, `ado_create_pull_request`
@@ -215,6 +224,10 @@ os memory <soul> status      contagem de chunks e grafo
 os graph <soul> list         entidades/relações/observações
 os costs                     resumo de custos
 os agenda add|list           gerenciamento de agenda
+os guardian pending          lista propostas de golden rule aguardando aprovação
+os guardian approve <id> <código>  aprova (código enviado por Telegram)
+os guardian reject <id> <código>   rejeita
+os guardian resend <id>      gera e reenvia um novo código de aprovação
 os voice                     pipeline de voz (VAD + STT + TTS)
 os backup                    ZIP completo do perfil, RAG e conhecimento
 os daemon [port]             inicia o daemon REST+WS (padrão 4310)
@@ -233,6 +246,7 @@ pm2 startup                       # habilita no systemd
 
 - `pm2-support.service` habilitado — daemon sobrevive reboot
 - `max_memory_restart: "2G"` (LangGraph + Xenova excediam 1G)
+- Três apps no `ecosystem.config.cjs`: `assistente-os` (daemon principal), `assistente-os-backup` (one-shot, `cron_restart` 3x/dia), `soul-rag-watcher` (observa `souls/*/` e reindexa via MCP quando arquivos mudam — processo desanexado, sem dependência do monorepo)
 
 ### Docker
 
@@ -264,21 +278,21 @@ docker compose up -d tunnel
 ## Testes
 
 ```bash
-npm test              # todos os workspaces (195 testes)
+npm test              # todos os workspaces (309 testes)
 npm run typecheck     # tsc em todos os workspaces (0 erros)
 npm run build         # build completo antes de testar
 ```
 
 | Pacote | Testes | Status |
 |--------|--------|--------|
-| core | 75 | ✅ todos passando |
+| core | 184 | ✅ todos passando |
 | daemon | 60 | ✅ todos passando |
-| memory | 41 | ✅ todos passando |
-| tools | 17 | ✅ todos passando |
+| memory | 44 | ✅ todos passando |
+| tools | 19 | ✅ todos passando |
 | cli | 2 | ✅ todos passando |
 | voice | 0 | — sem testes ainda |
 
-**Total**: 195 testes, zero erros de build, suíte completa roda em ~1 minuto (não trava mais — travava indefinidamente até uma correção recente numa conexão órfã de teste). Testes de integração manual contra um daemon real (`*.live.ts`, não entram no `npm test`) rodam via `npm run test:live --workspace=@assistente-os/daemon`.
+**Total**: 309 testes, zero erros de build. Um teste de fidelidade RAG usa um juiz LLM via Ollama e demora ~30-50s quando Ollama está disponível (auto-skip, quase instantâneo, quando não está — mesmo padrão já usado nos testes que dependem de Ollama real). Testes de integração manual contra um daemon real (`*.live.ts`, não entram no `npm test`) rodam via `npm run test:live --workspace=@assistente-os/daemon`.
 
 ## Status
 
@@ -290,6 +304,7 @@ npm run build         # build completo antes de testar
 | **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | Quase concluída — falta Google OAuth (Stitch MCP) e o service token do Cloudflare Access |
 | **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram | Tool-calling e canais em produção; sessões multi-turno persistidas e skills por soul ainda não implementadas |
 | **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
+| **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
 
 ### Pendências
 
@@ -299,6 +314,7 @@ npm run build         # build completo antes de testar
 - Prometheus/Grafana (métricas — hoje só `/infra/status` sob demanda)
 - Sessões multi-turno persistidas (hoje cada prompt é isolado; a tabela `sessions` só conta turnos)
 - Skills por soul (instruções declarativas)
+- Tool MCP `soul_create` (criação guiada de souls via chat) — o backend já existe e está testado (`createSoulFull`, `SoulSpec`/`validateSoulSpec`, catálogo de capabilities L1/L2/L3), falta só expor a tool e mapear o payload wire (snake_case) para o tipo de domínio
 - App Android (proposta: Capacitor empacotando o frontend atual — ver `docs/BACKLOG.md`)
 - ADR-PRIV-001 (LGPD de famílias) com pendências datadas em aberto
 
