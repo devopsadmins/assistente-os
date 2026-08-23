@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { GlobalGuardrails } from "./types/agent.js";
 
 export interface AssistenteOsConfig {
   /** Raiz de tudo: souls/, config.local.json (padrão: ~/.assistant-os) */
@@ -43,6 +44,8 @@ export interface AssistenteOsConfig {
   whatsappSoulMap: Record<string, string>;
   /** Habilita resolução de famílias por telefone no WhatsApp (env WHATSAPP_FAMILIAS_ENABLED). */
   whatsappFamiliasEnabled: boolean;
+  /** Guardrails globais (piso de segurança) — nenhuma soul pode ampliá-los. Ver resolveEffectiveGuardrails(). */
+  globalGuardrails: GlobalGuardrails;
 }
 
 export function resolveHome(): string {
@@ -101,5 +104,13 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
       }
     })(),
     whatsappFamiliasEnabled: overrides.whatsappFamiliasEnabled ?? process.env.WHATSAPP_FAMILIAS_ENABLED === "true",
+    globalGuardrails: overrides.globalGuardrails ?? {
+      maxTurns: overrides.defaultMaxTurns ?? (Number(process.env.ASSISTENTE_OS_MAX_TURNS) || 10),
+      maxIterations: Number(process.env.ASSISTENTE_OS_MAX_ITERATIONS) || 5,
+      ragRelevanceThreshold: Number(process.env.ASSISTENTE_OS_RAG_THRESHOLD) || 0.70,
+      dailyLimitTokens: process.env.ASSISTENTE_OS_DAILY_LIMIT_TOKENS
+        ? Number(process.env.ASSISTENTE_OS_DAILY_LIMIT_TOKENS)
+        : undefined,
+    },
   };
 }

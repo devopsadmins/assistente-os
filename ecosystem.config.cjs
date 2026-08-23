@@ -42,5 +42,22 @@ module.exports = {
       error_file: "logs/backup-err.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss",
     },
+    {
+      // Watcher de RAG desanexado: observa souls/*/ e pede memory_index via MCP
+      // quando arquivos .md/.txt mudam. Zero dependências do monorepo — só fala
+      // JSON-RPC stdio com packages/tools. Env opcional via AOS_WATCH_*.
+      name: "soul-rag-watcher",
+      script: "services/soul-rag-watcher/watcher.mjs",
+      cwd: __dirname,
+      interpreter: "node",
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 5000,
+      out_file: "logs/soul-rag-watcher-out.log",
+      error_file: "logs/soul-rag-watcher-err.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+    },
   ],
 };

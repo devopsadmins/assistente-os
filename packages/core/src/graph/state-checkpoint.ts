@@ -22,6 +22,7 @@ import {
 } from "../souls.js";
 import { todayISODate, anotar } from "../alma.js";
 import { resolveHome } from "../config.js";
+import { clampMaxPermissive } from "../types/agent.js";
 import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -111,7 +112,8 @@ export function checkIterationLimit(
   currentCount: number,
   maxIterations?: number
 ): "continue" | "end" {
-  const limit = maxIterations ?? LANGGRAPH_MAX_ITERATIONS;
+  // clampMaxPermissive garante que a soul nunca amplia o teto global — só restringe.
+  const limit = clampMaxPermissive(LANGGRAPH_MAX_ITERATIONS, maxIterations);
   return currentCount >= limit ? "end" : "continue";
 }
 
