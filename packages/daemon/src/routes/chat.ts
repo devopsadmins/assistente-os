@@ -18,6 +18,7 @@ import {
   recordRouterSelection,
   logFullAuditEntry,
 } from "@assistente-os/core";
+import type { RagChunk } from "@assistente-os/memory";
 import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
@@ -215,7 +216,7 @@ export async function handleChat(
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
       const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config });
       {
-        const verdict = built.verdict as { ok: boolean; sources?: unknown[]; motivo?: string } | null;
+        const verdict = built.verdict as { ok: boolean; sources?: RagChunk[]; motivo?: string } | null;
         const filesLoaded = built.files.filter((f) => f.chars > 0).length;
         const ragMsg =
           verdict == null
@@ -224,6 +225,24 @@ export async function handleChat(
               ? `RAG: contexto relevante encontrado (${verdict.sources?.length ?? 0} fonte(s))`
               : `RAG: ${verdict.motivo ?? "sem contexto relevante"}`;
         emitStep("rag", `${ragMsg}; ${filesLoaded} arquivo(s) de contexto persistente carregado(s)`);
+
+        // ---- Debug controlado de RAG: method (semantic/literal/hybrid) e score
+        // por fonte já existiam no retorno de retrieveContext mas nunca eram
+        // persistidos — uma degradação silenciosa pra busca literal (ex.:
+        // embedder de indexação incompatível com o de consulta) passava
+        // despercebida. Grava no audit trail já existente, sem infra nova.
+        if (verdict?.sources && verdict.sources.length > 0) {
+          logFullAuditEntry({
+            ts: new Date().toISOString(),
+            sessionId: String(session.id),
+            soulId: soul.id,
+            intention: "RAG: retrieval debug",
+            toolsCalled: [],
+            params: {
+              sources: verdict.sources.map((s) => ({ path: s.path, method: s.method, score: s.score })),
+            },
+          });
+        }
       }
 
       // route() sonda cada degrau (sem executar o prompt) e cai para o próximo se o
