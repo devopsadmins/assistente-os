@@ -1,9 +1,12 @@
-const CACHE_NAME = 'assistente-os-v4';
+const CACHE_NAME = 'assistente-os-v5';
 const FILES_TO_CACHE = [
   '/',
+  '/manifest.json',
   '/assets/app.css',
   '/assets/app.js',
-  '/assets/logo.png'
+  '/assets/logo.png',
+  '/assets/icon-192.png',
+  '/assets/icon-512.png'
 ];
 
 self.addEventListener('install', event => {
