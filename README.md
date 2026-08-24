@@ -301,14 +301,13 @@ npm run build         # build completo antes de testar
 | **F1** | Núcleo, memória, migração, daemon, CLI, MCP | ✅ Concluída |
 | **F2** | Agendador (tabela `agenda` + dispatch) | ✅ Concluída |
 | **F3** | Ferramentas do agente (busca/memória/ação) | ✅ Concluída |
-| **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | Quase concluída — falta Google OAuth (Stitch MCP) e o service token do Cloudflare Access |
+| **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | Quase concluída — falta o service token do Cloudflare Access |
 | **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram | Tool-calling e canais em produção; sessões multi-turno persistidas e skills por soul ainda não implementadas |
 | **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
 | **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
 
 ### Pendências
 
-- Google OAuth (GCP project para Stitch MCP)
 - Service token do Cloudflare Access (bypass programático pro domínio público)
 - Sentry (error tracking)
 - Prometheus/Grafana (métricas — hoje só `/infra/status` sob demanda)

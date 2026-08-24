@@ -28,8 +28,10 @@ export async function buildPrompt(options: {
   prompt: string;
   config: AssistenteOsConfig;
   withRag?: boolean;
+  /** Turnos recentes da conversa (mesma sessão) — dá memória multi-turno ao chat. */
+  history?: { role: "user" | "assistant"; content: string }[];
 }): Promise<BuiltPrompt> {
-  const { home, soul, prompt, config, withRag = true } = options;
+  const { home, soul, prompt, config, withRag = true, history } = options;
   const today = todayISODate();
   const sessionPath = join(soul.dir, "sessoes", `${today}.md`);
   const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8").trim() : "");
@@ -70,6 +72,12 @@ ${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
     }
   }
 
+  let historyCtx = "";
+  if (history && history.length > 0) {
+    historyCtx = `## Histórico da conversa (turnos recentes — mais recente por último)
+${history.map((m) => `**${m.role === "user" ? "Usuário" : "Assistente"}:** ${m.content}`).join("\n")}`;
+  }
+
   let rulesCtx = "";
   const activeRules = listActiveGoldenRules(home);
   if (activeRules.length > 0) {
@@ -79,7 +87,7 @@ ${activeRules.map((r) => `- **${r.topic}:** ${r.ruleText}`).join("\n")}`;
 
   // Diretriz FinOps (output conciso) sempre presente, incondicional, como
   // primeiro item — sem flag de configuração, vale pra todas as souls.
-  const prefixParts = [CONCISE_OUTPUT_DIRECTIVE, rulesCtx, almaCtx, ragCtx].filter(Boolean);
+  const prefixParts = [CONCISE_OUTPUT_DIRECTIVE, rulesCtx, almaCtx, ragCtx, historyCtx].filter(Boolean);
   const fullPrompt = prefixParts.length > 1
     ? `${prefixParts.join("\n\n")}\n\n--- Instrução do usuário ---\n${prompt}`
     : `${prefixParts.join("\n\n")}\n\n${prompt}`;

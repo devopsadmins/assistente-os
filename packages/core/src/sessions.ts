@@ -9,6 +9,24 @@ export interface SessionRecord {
   promptCount: number;
   maxTurns: number;
   budgetCap: number | null;
+  lastActivityAt: string;
+}
+
+export interface SessionMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** Inatividade após a qual a sessão aberta é considerada encerrada (env ASSISTENTE_OS_SESSION_IDLE_MINUTES, default 120min). */
+export function sessionIdleTimeoutMinutes(): number {
+  const n = Number(process.env.ASSISTENTE_OS_SESSION_IDLE_MINUTES);
+  return Number.isFinite(n) && n >= 0 ? n : 120;
+}
+
+/** Turnos recentes (usuário+assistente) incluídos como histórico no prompt (env ASSISTENTE_OS_SESSION_HISTORY_TURNS, default 6). */
+export function sessionHistoryTurns(): number {
+  const n = Number(process.env.ASSISTENTE_OS_SESSION_HISTORY_TURNS);
+  return Number.isFinite(n) && n >= 0 ? n : 6;
 }
 
 export interface ExecutionLog {
@@ -51,6 +69,12 @@ export interface ExecutionLogInput {
  * (soul) WHERE ended_at IS NULL — sob SQLite (single-writer síncrono) um
  * "SELECT, senão INSERT" nunca duplicava; sob Postgres com chamadas concorrentes
  * de verdade, duplicaria sem essa garantia no banco.
+ *
+ * Rotação por inatividade: closeSession() nunca é chamado em produção, então
+ * sem isso a sessão aberta duraria pra sempre — uma soul que ultrapassasse
+ * maxTurns uma vez ficaria travada com 429 em todo chat futuro. Se a sessão
+ * aberta está inativa há mais que sessionIdleTimeoutMinutes(), fecha e abre
+ * uma nova (zera prompt_count e o histórico de mensagens visível).
  */
 export async function openSession(pool: Pool, soul: string, maxTurns: number, budgetCap?: number): Promise<SessionRecord> {
   // Até 3 tentativas: se a sessão concorrente "vencedora" for fechada entre o
@@ -58,8 +82,8 @@ export async function openSession(pool: Pool, soul: string, maxTurns: number, bu
   // aberta existe mais — uma nova tentativa de INSERT deve então ter sucesso.
   for (let attempt = 0; attempt < 3; attempt++) {
     const inserted = await pool.query(
-      `INSERT INTO sessions (soul, started_at, ended_at, prompt_count, max_turns, budget_cap)
-       VALUES ($1, $2, NULL, 0, $3, $4)
+      `INSERT INTO sessions (soul, started_at, ended_at, prompt_count, max_turns, budget_cap, last_activity_at)
+       VALUES ($1, $2, NULL, 0, $3, $4, $2)
        ON CONFLICT (soul) WHERE ended_at IS NULL DO NOTHING
        RETURNING *`,
       [soul, nowIso(), maxTurns, budgetCap ?? null],
@@ -69,18 +93,50 @@ export async function openSession(pool: Pool, soul: string, maxTurns: number, bu
       "SELECT * FROM sessions WHERE soul = $1 AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
       [soul],
     );
-    if (rows[0]) return rowToSession(rows[0]);
+    const existing = rows[0];
+    if (existing) {
+      const idleMs = Date.now() - new Date(String(existing.last_activity_at)).getTime();
+      if (idleMs > sessionIdleTimeoutMinutes() * 60_000) {
+        await closeSession(pool, Number(existing.id));
+        continue; // próxima iteração: sem sessão aberta, o INSERT acima cria uma nova.
+      }
+      return rowToSession(existing);
+    }
   }
   throw new Error(`openSession: não foi possível abrir/recuperar sessão para soul '${soul}' após concorrência repetida`);
 }
 
-/** Incrementa o contador de prompts da sessão e devolve o total usado. */
+/** Incrementa o contador de prompts da sessão (e marca atividade) e devolve o total usado. */
 export async function bumpSessionPrompt(pool: Pool, sessionId: number): Promise<number> {
   const { rows } = await pool.query<{ prompt_count: number }>(
-    "UPDATE sessions SET prompt_count = prompt_count + 1 WHERE id = $1 RETURNING prompt_count",
-    [sessionId],
+    "UPDATE sessions SET prompt_count = prompt_count + 1, last_activity_at = $2 WHERE id = $1 RETURNING prompt_count",
+    [sessionId, nowIso()],
   );
   return Number(rows[0]?.prompt_count ?? 0);
+}
+
+/** Grava um turno (usuário ou assistente) da conversa, associado à sessão. */
+export async function recordSessionMessage(
+  pool: Pool,
+  sessionId: number,
+  soul: string,
+  role: SessionMessage["role"],
+  content: string,
+): Promise<void> {
+  await pool.query(
+    "INSERT INTO session_messages (session_id, soul, role, content, ts) VALUES ($1, $2, $3, $4, $5)",
+    [sessionId, soul, role, content, nowIso()],
+  );
+}
+
+/** Últimos `turns` turnos (até turns*2 mensagens) da sessão, em ordem cronológica. */
+export async function getRecentSessionMessages(pool: Pool, sessionId: number, turns: number): Promise<SessionMessage[]> {
+  if (turns <= 0) return [];
+  const { rows } = await pool.query<{ role: string; content: string }>(
+    "SELECT role, content FROM session_messages WHERE session_id = $1 ORDER BY id DESC LIMIT $2",
+    [sessionId, turns * 2],
+  );
+  return rows.reverse().map((r) => ({ role: r.role as SessionMessage["role"], content: r.content }));
 }
 
 export async function closeSession(pool: Pool, sessionId: number): Promise<void> {
@@ -132,6 +188,7 @@ function rowToSession(row: Record<string, unknown>): SessionRecord {
     promptCount: Number(row.prompt_count),
     maxTurns: Number(row.max_turns),
     budgetCap: row.budget_cap == null ? null : Number(row.budget_cap),
+    lastActivityAt: String(row.last_activity_at),
   };
 }
 

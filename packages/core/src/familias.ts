@@ -182,9 +182,10 @@ export async function excluirFamilia(
   const soulId = familia.soulId;
   if (!isValidSoulId(soulId)) throw new Error(`soulId inválido para exclusão: ${JSON.stringify(soulId)}`);
 
-  // [tabela, coluna] — execution_logs antes de sessions (FK sessions.id).
+  // [tabela, coluna] — execution_logs e session_messages antes de sessions (FK sessions.id).
   const alvos: Array<[string, string]> = [
     ["execution_logs", "soul"],
+    ["session_messages", "soul"],
     ["sessions", "soul"],
     ["events", "soul"],
     ["agenda", "soul"],

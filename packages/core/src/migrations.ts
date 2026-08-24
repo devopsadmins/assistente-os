@@ -260,4 +260,26 @@ export const MIGRATIONS: Migration[] = [
       COMMENT ON COLUMN familias.retencao_ate IS 'Prazo final de retenção; após essa data a rotina de retenção exclui o registro e todos os dados derivados da soul.';
     `,
   },
+  {
+    // Memória multi-turno real no chat: sessions.ts passa a rotacionar a
+    // sessão aberta por inatividade (last_activity_at) em vez de deixá-la
+    // aberta para sempre — corrige o lockout permanente de prompt_count >=
+    // maxTurns (closeSession() nunca era chamado em produção) e dá um limite
+    // claro pra "até onde volta o histórico". session_messages guarda os
+    // turnos (usuário/assistente) usados como contexto nas próximas chamadas.
+    id: "0009_session_history",
+    sql: `
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+      CREATE TABLE IF NOT EXISTS session_messages (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        session_id BIGINT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        soul TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user','assistant')),
+        content TEXT NOT NULL,
+        ts TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages (session_id, id);
+    `,
+  },
 ];

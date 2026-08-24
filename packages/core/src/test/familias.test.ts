@@ -86,6 +86,10 @@ async function seedDadosDaSoul(db: TestDb, soulId: string): Promise<void> {
     "INSERT INTO execution_logs (session_id, soul, ts, kind) VALUES ($1, $2, now(), 'chat')",
     [sRows[0]!.id, soulId],
   );
+  await p.query(
+    "INSERT INTO session_messages (session_id, soul, role, content, ts) VALUES ($1, $2, 'user', 'mensagem de teste', now())",
+    [sRows[0]!.id, soulId],
+  );
   await p.query("INSERT INTO events (ts, type, payload, soul) VALUES (now(), 'mensagem', '{}', $1)", [soulId]);
   await p.query("INSERT INTO agenda (ts, title, soul) VALUES (now(), 'consulta', $1)", [soulId]);
   await p.query(
@@ -114,6 +118,7 @@ test("familias: exclusão em cascata apaga todas as tabelas + diretório da soul
       Number((await testDb.pool.query<{ n: string }>(sql, [soulId])).rows[0]!.n);
     assert.equal(await contagem("SELECT COUNT(*) AS n FROM chunks WHERE soul = $1"), 1);
     assert.equal(await contagem("SELECT COUNT(*) AS n FROM sessions WHERE soul = $1"), 1);
+    assert.equal(await contagem("SELECT COUNT(*) AS n FROM session_messages WHERE soul = $1"), 1);
 
     const resultado = await excluirFamilia(testDb.pool, soulsRoot, f.id);
     assert.ok(resultado);
@@ -122,9 +127,11 @@ test("familias: exclusão em cascata apaga todas as tabelas + diretório da soul
     assert.ok(!existsSync(soulDirPath));
     assert.ok((resultado!.linhasPorTabela["chunks"] ?? 0) >= 1);
     assert.ok((resultado!.linhasPorTabela["sessions"] ?? 0) >= 1);
+    assert.ok((resultado!.linhasPorTabela["session_messages"] ?? 0) >= 1);
 
     for (const [sql, coluna] of [
       ["execution_logs", "soul"],
+      ["session_messages", "soul"],
       ["sessions", "soul"],
       ["events", "soul"],
       ["agenda", "soul"],

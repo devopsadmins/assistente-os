@@ -10,6 +10,9 @@ import {
   sumCostBySoul,
   openSession,
   bumpSessionPrompt,
+  recordSessionMessage,
+  getRecentSessionMessages,
+  sessionHistoryTurns,
   recordExecution,
   logger,
   sanitizeUserPrompt,
@@ -213,8 +216,11 @@ export async function handleChat(
         injection?.detected ? `possível prompt injection detectada (${injection.maxSeverity})` : "nenhum padrão de prompt injection detectado",
       );
 
+      // ---- Histórico da conversa (mesma sessão) — memória multi-turno ----
+      const history = await getRecentSessionMessages(pool, session.id, sessionHistoryTurns());
+
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
-      const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config });
+      const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
       {
         const verdict = built.verdict as { ok: boolean; sources?: RagChunk[]; motivo?: string } | null;
         const filesLoaded = built.files.filter((f) => f.chars > 0).length;
@@ -299,6 +305,11 @@ export async function handleChat(
           soul: soul.id,
           prompt: promptSanitized.sanitized,
           timeoutSeconds,
+          // threadId estável por sessão — sem isso runLangGraphAgentStream
+          // gera um thread novo por chamada (soul-${soul}-${Date.now()}) e o
+          // MemorySaver nunca reencontra o turno anterior, mesmo dentro da
+          // mesma sessão. Continua in-memory (não sobrevive restart do daemon).
+          threadId: `session-${session.id}`,
           useTools: langgraphMode !== "generate",
           onStep: (step: { node: string; iterationCount: number; messageCount: number; lastContent?: string; toolCalls?: any[] }) => {
             try {
@@ -387,6 +398,16 @@ export async function handleChat(
         logger.warn(`[content-filter] ${responseSanitized.count} secret(s) detectado(s) na resposta da soul ${soul.id}`);
       }
       const sanitizedStdout = responseSanitized.sanitized;
+
+      // ---- Grava o turno na sessão (memória multi-turno) — nunca sobre falha/timeout ----
+      if (result.code === 0 && !result.timedOut) {
+        try {
+          await recordSessionMessage(pool, session.id, soul.id, "user", promptSanitized.sanitized);
+          await recordSessionMessage(pool, session.id, soul.id, "assistant", sanitizedStdout);
+        } catch (err) {
+          logger.warn(`[sessions] falha ao gravar turno na sessão (non-fatal): ${(err as Error).message}`);
+        }
+      }
 
       sendJson(res, 200, {
         ok: result.code === 0 && !result.timedOut,

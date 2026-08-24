@@ -129,7 +129,6 @@ Backlog consolidado do projeto. Mantém o que está feito, as pendências de dec
 ## Pendências de decisão
 
 - [ ] **Mapear soul → provider Zen** ("a quem pertence"). Decisão adiada pelo usuário. Chaves identificadas até agora: `iecsjc` (auth.json do opencode) e `sousa` (default do SLC-OS). As demais 5 chaves ficam registradas sem uso.
-- [ ] **Completar OAuth dos MCPs Google** — criar projeto GCP, habilitar Stitch API, gerar `GOOGLE_MCP_CLIENT_ID`/`GOOGLE_MCP_CLIENT_SECRET`. Configurar em `~/.config/opencode/opencode.jsonc` (template em `docs/MCPS.md`). O `@google/stitch-sdk` foi removido do `packages/tools` (dependência morta).
 - [x] **MCP `standards` com caminho Windows quebrado** — Resolvido: entrada removida do `opencode.json`; `SKILL.md` do `spec-manager` reescrito para usar apenas recursos locais (ADRs, templates, `analyze_specs.py`). O binário `standards-mcp-server` não existe neste Linux.
 - [ ] **Autenticação do `@azure-devops/mcp`** — confirmar `az login` ou PAT disponível para o daemon/opencode; sem isso as ferramentas aparecem mas falham ao chamar.
 - [ ] **Teardown dos testes do `tools` falha** — "Cannot use a pool after calling end on the pool" em `pgTestHelper.cleanup` (13/13 testes reais passam; só o after do arquivo quebra). Provável `closePool()` sem args fechando o `adminPool` compartilhado antes do `DROP SCHEMA`.
@@ -149,13 +148,12 @@ Gates de produção ainda abertos (os de limites custo/tokens/turnos já impleme
 ### Ações para completar F4 (em ordem de prioridade)
 
 1. [x] **pm2 startup no VPS** — Executado com sucesso. Serviço `pm2-support.service` habilitado no systemd. Daemon sobrevive reboot.
-2. [ ] **Google OAuth** — criar projeto GCP → habilitar Stitch API → criar OAuth 2.0 client → adicionar `GOOGLE_MCP_CLIENT_ID`/`GOOGLE_MCP_CLIENT_SECRET` ao `~/.config/opencode/.env` → configurar stitch/gmail/drive/docs no `opencode.jsonc` (template em `docs/MCPS.md`).
-3. [x] **Cloudflare tunnel no VPS** — tunnel registrado e conectado (`assistente-os.coderstudio.club`). Ingress aponta para `daemon:4310` (resolvido via `--add-host`). Cloudflare Access ativo (302 → login). **Pendência:** criar service token no dashboard Cloudflare para bypass programático, OU configurar Access policy para aceitar o daemon token.
-4. [x] **Migrar souls para VPS** — 13 souls já migradas (cidadeplaza, consultoria_ia, desenvolvimento, escrita, gestaoobrigacoes, investimentos, iso, kinetiswan, main, ministro_louvor, segundo-cerebro, slcia, suriel).
-5. [ ] **Caddy** — reverse proxy com TLS automático (Let's Encrypt) na porta 4310. Opcional: Cloudflare Access já fornece TLS.
-6. [ ] **CI/CD** — GitHub Actions: `npm ci` → typecheck → test → deploy via SSH → pm2 restart.
-7. [ ] **Sentry** — error tracking (pode ser F6).
-8. [ ] **Prometheus/Grafana** — métricas (pode ser F6).
+2. [x] **Cloudflare tunnel no VPS** — tunnel registrado e conectado (`assistente-os.coderstudio.club`). Ingress aponta para `daemon:4310` (resolvido via `--add-host`). Cloudflare Access ativo (302 → login). **Pendência:** criar service token no dashboard Cloudflare para bypass programático, OU configurar Access policy para aceitar o daemon token.
+3. [x] **Migrar souls para VPS** — 13 souls já migradas (cidadeplaza, consultoria_ia, desenvolvimento, escrita, gestaoobrigacoes, investimentos, iso, kinetiswan, main, ministro_louvor, segundo-cerebro, slcia, suriel).
+4. [ ] **Caddy** — reverse proxy com TLS automático (Let's Encrypt) na porta 4310. Opcional: Cloudflare Access já fornece TLS.
+5. [ ] **CI/CD** — GitHub Actions: `npm ci` → typecheck → test → deploy via SSH → pm2 restart.
+6. [ ] **Sentry** — error tracking (pode ser F6).
+7. [ ] **Prometheus/Grafana** — métricas (pode ser F6).
 
 ## Roadmap por fases
 
@@ -164,7 +162,7 @@ Gates de produção ainda abertos (os de limites custo/tokens/turnos já impleme
 | **F1** | Núcleo, memória, migração, daemon, CLI, MCP | Concluída |
 | **F2** | Agendador: tabela `agenda` no `kernel.db` + dispatch de `opencode run` | Concluída (2026-08-18) |
 | **F3** | Ferramentas do agente (busca, memória, ação) | Concluída (2026-08-18) |
-| **F4** | Hosting + Stitch MCP em produção | ~60% (PM2+Docker+Tunnel+Souls prontos; OAuth, CI/CD, Sentry pendentes) |
+| **F4** | Hosting em produção | ~70% (PM2+Docker+Tunnel+Souls prontos; service token do Cloudflare Access, CI/CD, Sentry pendentes) |
 | **F5** | Plataforma de agentes (visão: superar o OpenClaw) | F5.1 concluída (per-soul permissions); LangChain/LangGraph integrados + deploy; F5.2-F5.4 planejadas |
 
 ### F5 — plataforma de agentes (visão: superar o OpenClaw)
