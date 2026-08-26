@@ -8,52 +8,52 @@ import type { RequestContext } from "./shared.js";
  * dependência circular tools→daemon. Mantenha em sincronia com o array
  * TOOLS de packages/tools/src/index.ts ao adicionar/remover tools.
  */
-const MCP_TOOLS_CATALOG: Array<{ name: string; description: string }> = [
-  { name: "souls_list", description: "Lista as souls disponíveis no Assistente OS." },
-  { name: "soul_context", description: "Retorna o contexto (perfil/contexto/licoes/pessoas/soul.md) de uma soul." },
-  { name: "soul_chat", description: "Roda opencode run headless na soul. Retorna o texto gerado." },
-  { name: "memory_search", description: "Busca RAG na memória da soul (semântica com Ollama; degrada para literal)." },
-  { name: "memory_index", description: "Indexa (idempotente) a pasta da soul no memory.db." },
-  { name: "memory_status", description: "Contagem de chunks e grafo (entidades/relações/observações) da soul." },
-  { name: "graph_list", description: "Lista entidades, relações e observações do grafo da soul." },
-  { name: "costs_summary", description: "Resumo de custos por soul e últimas chamadas do kernel.db." },
-  { name: "router_status", description: "Degraus do roteador e config do Ollama." },
-  { name: "observation_add", description: "Adiciona uma observação ao grafo da soul." },
-  { name: "action_execute", description: "Executa uma ação registrada na agenda ou dispara um fluxo de trabalho." },
-  { name: "soul_anotar", description: "Anota um item cronológico na sessão do dia da soul. Idempotente na data." },
-  { name: "soul_licao", description: "Registra uma lição aprendida em licoes.md da soul." },
-  { name: "soul_decidir", description: "Grava uma decisão no formato ADR em decisoes/<data>-<slug>.md da soul." },
-  { name: "soul_record_lesson", description: "Registra um incidente de agente (erro + causa raiz + regra corretiva); após 3 reincidências, propõe regra global." },
-  { name: "soul_get_lessons", description: "Retorna as últimas lições registradas em licoes.md da soul." },
-  { name: "guardian_audit_execution", description: "Julga a qualidade de uma execução de agente via LLM (score 0-100, ISO/IEC 42001)." },
-  { name: "guardian_promote_golden_rule", description: "Propõe manualmente uma regra de ouro, pendente de aprovação humana." },
-  { name: "guardian_pending_rules", description: "Lista propostas de regra de ouro aguardando aprovação ou rejeição." },
-  { name: "guardian_approve_rule", description: "Aprova uma proposta pendente de regra de ouro." },
-  { name: "guardian_reject_rule", description: "Rejeita uma proposta pendente de regra de ouro." },
-  { name: "guardian_get_golden_rules", description: "Retorna a lista consolidada de regras de ouro em vigor." },
-  { name: "sales_ingest_meeting", description: "Ingere uma transcrição de reunião (vtt/srt/txt), extrai decisões/ações/objeções via LLM local." },
-  { name: "sales_get_lead_brief", description: "Gera um dossiê pré-call a partir do histórico de reuniões já ingeridas da soul." },
-  { name: "spec_grill_plan", description: "Refina requisitos em duas fases (perguntas → respostas) antes de autorizar o modo build." },
-  { name: "agenda_add", description: "Agenda uma tarefa para o daemon despachar." },
-  { name: "agenda_list", description: "Lista itens da agenda por status." },
-  { name: "ado_list_projects", description: "Lista projetos da organização Azure DevOps." },
-  { name: "ado_list_repositories", description: "Lista repositórios de um projeto Azure DevOps." },
-  { name: "ado_list_work_items", description: "Lista work items de um projeto (WIQL)." },
-  { name: "ado_create_work_item", description: "Cria um work item no Azure DevOps." },
-  { name: "ado_get_work_item", description: "Obtém detalhes de um work item específico." },
-  { name: "ado_update_work_item", description: "Atualiza campos de um work item." },
-  { name: "ado_list_pipelines", description: "Lista pipelines de um projeto." },
-  { name: "ado_run_pipeline", description: "Executa um pipeline." },
-  { name: "ado_list_pull_requests", description: "Lista pull requests de um repositório." },
-  { name: "ado_create_pull_request", description: "Cria um pull request." },
-  { name: "browser_navigate", description: "Abre uma URL em um navegador headless (sessão isolada por tarefa)." },
-  { name: "browser_click", description: "Clica em um elemento CSS na página do navegador da tarefa." },
-  { name: "browser_extract_text", description: "Extrai texto/tabelas estruturados da página." },
-  { name: "browser_screenshot", description: "Captura screenshot da página como PNG (base64)." },
-  { name: "browser_close", description: "Fecha a sessão do navegador da tarefa." },
-  { name: "browser_get_accessibility_tree", description: "Retorna a árvore de acessibilidade da página ativa." },
-  { name: "browser_execute_fix", description: "Injeta JavaScript na página ativa pra contornar um bloqueio." },
-  { name: "browser_audited_screenshot", description: "Captura screenshot com timestamp, hash SHA-256 e metadata de auditoria." },
+const MCP_TOOLS_CATALOG: Array<{ name: string; description: string; namespace: string }> = [
+  { name: "souls_list", description: "Lista as souls disponíveis no Assistente OS.", namespace: "soul" },
+  { name: "soul_context", description: "Retorna o contexto (perfil/contexto/licoes/pessoas/soul.md) de uma soul.", namespace: "soul" },
+  { name: "soul_chat", description: "Roda opencode run headless na soul. Retorna o texto gerado.", namespace: "soul" },
+  { name: "memory_search", description: "Busca RAG na memória da soul (semântica com Ollama; degrada para literal).", namespace: "memory" },
+  { name: "memory_index", description: "Indexa (idempotente) a pasta da soul no memory.db.", namespace: "memory" },
+  { name: "memory_status", description: "Contagem de chunks e grafo (entidades/relações/observações) da soul.", namespace: "memory" },
+  { name: "graph_list", description: "Lista entidades, relações e observações do grafo da soul.", namespace: "soul" },
+  { name: "costs_summary", description: "Resumo de custos por soul e últimas chamadas do kernel.db.", namespace: "core" },
+  { name: "router_status", description: "Degraus do roteador e config do Ollama.", namespace: "core" },
+  { name: "observation_add", description: "Adiciona uma observação ao grafo da soul.", namespace: "soul" },
+  { name: "action_execute", description: "Executa uma ação registrada na agenda ou dispara um fluxo de trabalho.", namespace: "soul" },
+  { name: "soul_anotar", description: "Anota um item cronológico na sessão do dia da soul. Idempotente na data.", namespace: "soul" },
+  { name: "soul_licao", description: "Registra uma lição aprendida em licoes.md da soul.", namespace: "soul" },
+  { name: "soul_decidir", description: "Grava uma decisão no formato ADR em decisoes/<data>-<slug>.md da soul.", namespace: "soul" },
+  { name: "soul_record_lesson", description: "Registra um incidente de agente (erro + causa raiz + regra corretiva); após 3 reincidências, propõe regra global.", namespace: "soul" },
+  { name: "soul_get_lessons", description: "Retorna as últimas lições registradas em licoes.md da soul.", namespace: "soul" },
+  { name: "guardian_audit_execution", description: "Julga a qualidade de uma execução de agente via LLM (score 0-100, ISO/IEC 42001).", namespace: "guardian" },
+  { name: "guardian_promote_golden_rule", description: "Propõe manualmente uma regra de ouro, pendente de aprovação humana.", namespace: "guardian" },
+  { name: "guardian_pending_rules", description: "Lista propostas de regra de ouro aguardando aprovação ou rejeição.", namespace: "guardian" },
+  { name: "guardian_approve_rule", description: "Aprova uma proposta pendente de regra de ouro.", namespace: "guardian" },
+  { name: "guardian_reject_rule", description: "Rejeita uma proposta pendente de regra de ouro.", namespace: "guardian" },
+  { name: "guardian_get_golden_rules", description: "Retorna a lista consolidada de regras de ouro em vigor.", namespace: "guardian" },
+  { name: "sales_ingest_meeting", description: "Ingere uma transcrição de reunião/call (vtt/srt/txt), extrai decisões/ações/objeções via LLM local.", namespace: "sales" },
+  { name: "sales_get_lead_brief", description: "Gera um dossiê pré-call a partir do histórico de reuniões já ingeridas da soul.", namespace: "sales" },
+  { name: "spec_grill_plan", description: "Refina requisitos em duas fases (perguntas → respostas) antes de autorizar o modo build.", namespace: "soul" },
+  { name: "agenda_add", description: "Agenda uma tarefa para o daemon despachar.", namespace: "soul" },
+  { name: "agenda_list", description: "Lista itens da agenda por status.", namespace: "soul" },
+  { name: "ado_list_projects", description: "Lista projetos da organização Azure DevOps.", namespace: "ado" },
+  { name: "ado_list_repositories", description: "Lista repositórios de um projeto Azure DevOps.", namespace: "ado" },
+  { name: "ado_list_work_items", description: "Lista work items de um projeto (WIQL).", namespace: "ado" },
+  { name: "ado_create_work_item", description: "Cria um work item no Azure DevOps.", namespace: "ado" },
+  { name: "ado_get_work_item", description: "Obtém detalhes de um work item específico.", namespace: "ado" },
+  { name: "ado_update_work_item", description: "Atualiza campos de um work item.", namespace: "ado" },
+  { name: "ado_list_pipelines", description: "Lista pipelines de um projeto.", namespace: "ado" },
+  { name: "ado_run_pipeline", description: "Executa um pipeline.", namespace: "ado" },
+  { name: "ado_list_pull_requests", description: "Lista pull requests de um repositório.", namespace: "ado" },
+  { name: "ado_create_pull_request", description: "Cria um pull request.", namespace: "ado" },
+  { name: "browser_navigate", description: "Abre uma URL em um navegador headless. Retorna título e status HTTP.", namespace: "browser" },
+  { name: "browser_click", description: "Clica em um elemento CSS na página do navegador da tarefa.", namespace: "browser" },
+  { name: "browser_extract_text", description: "Extrai texto/tabelas estruturados da página.", namespace: "browser" },
+  { name: "browser_screenshot", description: "Captura screenshot da página como PNG (base64).", namespace: "browser" },
+  { name: "browser_close", description: "Fecha a sessão do navegador da tarefa e libera recursos.", namespace: "browser" },
+  { name: "browser_get_accessibility_tree", description: "Retorna a árvore de acessibilidade da página ativa.", namespace: "browser" },
+  { name: "browser_execute_fix", description: "Injeta JavaScript na página ativa pra contornar um bloqueio.", namespace: "browser" },
+  { name: "browser_audited_screenshot", description: "Captura screenshot com timestamp, hash SHA-256 e metadata para auditoria/relatórios.", namespace: "browser" },
 ];
 
 /** Lista estática das rotas REST ativas, agrupadas por domínio (ver packages/daemon/src/routes/*.ts). */
@@ -98,7 +98,7 @@ function buildLlmsTxt(home: string): string {
     "",
     "## Catálogo de MCP Tools",
     "",
-    ...MCP_TOOLS_CATALOG.map((t) => `- **${t.name}**: ${t.description}`),
+    ...MCP_TOOLS_CATALOG.map((t) => `- **${t.name}** (${t.namespace}): ${t.description}`),
     "",
     "## Souls registradas",
     "",
@@ -116,7 +116,7 @@ function buildLlmsTxt(home: string): string {
   return lines.join("\n");
 }
 
-/** GET /llms.txt — catálogo do sistema (rotas, tools MCP, souls) para ingestão headless por agentes externos. */
+/** GET /llms.txt — catálogo do sistema */
 export async function handleLlmsTxt(
   req: IncomingMessage,
   res: ServerResponse,
@@ -130,5 +130,69 @@ export async function handleLlmsTxt(
   const body = buildLlmsTxt(config.home);
   res.writeHead(200, { "content-type": "text/markdown; charset=utf-8" });
   res.end(body);
+  return true;
+}
+
+/** GET /api/capabilities — JSON estruturado com capacidades consolidadas do sistema. */
+export async function handleCapabilities(
+  req: IncomingMessage,
+  res: ServerResponse,
+  _url: URL,
+  path: string,
+  context: RequestContext,
+): Promise<boolean> {
+  if (req.method !== "GET" || path !== "/api/capabilities") return false;
+
+  const config = loadConfig({ home: context.home });
+  const souls = listSouls(config.home);
+
+  const capabilities = {
+    system: {
+      name: "Assistente OS",
+      version: "0.1.0",
+      localFirst: true,
+    },
+    souls: souls.map((s) => ({
+      id: s.id,
+      name: s.config.name,
+      description: s.config.description,
+    })),
+    mcpTools: [/* 47 tools will be populated below */],
+    restEndpoints: [
+      { method: "GET", path: "/health", description: "Health check (público, sem token)" },
+      { method: "GET", path: "/llms.txt", description: "Este catálogo, para ingestão por agentes externos" },
+      { method: "GET", path: "/souls", description: "Lista todas as souls" },
+      { method: "GET", path: "/souls/:id", description: "Detalhe de uma soul" },
+      { method: "GET", path: "/souls/:id/context", description: "Contexto concatenado da soul" },
+      { method: "POST", path: "/souls/:id/chat", description: "Chat com a soul (tier: local/zen/soul/langgraph)" },
+      { method: "GET", path: "/souls/:id/langgraph/status", description: "Status do agente LangGraph" },
+      { method: "GET", path: "/memory/status", description: "Stats de memória (chunks + grafo)" },
+      { method: "POST", path: "/memory/search", description: "Busca RAG com gate de relevância" },
+      { method: "GET", path: "/graph/:soulId", description: "Grafo (entidades/relações/observações) da soul" },
+      { method: "GET", path: "/costs", description: "Resumo de custos por soul" },
+      { method: "GET", path: "/router/status", description: "Degraus do roteador e config do Ollama" },
+      { method: "GET", path: "/agenda", description: "Lista itens da agenda (?status=pending/done/all)" },
+      { method: "POST", path: "/agenda", description: "Adiciona item na agenda" },
+      { method: "GET", path: "/events", description: "Lista eventos" },
+      { method: "POST", path: "/events", description: "Recebe evento (assinado por HMAC)" },
+      { method: "GET", path: "/monitors", description: "Lista monitores de site" },
+      { method: "POST", path: "/monitors", description: "Cria monitor de site" },
+      { method: "GET", path: "/infra/status", description: "Snapshot de saúde (Ollama, Postgres, sistema, RAG)" },
+      { method: "GET", path: "/api/whatsapp/status", description: "Status do canal WhatsApp" },
+      { method: "GET", path: "/api/telegram/status", description: "Status do canal Telegram" },
+      { method: "WS", path: "/", description: "WebSocket de eventos em tempo real (token via ?token=)" },
+    ],
+    operationalMissions: {
+      description: "Missões compostas suportadas pelo Mission Runner",
+      examples: [
+        "meeting-ingest: ingestão de reunião + atualização RAG + agendamento follow-up + auditoria Guardian",
+        "email-ingest: processamento de email + extração de decisões + atualização de contexto",
+        "browser-task: automação de navegação + extração de dados + screenshot + registro",
+      ],
+    },
+  };
+
+  res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(capabilities, null, 2));
   return true;
 }
