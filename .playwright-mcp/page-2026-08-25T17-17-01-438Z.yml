@@ -1,0 +1,38 @@
+- generic [active] [ref=f29e1]:
+  - generic "Player de vídeo do YouTube" [ref=f29e5]:
+    - button "Reproduzir" [ref=f29e9] [cursor=pointer]
+    - generic [ref=f29e10]:
+      - generic [ref=f29e11] [cursor=pointer]:
+        - slider "Botão deslizante de busca" [ref=f29e12]
+        - generic:
+          - generic:
+            - generic:
+              - slider "Clique ou role o painel até a busca precisa"
+      - generic [ref=f29e21]:
+        - generic [ref=f29e22]:
+          - button "Pausa (k)" [ref=f29e23] [cursor=pointer]
+          - generic [ref=f29e24]:
+            - button "Sem áudio (m)" [ref=f29e26] [cursor=pointer]
+            - slider "Volume":
+              - generic [ref=f29e27] [cursor=pointer]
+          - button "0 Minutos 0 Segundos de 35 Minutos 50 Segundos" [ref=f29e30] [cursor=pointer]: 0:00 / 35:50
+        - generic [ref=f29e31]:
+          - generic [ref=f29e32]:
+            - button "Não há legendas/legendas descritivas disponíveis" [ref=f29e33] [cursor=pointer]
+            - button "Detalhes" [ref=f29e35] [cursor=pointer]
+          - generic [ref=f29e36]:
+            - button "Modo Teatro (t)" [ref=f29e37] [cursor=pointer]
+            - button "Tela inteira (f)" [ref=f29e38] [cursor=pointer]
+  - banner [ref=f29e62]:
+    - generic [ref=f29e64]:
+      - generic [ref=f29e65]:
+        - button "Guia" [ref=f29e67] [cursor=pointer]
+        - generic:
+          - link:
+            - /url: /
+      - search [ref=f29e70]:
+        - generic [ref=f29e72]:
+          - generic [ref=f29e73]:
+            - combobox [expanded] [ref=f29e75]
+            - button [ref=f29e78] [cursor=pointer]
+          - button "Search" [ref=f29e79] [cursor=pointer]
