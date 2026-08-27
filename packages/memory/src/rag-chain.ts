@@ -14,7 +14,8 @@ import type { Embedder } from "./embedders.js";
 import { search } from "./indexer.js";
 import { langchainTemplates } from "./prompt-templates.js";
 import { getEmbedder } from "./embedder-provider.js";
-import { loadConfig, type Pool } from "@assistente-os/core";
+import { createHash } from "node:crypto";
+import { loadConfig, cache, type Pool } from "@assistente-os/core";
 
 export interface RagChunk {
   doc: string;
@@ -132,6 +133,21 @@ export async function retrieveContext(
   query: string,
   limit = 5
 ): Promise<RagContext> {
+  // Cache em camadas (E4): dois chats idênticos em janela curta (voz, retries de
+  // UI) não repetem embedding + query vetorial. TTL curto — a memória da soul
+  // muda com reindex. Degrada em silêncio.
+  const poolTag = createHash("sha1")
+    .update((pool as unknown as { options?: { connectionString?: string } }).options?.connectionString ?? "")
+    .digest("hex")
+    .slice(0, 8);
+  const cacheKey = `rag:${poolTag}:${soul}:${createHash("sha1").update(`${limit}\n${query}`).digest("hex")}`;
+  try {
+    const hit = await cache.get(cacheKey);
+    if (hit) return JSON.parse(hit) as RagContext;
+  } catch {
+    /* cache opcional */
+  }
+
   const embedder: Embedder = getEmbedder();
   const results = await search(pool, soul, query, embedder, limit);
 
@@ -149,13 +165,19 @@ export async function retrieveContext(
   }
 
   const context = formatContext(chunks);
-  return {
+  const result: RagContext = {
     context,
     sources: chunks,
     // >= (não >): literalSearchFallback atribui score exatamente 0.5 de propósito
     // (o mesmo valor do gate) — com > estrito, o fallback literal nunca passava.
     hasRelevantDocs: chunks.length > 0 && chunks[0].score >= 0.5,
   };
+  try {
+    await cache.set(cacheKey, JSON.stringify(result), 60);
+  } catch {
+    /* cache opcional */
+  }
+  return result;
 }
 
 /**

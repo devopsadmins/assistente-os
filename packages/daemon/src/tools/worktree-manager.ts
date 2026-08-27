@@ -11,6 +11,7 @@ import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
 import { resolveHome } from "@assistente-os/core";
 import { authorizeExecution, type AuthorizeExecutionInput, type AgentConfig } from "@assistente-os/core";
+import { sanitizeCommandOutput } from "./terminal-sanitizer.js";
 
 export interface WorktreeResult {
   success: boolean;
@@ -193,11 +194,14 @@ export class WorktreeManager {
     // 1. Roda build na worktree (Regra 1: compilação limpa)
     const buildResult = await this.runNpmBuild(worktreePath);
     if (buildResult.code !== 0 || buildResult.timedOut) {
+      // Terminal Sanitizer: mantém só as linhas relevantes (erros/resumo) da saída
+      // de build, poupando tokens quando esta mensagem entra em audit trail / prompt.
+      const s = sanitizeCommandOutput("npm run build --workspaces", buildResult.stdout, buildResult.stderr);
       return {
         success: false,
         testsPassed: false,
         merged: false,
-        error: `Build falhou (código ${buildResult.code}${buildResult.timedOut ? ", timeout" : ""}): ${buildResult.stderr.slice(-500) || buildResult.stdout.slice(-500)}`,
+        error: `Build falhou (código ${buildResult.code}${buildResult.timedOut ? ", timeout" : ""}): ${s.sanitized.slice(-1000)}`,
       };
     }
 
@@ -206,11 +210,12 @@ export class WorktreeManager {
     const testsPassed = testResult.code === 0 && !testResult.timedOut;
 
     if (!testsPassed) {
+      const s = sanitizeCommandOutput("npm test", testResult.stdout, testResult.stderr);
       return {
         success: false,
         testsPassed: false,
         merged: false,
-        error: `Testes falharam (código ${testResult.code}${testResult.timedOut ? ", timeout" : ""}): ${testResult.stderr.slice(-500) || testResult.stdout.slice(-500)}`,
+        error: `Testes falharam (código ${testResult.code}${testResult.timedOut ? ", timeout" : ""}): ${s.sanitized.slice(-1000)}`,
       };
     }
 

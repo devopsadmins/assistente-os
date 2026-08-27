@@ -1,6 +1,14 @@
 import type { Pool } from "pg";
+import { createHash } from "node:crypto";
 import type { AssistenteOsConfig } from "./config.js";
 import type { Soul } from "./souls.js";
+import { cache } from "./cache.js";
+
+/** Discriminador de banco/schema para chaves de cache — evita servir resultado de outro schema (testes isolados por schema). */
+function poolTag(pool: Pool): string {
+  const cs = (pool as unknown as { options?: { connectionString?: string } }).options?.connectionString ?? "";
+  return createHash("sha1").update(cs).digest("hex").slice(0, 8);
+}
 
 export interface RouteTarget {
   tier: string;
@@ -161,6 +169,17 @@ export async function getUsageSummary(
   pool: Pool,
   filters: UsageSummaryFilters = {},
 ): Promise<UsageSummaryRow[]> {
+  // Cache em camadas (E4): a aba Telemetria faz polling; ~30s de staleness é
+  // aceitável e evita reagregar router_history a cada request. Redis quando
+  // disponível, senão memória; degrada em silêncio se o cache falhar.
+  const cacheKey = `usage:${poolTag(pool)}:${JSON.stringify(filters)}`;
+  try {
+    const hit = await cache.get(cacheKey);
+    if (hit) return JSON.parse(hit) as UsageSummaryRow[];
+  } catch {
+    /* cache opcional */
+  }
+
   // Só linhas de execução real entram na agregação de custo/uso. route()/selectRoute()
   // gravam uma linha por sonda de degrau (status 'ok'/'fail', 0 tokens) — sem este
   // filtro cada turno de chat contaria N vezes e diluía tokens com zeros.
@@ -225,5 +244,10 @@ export async function getUsageSummary(
     params,
   );
 
+  try {
+    await cache.set(cacheKey, JSON.stringify(rows), 30);
+  } catch {
+    /* cache opcional */
+  }
   return rows;
 }

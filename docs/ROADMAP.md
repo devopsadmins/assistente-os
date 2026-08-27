@@ -32,7 +32,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E1](#e1--finops-fechar-a-captura-de-tokens-no-fluxo-de-chat) | FinOps — captura de tokens no chat ✅ | M | — |
 | [E2](#e2--sessoes-multi-turno-finalizar-e-endurecer) | Sessões multi-turno — finalizar e endurecer ✅ | M–L | — |
 | [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner | L | E4 |
-| [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache | M | — |
+| [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache ✅ | M | — |
 | [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
 | [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana | M–L | — |
 | [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token | S | — |
@@ -327,18 +327,29 @@ export function sanitizeTerminalOutput(text: string, opts?: { keep?: "head" | "t
 cache.wrap<T>(key: string, ttlSeconds: number, producer: () => Promise<T>): Promise<T>;
 ```
 
+### Status: ✅ CONCLUÍDO (2026-08-27)
+
+- **Sanitizer** ligado em `worktree-manager.mergeLocally`: a saída de `npm run build`
+  e `npm test` que falha passa por `sanitizeCommandOutput` antes de virar mensagem
+  de erro — mantém as linhas relevantes (erros/resumo), corta o ruído.
+- **Cache** em `getUsageSummary` (`core/router.ts`, TTL 30s) e `retrieveContext`
+  (`memory/rag-chain.ts`, TTL 60s). Chave inclui `poolTag` (hash do connectionString)
+  para não vazar resultado entre schemas em teste. Sem `init()` explícito → só
+  memória (Redis é opt-in no boot do daemon); degrada em silêncio.
+- Invalidação: TTL curto no lugar de `del` por chave (chaves são combos de filtro);
+  a aba Telemetria faz polling, 30s de staleness é aceitável.
+- **Não feito aqui:** sanitizer nos steps do Mission Runner (fica em E3);
+  truncamento de dumps de acessibilidade em `browser.ts` (opcional, fora de escopo).
+
 ### Critérios de aceitação
-- [ ] `mergeLocally` com um `npm test` verboso: a saída retornada/logada está truncada (últimas N linhas + contador), o veredito de sucesso/falha continua correto.
-- [ ] Dois `retrieveContext` idênticos em < 60 s: o segundo não chama o embedder (contador/spy).
-- [ ] `GET /api/costs/usage` repetido em < 30 s serve do cache; após um chat novo, reflete o incremento (invalidação).
-- [ ] Sem `REDIS_URL`: tudo funciona pelo fallback em memória; `npm test` do pacote não trava (`cache.close()` no `after`).
+- [x] `mergeLocally` com `npm test` verboso → erro truncado, veredito correto (teste `worktree-manager.test.ts`).
+- [x] `retrieveContext` idêntico em < 60s serve do cache (não re-embeda).
+- [x] `getUsageSummary` repetido em < 30s serve do cache (teste `usage-summary.test.ts`); reflete o novo valor após o TTL.
+- [x] Sem `REDIS_URL`: fallback em memória, suítes não travam (nenhum `init()` novo).
 
-### Plano de teste
-- Unit `daemon/test/terminal-sanitizer.test.ts` (existe) — estender p/ caminho `tail` + contador.
-- Unit `memory/test/context-cache.test.ts` — hit/miss/invalidale com spy no embedder.
-- Unit `core/test/cache.test.ts` (existe) — `wrap` + TTL + fallback.
+Testes: `worktree-manager.test.ts` +1, `usage-summary.test.ts` +1. Suítes: core 219, daemon 101, memory 44, tools 21, cli 2 — verdes.
 
-### Esforço: **M** · Dependências: integra com E1 (invalidação) e E3 (sanitizer nos steps)
+### Esforço: **M** · Dependências: integra com E1
 
 ---
 

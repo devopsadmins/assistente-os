@@ -43,6 +43,32 @@ test("getUsageSummary: ignora linhas de sonda (status != 'executed') e soma só 
   }
 });
 
+test("getUsageSummary: serve do cache em camadas dentro do TTL (E4)", async () => {
+  const db = await createTestSchema();
+  try {
+    await recordRouterSelection(db.pool, {
+      soul: fakeSoul("cached"),
+      target: { tier: "local", provider: "ollama", model: "m" },
+      reason: "x", status: "executed",
+      promptTokens: 10, completionTokens: 10, totalTokens: 20, modelUsed: "m", executionMode: "fast",
+    });
+    const first = await getUsageSummary(db.pool, { soul: "cached" });
+    assert.equal(Number(first[0]!.total_tokens), 20);
+
+    // Nova execução — mas a chamada seguinte, dentro do TTL de 30s, ainda serve o valor cacheado.
+    await recordRouterSelection(db.pool, {
+      soul: fakeSoul("cached"),
+      target: { tier: "local", provider: "ollama", model: "m" },
+      reason: "x", status: "executed",
+      promptTokens: 100, completionTokens: 100, totalTokens: 200, modelUsed: "m", executionMode: "fast",
+    });
+    const second = await getUsageSummary(db.pool, { soul: "cached" });
+    assert.equal(Number(second[0]!.total_tokens), 20, "cache serve o valor anterior dentro do TTL");
+  } finally {
+    await db.cleanup();
+  }
+});
+
 test("getUsageSummary: agrega múltiplas execuções por mode e model", async () => {
   const db = await createTestSchema();
   try {

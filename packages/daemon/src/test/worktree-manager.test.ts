@@ -170,6 +170,25 @@ describe("WorktreeManager class", () => {
     assert.ok(result.error?.includes("Testes falharam"));
   });
 
+  // 7b. mergeLocally — saída de teste verbosa é sanitizada na mensagem de erro (E4)
+  it("mergeLocally: aplica o Terminal Sanitizer na saída de teste falha (E4)", async () => {
+    const noise = Array.from({ length: 400 }, (_, i) => `console.log linha de ruído ${i}`).join("\n");
+    const verbose = `${noise}\n  ✕ meu teste falhou\n  1 failing\n${noise}`;
+    const responses = new Map<string, ExecResult>([
+      ["npm run build", mockExecResult({ code: 0 })],
+      ["npm test", mockExecResult({ code: 1, stdout: verbose })],
+    ]);
+    const manager = new WorktreeManager("test-soul", createTestAgentConfig("auto"), createMockExecutor(responses));
+
+    const result = await manager.mergeLocally(TEST_TASK_ID);
+    assert.equal(result.success, false);
+    assert.ok(result.error?.includes("Testes falharam"));
+    // A mensagem preserva a linha relevante mas não carrega as 800 linhas de ruído.
+    assert.ok(result.error!.includes("meu teste falhou"), "mantém a linha do teste que falhou");
+    assert.ok(result.error!.length < verbose.length / 2, "trunca o ruído");
+    assert.ok(!result.error!.includes("linha de ruído 200"), "corta o miolo de ruído");
+  });
+
   // 8. mergeLocally — build failure: returns error, no test/merge
   it("mergeLocally: falha no build retorna erro e não roda testes", async () => {
     const responses = new Map<string, ExecResult>([
