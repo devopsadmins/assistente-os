@@ -11,6 +11,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Governança como Código: valida no PR o plano de rollback, a referência de
+  # rastreabilidade, a descrição mínima e — para caminhos sensíveis — a presença
+  # do label de revisão. Ref: T1.1 de docs/ARCHITECTURE-REVIEW.md.
+  compliance:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test compliance rules
+        run: node --test .github/scripts/*.test.mjs
+
+      - name: Compliance gate
+        run: node .github/scripts/compliance-gate.mjs
+
   build-and-test:
     runs-on: ubuntu-latest
 

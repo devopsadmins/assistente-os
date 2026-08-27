@@ -83,9 +83,18 @@ Adotar o loop de almas (openclaw-style) e o gate de relevância (SLC-OS) como co
 > A RACI acima foi **aceita pelo owner do repositório em 2026-08-27**; os owners
 > nominais no `docs/AI-INVENTORY.md` seguem o mesmo registro.
 
+> **T1.1 (2026-08-27):** "Governança como Código" estendida ao pipeline de CI —
+> job `compliance` (`.github/workflows/ci.yml`) valida em cada `pull_request`
+> plano de rollback, referência de rastreabilidade e descrição mínima, exige
+> registro em `CHANGELOG.md`/`docs/adr/` para mudança de config sensível e o
+> label `governanca-revisada` para alteração em caminho sensível. Antes disso a
+> governança de dados/ADR era forte mas não automatizada no PR. Ref: T1.1 de
+> `docs/ARCHITECTURE-REVIEW.md`.
+
 ## Histórico
 
 | Data | Evento | Autor |
 |---|---|---|
 | 2026-08-16 | Aceita | Claude Code |
 | 2026-08-27 | Gates técnicos AI-3 fechados (E8) + RACI §8 aceita pelo owner do repositório; manifest anexado ao CI | Claude Code |
+| 2026-08-27 | T1.1 — gate `compliance` no CI (rollback/rastreabilidade/descrição + label p/ caminho sensível) | Claude Code |
