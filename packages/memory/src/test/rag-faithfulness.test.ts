@@ -192,10 +192,16 @@ test("reranked flag: com RAG_RERANK != off os chunks recuperados são marcados r
     assert.ok(result.sources.length > 0);
     assert.ok(result.sources.every((s) => s.reranked === true), "todos os chunks marcados como reranked");
 
-    // Sanidade: com RAG_RERANK=off, o flag fica ausente.
+    // Epic D: rerankMode/rerankMs no RagContext quando o rerank roda.
+    assert.equal(result.rerankMode, "llm");
+    assert.equal(typeof result.rerankMs, "number");
+
+    // Sanidade: com RAG_RERANK=off, o flag fica ausente e não há rerankMs.
     process.env.RAG_RERANK = "off";
     const off = await retrieveContext(testDb.pool, "rr1", "pgvector", 5);
     assert.ok(off.sources.every((s) => !s.reranked));
+    assert.equal(off.rerankMode, "off");
+    assert.equal(off.rerankMs, undefined);
   } finally {
     if (prev === undefined) delete process.env.RAG_RERANK;
     else process.env.RAG_RERANK = prev;

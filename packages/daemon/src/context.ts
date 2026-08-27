@@ -99,12 +99,13 @@ ${sessao ? `--- Sessão atual (${today}) ---\n${sessao}\n` : ""}`.trim();
       // Screening de prompt injection nos chunks já rodou dentro de retrieveContext;
       // aqui só propagamos os findings pelo verdict para o chat.ts logar/alertar.
       const injection = res.injectionFindings ?? [];
+      const rerank = { mode: res.rerankMode, ms: res.rerankMs };
       if (res.hasRelevantDocs) {
         ragCtx = `## Contexto de conhecimento relevante (RAG)
 ${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
-        verdict = { ok: true, sources: res.sources, injection };
+        verdict = { ok: true, sources: res.sources, injection, rerank };
       } else {
-        verdict = { ok: false, motivo: "nenhum documento relevante encontrado", injection };
+        verdict = { ok: false, motivo: "nenhum documento relevante encontrado", injection, rerank };
       }
     } catch {
       ragCtx = "";

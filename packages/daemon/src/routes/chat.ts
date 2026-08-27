@@ -30,7 +30,7 @@ import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
-import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts } from "../observability/metrics.js";
+import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds } from "../observability/metrics.js";
 
 /**
  * Chama o /api/chat do Ollama via node:http. O fetch() do Node (undici) aborta
@@ -272,7 +272,13 @@ export async function handleChat(
       }
       {
         const verdict = built.verdict as
-          | { ok: boolean; sources?: RagChunk[]; motivo?: string; injection?: RagInjectionFinding[] }
+          | {
+              ok: boolean;
+              sources?: RagChunk[];
+              motivo?: string;
+              injection?: RagInjectionFinding[];
+              rerank?: { mode: "off" | "cross-encoder" | "llm"; ms?: number };
+            }
           | null;
         const filesLoaded = built.files.filter((f) => f.chars > 0).length;
         const ragMsg =
@@ -296,7 +302,10 @@ export async function handleChat(
             intention: "RAG: retrieval debug",
             toolsCalled: [],
             params: {
+              rerankMode: verdict.rerank?.mode ?? "off",
+              ...(verdict.rerank?.ms !== undefined ? { rerankMs: verdict.rerank.ms } : {}),
               sources: verdict.sources.map((s) => ({
+                doc: s.doc,
                 path: s.path,
                 method: s.reranked ? "reranked" : s.method,
                 score: s.score,
@@ -304,6 +313,13 @@ export async function handleChat(
               })),
             },
           });
+        }
+        if (verdict?.rerank?.ms !== undefined) {
+          try {
+            ragRerankSeconds.observe({ mode: verdict.rerank.mode }, verdict.rerank.ms / 1000);
+          } catch {
+            /* métrica opcional */
+          }
         }
 
         // ---- Indirect prompt injection em conteúdo recuperado (RAG) ----

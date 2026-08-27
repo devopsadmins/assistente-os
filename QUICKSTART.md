@@ -66,6 +66,16 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 # espalha o consumo entre até 7 chaves gratuitas. Lista separada por vírgula:
 # ZEN_API_KEYS=<chave1>,<chave2>,<chave3>
 # (alternativa: ZEN_API_KEY_1 .. ZEN_API_KEY_7, uma por variável)
+
+# --- RAG (opcional) ---
+# Reranker: reordena os chunks recuperados por relevância par (query, trecho)
+# antes de cortar no limite. "cross-encoder" = modelo local sem custo
+# (Xenova/ms-marco-MiniLM-L-6-v2); "llm" = pergunta 0-3 ao Ollama por trecho.
+# RAG_RERANK=cross-encoder
+# RAG_RERANK_TOPN=20          # quantos candidatos buscar antes de reordenar
+# RAG_RERANK_TOPK=5           # quantos manter após o rerank
+# RAG_INJECTION_MODO=aviso    # aviso | recusar (descarta chunk de severidade alta)
+# RAG_HNSW_EF_SEARCH=40       # ef_search fixo na busca vetorial (reprodutibilidade)
 ```
 
 ### Variáveis de ambiente importantes
@@ -81,6 +91,9 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `AOS_PORT` | `4310` | Porta do daemon |
 | `ZEN_API_KEYS` | — | Chaves OpenCode Zen em rodízio (round-robin por chamada); vírgula-separadas. Alternativas: `ZEN_API_KEY_1..7` ou `ZEN_API_KEY` (uma só) |
 | `ZEN_CHAT_MODEL` | `nemotron-3-ultra-free` | Modelo usado no tier `zen` |
+| `RAG_RERANK` | `off` | Reranker do RAG: `off` \| `cross-encoder` (local) \| `llm`. Latência em `aos_rag_rerank_seconds`. Ver [docs/adr/ADR-RAG-001.md](docs/adr/ADR-RAG-001.md) |
+| `RAG_INJECTION_MODO` | `aviso` | Screening de prompt injection em chunks de RAG: `aviso` \| `recusar` |
+| `RAG_HNSW_EF_SEARCH` | `40` | `ef_search` fixado na busca vetorial HNSW (reprodutibilidade) |
 
 ## 4. PostgreSQL (opcional mas recomendado)
 

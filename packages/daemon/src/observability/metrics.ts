@@ -43,6 +43,14 @@ export const llmLatency = new Histogram({
   registers: [registry],
 });
 
+export const ragRerankSeconds = new Histogram({
+  name: "aos_rag_rerank_seconds",
+  help: "Latência do estágio de reranking do RAG (mode: cross-encoder | llm)",
+  labelNames: ["mode"] as const,
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+  registers: [registry],
+});
+
 export const routerFallback = new Counter({
   name: "aos_router_fallback_total",
   help: "Quedas de degrau do roteador (sonda falhou, caiu para o próximo)",
