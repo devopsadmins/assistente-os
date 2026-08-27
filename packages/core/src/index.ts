@@ -28,3 +28,4 @@ export * from "./policy.js";
 export * from "./soul-spec.js";
 export * from "./cache.js";
 export * from "./manifest.js";
+export * from "./skills.js";

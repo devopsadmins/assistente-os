@@ -38,7 +38,7 @@ const SOUL_FILES = ["perfil.md", "contexto.md", "licoes.md", "pessoas.md", "soul
 export type SoulFileName = (typeof SOUL_FILES)[number];
 
 /** dirs/ da estrutura "completa" de uma soul (docs/PLANO-CRIACAO-SOULS.md §2 "Estrutura criada"). */
-const SOUL_SUBDIRS = ["sessoes", "sources", "decisoes"] as const;
+const SOUL_SUBDIRS = ["sessoes", "sources", "decisoes", "skills"] as const;
 
 export function soulsDir(configHome: string): string {
   return join(configHome, "souls");
