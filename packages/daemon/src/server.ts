@@ -29,6 +29,7 @@ import { handleVoice } from "./routes/voice.js";
 import { handlePipelines } from "./routes/pipelines.js";
 import { handleLlmsTxt, handleCapabilities } from "./routes/llms-txt.js";
 import { handleWorktree } from "./routes/worktree.js";
+import { handleMissions } from "./routes/missions.js";
 import { handleCosts } from "./routes/costs.js";
 
 /**
@@ -435,6 +436,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleLlmsTxt,
   handleCapabilities,
   handleWorktree,
+  handleMissions,
   handleCosts,
 ];
 

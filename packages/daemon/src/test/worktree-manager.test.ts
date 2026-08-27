@@ -124,7 +124,7 @@ describe("WorktreeManager class", () => {
 
   // 4. setupEnvironment — copies .env + creates symlinks (best-effort)
   it("setupEnvironment: não lança erro (best-effort)", async () => {
-    const manager = new WorktreeManager("test-soul", { autonomy: "auto" });
+    const manager = new WorktreeManager("test-soul", createTestAgentConfig("auto"));
     await assert.doesNotReject(async () => {
       await manager.setupEnvironment(TEST_TASK_ID);
     });
@@ -132,7 +132,7 @@ describe("WorktreeManager class", () => {
 
   // 5. setupEnvironment — missing source files: no throw
   it("setupEnvironment: arquivos fonte ausentes não lançam erro", async () => {
-    const manager = new WorktreeManager("test-soul", { autonomy: "auto" });
+    const manager = new WorktreeManager("test-soul", createTestAgentConfig("auto"));
     await assert.doesNotReject(async () => {
       await manager.setupEnvironment("missing-task");
     });
@@ -257,7 +257,7 @@ describe("WorktreeManager class", () => {
       }
       return mockExecResult({ code: 1 });
     };
-    const manager = new WorktreeManager("test-soul", { autonomy: "auto" }, executor);
+    const manager = new WorktreeManager("test-soul", createTestAgentConfig("auto"), executor);
 
     await assert.doesNotReject(async () => {
       await manager.destroyWorktree(TEST_TASK_ID);
@@ -286,7 +286,7 @@ describe("WorktreeManager class", () => {
       }
       return mockExecResult({ code: 1 });
     };
-    const manager = new WorktreeManager("test-soul", { autonomy: "auto" }, executor);
+    const manager = new WorktreeManager("test-soul", createTestAgentConfig("auto"), executor);
 
     await assert.doesNotReject(async () => {
       await manager.destroyWorktree(TEST_TASK_ID);

@@ -6,6 +6,7 @@ export * from "./tools/browser.js";
 export * from "./tools/worktree-manager.js";
 export * from "./tools/terminal-sanitizer.js";
 export * from "./orchestrator/router.js";
+export * from "./orchestrator/mission-runner.js";
 export * from "./orchestrator/sales-intelligence.js";
 export * from "./orchestrator/spec-grill.js";
 export * from "./pipelines/meeting-ingest.js";

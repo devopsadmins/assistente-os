@@ -571,3 +571,31 @@ test("mcp: soul_create dry_run valida sem escrever; commit exige plan_hash (E5)"
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("mcp: mission_list e mission_run expostos; mission_run exige AGENT_SOUL_ID (E3)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const list = await server.handleMessage({ jsonrpc: "2.0", id: 60, method: "tools/list" });
+    const names = ((list?.result as { tools?: { name: string }[] }).tools ?? []).map((t) => t.name);
+    assert.ok(names.includes("mission_list"));
+    assert.ok(names.includes("mission_run"));
+
+    const ml = await server.handleMessage({
+      jsonrpc: "2.0", id: 61, method: "tools/call", params: { name: "mission_list", arguments: {} },
+    });
+    const missions = JSON.parse((ml?.result as { content?: { text: string }[] }).content?.[0]?.text ?? "{}") as { missions: unknown[] };
+    assert.ok(Array.isArray(missions.missions) && missions.missions.length >= 2);
+
+    // mission_run sem AGENT_SOUL_ID → negado (fail-closed)
+    const prev = process.env.AGENT_SOUL_ID;
+    delete process.env.AGENT_SOUL_ID;
+    const denied = await server.handleMessage({
+      jsonrpc: "2.0", id: 62, method: "tools/call", params: { name: "mission_run", arguments: { mission_id: "meetingIngestHeadless" } },
+    });
+    if (prev !== undefined) process.env.AGENT_SOUL_ID = prev;
+    assert.match(JSON.stringify(denied?.result ?? denied?.error), /AGENT_SOUL_ID/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

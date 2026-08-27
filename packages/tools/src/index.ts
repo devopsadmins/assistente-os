@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, type SoulSpec } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees } from "@assistente-os/daemon";
+import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { writeFile, unlink } from "node:fs/promises";
@@ -39,6 +39,7 @@ const SOUL_SCOPED_TOOLS = new Set([
   "sales_ingest_meeting", "sales_get_lead_brief",
   "spec_grill_plan",
   "soul_create",
+  "mission_run",
   "action_execute",
   "browser_navigate", "browser_click", "browser_extract_text",
   "browser_screenshot", "browser_close",
@@ -694,6 +695,23 @@ const TOOLS: Tool[] = [
     name: "worktree_list",
     description: "Lista as worktrees de tarefa ativas (branch/HEAD reais via git worktree list).",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "mission_list",
+    description: "Lista as missões compostas do Mission Runner (ORCA) — id, modo (headless/guarded/full) e nº de etapas.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "mission_run",
+    description: "Executa uma missão composta do Mission Runner. Efeito externo (browser/agenda/ingest) — L3.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mission_id: { type: "string", description: "id da missão (ver mission_list)" },
+        soul: { type: "string", description: "soul para sobrescrever a das etapas (opcional)" },
+      },
+      required: ["mission_id"],
+    },
   },
   {
     name: "soul_create",
@@ -1633,6 +1651,18 @@ export class McpServer {
 
       case "worktree_list": {
         return { worktrees: await listWorktrees() };
+      }
+
+      case "mission_list": {
+        return { missions: listMissions() };
+      }
+
+      case "mission_run": {
+        this.authorizeAgentSoul(name); // efeito externo: L3 pela política da soul chamadora
+        const missionId = typeof args.mission_id === "string" && args.mission_id.trim() ? args.mission_id.trim() : null;
+        if (!missionId) throw new Error("parâmetro mission_id é obrigatório");
+        const soul = typeof args.soul === "string" && args.soul.trim() ? args.soul.trim() : undefined;
+        return await runMission(missionId, { soulOverride: soul });
       }
 
       case "soul_create": {

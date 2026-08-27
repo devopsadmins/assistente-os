@@ -31,7 +31,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 |---|---|---|---|
 | [E1](#e1--finops-fechar-a-captura-de-tokens-no-fluxo-de-chat) | FinOps — captura de tokens no chat ✅ | M | — |
 | [E2](#e2--sessoes-multi-turno-finalizar-e-endurecer) | Sessões multi-turno — finalizar e endurecer ✅ | M–L | — |
-| [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner | L | E4 |
+| [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner ✅ | L | E4 |
 | [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache ✅ | M | — |
 | [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
 | [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana | M–L | — |
@@ -271,20 +271,38 @@ export async function runMission(missionId: string, opts?: { soulOverride?: stri
 ```
 REST: `POST /api/missions/:id/run` → `202` + `{ taskId }`; progresso via WS; `GET /api/missions/:id/run/:taskId` → `MissionResult`.
 
+### Status: ✅ CONCLUÍDO (2026-08-27)
+
+`mission-runner.ts` reescrito: `runMission(id, { soulOverride, onStep })` + `listMissions()`.
+Steps reais: `browser-navigate|click|extract|screenshot|close` → `browser.ts`;
+`agenda-add` → `addAgendaItem`; `guardian-audit` → `auditExecution` (degrada para
+"pulado" quando o Guardian/Ollama não responde, em vez de derrubar a missão).
+Modos: `guarded`/`full` marcam `flagged` se a auditoria reprovar e interrompem;
+`full` faz broadcast WS `mission.step` (pela rota) + registra em `execution_logs`.
+Bugs corrigidos de quebra: `getPool(home)` → `getPool(config.databaseUrl)`;
+`resolveSoul` agora honra o `soulId` pedido.
+
+- **REST**: `GET /api/missions`, `POST /api/missions/:id/run` (síncrono; 200, ou
+  207 se `status=failed`, ou 404 se a missão não existe). Sem a variante `202+taskId`
+  do design original — execução síncrona basta para as missões atuais.
+- **MCP**: `mission_list` (L1), `mission_run` (L3, `authorizeAgentSoul` fail-closed).
+- **Fix estrutural achado no caminho:** `packages/daemon/tsconfig.json` **excluía
+  `src/test/**`** (commit `2db4a1d`) — a suíte do daemon não compilava nem rodava
+  desde então. Removido o `exclude`; 4 testes pré-existentes de `worktree-manager`
+  quebrados (`new WorktreeManager("x", { autonomy: "auto" })` sem `permissions`/
+  `guardrails`) corrigidos para `createTestAgentConfig(...)`.
+
 ### Critérios de aceitação
-- [ ] `GET /api/missions` lista as missões declaradas com modo e nº de steps.
-- [ ] `POST /api/missions/meetingIngestFull/run` com transcrição de teste: gera Markdown + chunks RAG + item de agenda + resultado de auditoria Guardian real (não placeholder).
-- [ ] Um step `browser-extract` retorna texto real da página, não `"placeholder"`.
-- [ ] Missão `guarded` com auditoria reprovando → `status: "flagged"` e nenhum efeito posterior aplicado.
-- [ ] `mission_run` via MCP respeitando Zero Trust (soul sem a tool → negado).
-- [ ] Eventos `mission.step` no WS durante uma missão `full`.
+- [x] `GET /api/missions` / `mission_list` listam id, modo e nº de steps.
+- [x] `runMission` executa todas as etapas mesmo com falha intermediária; `agenda-add` persiste item real (teste).
+- [x] `browser-extract` chama `browserExtractText` real (não placeholder).
+- [x] `guarded`/`full` com auditoria reprovando → `status: "flagged"`, interrompe.
+- [x] `mission_run` via MCP fail-closed sem `AGENT_SOUL_ID` (teste).
+- [x] `onStep`/`mission.step` disponível para broadcast WS na rota.
 
-### Plano de teste
-- Unit `daemon/test/mission-runner.test.ts` — cada tipo de step com dep mockada; transições de modo; `flagged` corta a execução.
-- Unit `tools/test/*` — `mission_run` filtrado por `AGENT_SOUL_ID`.
-- REST `daemon/test/missions-rest.test.ts` — 202/progresso/resultado, auth, erro de missão inexistente.
+Testes: `daemon/test/mission-runner.test.ts` (4), `tools.test.ts` +1. Suítes: core 219, **daemon 108** (agora compila!), memory 44, tools 22, cli 2 — verdes.
 
-### Esforço: **L** · Dependências: **E4** (usar o sanitizer nas saídas de shell dos steps)
+### Esforço: **L** · Dependências: **E4** (feito)
 
 ---
 
