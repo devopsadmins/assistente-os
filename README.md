@@ -349,27 +349,30 @@ npm run typecheck     # tsc em todos os workspaces (0 erros)
 | **F2** | Agendador (tabela `agenda` + dispatch) | ✅ Concluída |
 | **F3** | Ferramentas do agente (busca/memória/ação) | ✅ Concluída |
 | **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | Quase concluída — falta o service token do Cloudflare Access |
-| **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram | Tool-calling e canais em produção; sessões multi-turno persistidas e skills por soul ainda não implementadas |
+| **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram | Tool-calling e canais em produção; multi-turno endurecido (orçamento de tokens, reidratação LangGraph, `client_key`, cobertura events/agenda — E2); skills por soul ainda não implementadas |
 | **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
 | **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
-| **F8** | ORCA: modo de execução fast/pro dinâmico, worktree manager (isolamento de tarefas + merge L3-gated) via REST/CLI/MCP, cost/usage tracking (migração `0010` + `getUsageSummary` + `/api/costs/usage`), `/api/capabilities`, catálogo MCP com namespace | Worktree, cost tracking e capabilities em produção; mission runner, terminal sanitizer e cache em camadas ainda são scaffolding não ligado ao fluxo de chat |
+| **F8** | ORCA: modo fast/pro dinâmico, worktree manager via REST/CLI/MCP, cost/usage tracking, `/api/capabilities`, catálogo MCP com namespace | Concluída — E1–E10 (2026-08-27) fecharam o restante: Mission Runner ligado (REST `/api/missions` + MCP), Terminal Sanitizer + cache em produção, FinOps de tokens no chat |
+| **F9** | Governança AI-3 + LGPD + observabilidade (roadmap E6/E8/E9) | Técnico concluído (2026-08-27): `/metrics`, `/api/manifest`, suíte cross-tenant, kill-switch, `AI-INVENTORY.md`, gate de consentimento LGPD, anti-vazamento de telemetria. Falta assinatura humana das RACIs |
 
 ### Pendências
 
-Backlog acionável com spec por item: [docs/ROADMAP.md](docs/ROADMAP.md). Resumo:
+Roadmap com spec por item e status: [docs/ROADMAP.md](docs/ROADMAP.md).
 
-- **E1 — FinOps**: chat não grava `prompt_tokens`/`completion_tokens`/`execution_mode` em `router_history` (colunas e `getUsageSummary` já existem; ficam em 0)
-- **E2 — Multi-turno**: persistência de turnos, rotação de sessão por inatividade e injeção de histórico no prompt **já existem**; falta orçamento de tokens no histórico, checkpoint do LangGraph sobrevivendo a restart, cobertura em `events`/`agenda` e isolamento por cliente
-- **E3/E4 — ORCA**: Mission Runner sem interface exposta e com etapas placeholder (browser-*, guardian-audit); Terminal Sanitizer e cache em camadas (`cache.ts`) não consumidos por nenhum caminho de produção
-- **E5 — MCP**: `worktree_list` só em REST/CLI; `soul_create` não exposto (backend `createSoulFull`/`validateSoulSpec` pronto e testado)
-- **E6 — Observabilidade**: Sentry + Prometheus/Grafana (hoje só `/infra/status` sob demanda)
-- **E7 — F4**: service token do Cloudflare Access (bypass programático pro domínio público)
-- **E8 — Governança AI-3**: suíte cross-tenant, execution manifest por release, testes de kill-switch por budget/max-turns, inventário de IA com classificação de risco; RACI do ADR-AI-003 pendente (revisão 2027-02-16)
-- **E9 — LGPD**: ADR-PRIV-001 (domínio de famílias) com pendências datadas do §7 em aberto
-- **E10 — RAG**: sem estágio de reranking após a busca híbrida
-- Skills por soul (instruções declarativas)
-- App Android (proposta: Capacitor empacotando o frontend atual)
-- Decisões: mapear soul → provider Zen (adiada; só `iecsjc`/`sousa` identificadas); auth do `@azure-devops/mcp` (`az login`/PAT para o daemon)
+**E1–E10 implementados (2026-08-27)** — FinOps de tokens, endurecimento de multi-turno,
+Mission Runner ligado (REST + MCP), Terminal Sanitizer + cache em produção,
+`soul_create`/`worktree_list` no MCP, observabilidade (`/metrics` + Sentry),
+gates AI-3 (cross-tenant, execution manifest, kill-switch, inventário de IA,
+anti-vazamento de telemetria), LGPD (gate de consentimento + política de backup),
+reranking de RAG opcional.
+
+Resta:
+
+- **E7 — Cloudflare Access service token**: procedimento pronto em [docs/CLOUDFLARE-ACCESS.md](docs/CLOUDFLARE-ACCESS.md); falta a ação no dashboard Cloudflare + as 2 variáveis.
+- **Assinatura humana**: RACI do ADR-AI-003 §8; owners no `docs/AI-INVENTORY.md`; aceitação do ADR-PRIV-001 (owner de risco/clínico); P1 (prazo CFP) e ADR AI-4 dedicado de famílias.
+- **CI**: anexar `manifest-<sha>.json` ao build (passo de workflow).
+- Skills por soul (instruções declarativas); App Android (proposta Capacitor).
+- Decisões adiadas: mapear soul → provider Zen (só `iecsjc`/`sousa` identificadas); auth do `@azure-devops/mcp` (`az login`/PAT para o daemon).
 
 ## Docs
 

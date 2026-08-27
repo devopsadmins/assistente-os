@@ -8,6 +8,14 @@ Cada epic traz: objetivo, estado atual verificado no código, arquivos afetados,
 design, contratos/assinaturas, critérios de aceitação, plano de teste, esforço
 (S ≈ ½–1 dia, M ≈ 2–4 dias, L ≈ 1–2 semanas) e dependências.
 
+> **Execução (2026-08-27):** E1–E6, E8–E10 concluídos numa sessão (branch
+> `feat/roadmap-execution`); E7 é doc + ação do usuário no dashboard Cloudflare.
+> Testes: core 222 · daemon 119 · memory 48 · tools 22 · cli 2 (**413**, +36),
+> typecheck limpo. Correção estrutural de quebra: `packages/daemon/tsconfig.json`
+> excluía `src/test/**` — a suíte do daemon não compilava desde o commit
+> `2db4a1d`; restaurada. Pendências residuais: assinaturas humanas (RACIs dos
+> ADRs, owners do inventário), passo de CI para anexar o manifest, ação Cloudflare.
+
 > **Nota de ground-truth (2026-08-27):** a seção *Pendências* do README estava
 > desatualizada em três pontos verificados neste levantamento:
 > 1. **Multi-turno já existe em grande parte** — `session_messages` (migração
