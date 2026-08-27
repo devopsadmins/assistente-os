@@ -11,7 +11,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { isValidSoulId } from "./souls.js";
+import { isValidSoulId, createSoulFull, type SoulConfig, type SoulFileName, type CreateSoulFullResult } from "./souls.js";
 import { isKnownCapability } from "./policy.js";
 import {
   resolveEffectiveGuardrails,
@@ -258,4 +258,33 @@ export function computePlanHash(input: PlanHashInput): string {
     model: input.effectiveModel,
   });
   return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
+
+// ── Commit: SoulSpec → createSoulFull ────────────────────────────────────
+
+/**
+ * Materializa um SoulSpec já resolvido (ver resolveSoulSpecDefaults) em disco
+ * via createSoulFull() — atômico, sem diretório residual em falha/corrida.
+ *
+ * O mapeamento wire (snake_case) → SoulSpec fica na tool MCP `soul_create`;
+ * aqui a entrada já é o tipo de domínio.
+ */
+export function createSoulFromSpec(configHome: string, spec: SoulSpec): CreateSoulFullResult {
+  const agent = buildAgentConfigFromSpec(spec, DEFAULT_GLOBAL_GUARDRAILS);
+  const config: SoulConfig = {
+    name: spec.newId,
+    description: spec.description,
+    provider: spec.provider,
+    models: spec.model ? { chat: spec.model } : undefined,
+    maxTurns: spec.guardrails?.maxTurns,
+    agent,
+  };
+  const files: Partial<Record<SoulFileName, string>> = {
+    "perfil.md": spec.perfilMd ?? "",
+    "contexto.md": spec.contextoMd ?? "",
+    "pessoas.md": spec.pessoasMd ?? "",
+    "soul.md": spec.soulMd ?? "",
+    "licoes.md": "",
+  };
+  return createSoulFull(configHome, spec.newId, config, files);
 }

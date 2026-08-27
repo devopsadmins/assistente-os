@@ -56,7 +56,7 @@ test("generateAiiaReport: soul sem agent config usa os defaults globais", () => 
       "memory:*", "soul_context", "soul_chat", "graph_list", "observation_add",
       "soul_anotar", "soul_licao", "soul_decidir", "agenda_add", "agenda_list",
       "action_execute", "costs_summary", "router_status", "spec_grill_plan",
-      "worktree_create", "worktree_merge_locally", "worktree_destroy", "git_commit_push",
+      "worktree_create", "worktree_merge_locally", "worktree_destroy", "worktree_list", "git_commit_push",
     ]);
     assert.equal(report.capabilities.autonomy, "ask");
     assert.equal(report.guardrails.maxTurns, 10);

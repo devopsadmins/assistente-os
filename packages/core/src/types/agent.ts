@@ -83,6 +83,7 @@ export const DEFAULT_ALLOWED_TOOLS: ToolPattern[] = [
   "worktree_create",
   "worktree_merge_locally",
   "worktree_destroy",
+  "worktree_list",
   "git_commit_push",
 ];
 

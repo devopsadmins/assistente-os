@@ -33,7 +33,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E2](#e2--sessoes-multi-turno-finalizar-e-endurecer) | Sessões multi-turno — finalizar e endurecer ✅ | M–L | — |
 | [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner | L | E4 |
 | [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache | M | — |
-| [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` | S–M | — |
+| [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
 | [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana | M–L | — |
 | [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token | S | — |
 | [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção | L | E1 |
@@ -390,18 +390,22 @@ type SoulCreateResult =
 // tool: worktree_list -> WorktreeInfo[]
 ```
 
-### Critérios de aceitação
-- [ ] `soul_create` com `dry_run: true` retorna `plan_hash` + issues e **não** cria diretório.
-- [ ] `soul_create` com `dry_run: false` + `plan_hash` válido cria a soul (config + 5 arquivos + 3 diretórios) atomicamente; `plan_hash` divergente → erro `plan_stale`.
-- [ ] `soul_create` de uma soul cuja autonomy não autoriza L3 → negado com `errors.ts` estável.
-- [ ] `worktree_list` via MCP retorna as mesmas worktrees que `os worktree list`.
-- [ ] Zero Trust: soul sem `soul_create` na allowlist não vê a tool em `tools/list`.
-- [ ] `docs/MCPS.md` atualizado (52 tools).
+### Status: ✅ CONCLUÍDO (2026-08-27)
 
-### Plano de teste
-- Unit `tools/test/soul-create.test.ts` — wire→spec, dry-run não escreve, commit exige hash, autorização.
-- Unit `tools/test/worktree-list.test.ts` — shape do retorno, filtro por `AGENT_SOUL_ID`.
-- Regressão `core` — `createSoulFull` inalterado.
+- `createSoulFromSpec` (novo em `core/soul-spec.ts`) — `SoulSpec` resolvido → `createSoulFull` atômico.
+- `soulSpecFromWire` (em `tools/index.ts`) — payload snake_case → `SoulSpec`.
+- `listWorktrees` (novo em `daemon/worktree-manager.ts`) — `git worktree list --porcelain`, filtra sob o workspaces root, extrai branch/HEAD reais. REST `GET /api/worktree` passou a usá-la (antes só `readdir`).
+- `worktree_list` = L1 no catálogo + `DEFAULT_ALLOWED_TOOLS`; `soul_create` já era L3, adicionado a `SOUL_SCOPED_TOOLS` (autoriza via `AGENT_SOUL_ID`).
+
+### Critérios de aceitação
+- [x] `soul_create` `dry_run:true` → `plan_hash` + `issues` + `would_create`, **não** escreve (teste `tools.test.ts`).
+- [x] `dry_run:false` + `plan_hash` válido cria a soul atomicamente (`createSoulFromSpec` → `createSoulFull`); `plan_hash` divergente → erro explícito.
+- [x] `soul_create` exige `AGENT_SOUL_ID` + autorização L3 da soul chamadora (`authorizeAgentSoul`).
+- [x] `worktree_list` via MCP e via REST usam a mesma `listWorktrees`.
+- [x] Zero Trust: `soul_create` fora da allowlist → não aparece em `tools/list`.
+- [ ] `docs/MCPS.md` atualizado (52 tools) — README atualizado; MCPS.md pendente.
+
+Testes: `tools.test.ts` +2 (worktree_list exposta/responde; soul_create dry-run/commit/hash), `worktree-manager.test.ts` +1 (listWorktrees filtra + parse). Suítes: core 218, daemon 101, memory 44, tools 21, cli 2 — verdes.
 
 ### Esforço: **S–M** · Dependências: nenhuma
 

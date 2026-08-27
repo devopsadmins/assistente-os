@@ -9,9 +9,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJson, readJson, type RouteHandler, type RequestContext } from "./shared.js";
-import { createWorktree, mergeLocally, destroyWorktree, getWorkspacesRoot } from "../tools/worktree-manager.js";
-import { promises as fs } from "node:fs";
-import { join } from "node:path";
+import { createWorktree, mergeLocally, destroyWorktree, listWorktrees } from "../tools/worktree-manager.js";
 
 async function handleWorktreeList(
   req: IncomingMessage,
@@ -21,20 +19,8 @@ async function handleWorktreeList(
 ): Promise<boolean> {
   if (req.method !== "GET" || url.pathname !== "/api/worktree") return false;
 
-  const root = getWorkspacesRoot();
-  let worktrees: Array<{ taskId: string; path: string; branch?: string }> = [];
-
-  try {
-    const entries = await fs.readdir(root, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        worktrees.push({ taskId: entry.name, path: join(root, entry.name) });
-      }
-    }
-  } catch {
-    // diretório não existe ainda
-  }
-
+  // Fonte de verdade: git worktree list (branch/HEAD reais), não só o nome do dir.
+  const worktrees = await listWorktrees();
   sendJson(res, 200, { worktrees });
   return true;
 }

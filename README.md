@@ -29,7 +29,7 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ opencode                                                     │
-│   ├─ MCP assistente-os ─── packages/tools (stdio, 50 tools) │
+│   ├─ MCP assistente-os ─── packages/tools (stdio, 52 tools) │
 │   └─ providers zen-* ──── 7 chaves OpenCode Zen (grátis)    │
 └─────────────────────┬────────────────────────────────────────┘
                       │
@@ -65,7 +65,7 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 | `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), agregação de uso/tokens por soul/mode/model (`getUsageSummary`), cache em camadas (Redis + fallback em memória, `cache.ts`), migração, content filter (12 padrões de segredo + detector de prompt injection), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
 | `memory` | RAG + Grafo | Chunks + embeddings (Ollama ou fallback Xenova/ILIKE), LangChain LCEL RAG, LangGraph agent workflow com tool-calling, grafo de entidades/relações/observações, gate de relevância |
 | `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, orquestrador ORCA (modo fast/pro dinâmico + mission runner), worktree manager (git worktree isolado por tarefa, merge local L3-gated), terminal sanitizer, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection, log de debug de retrieval RAG (method/score por fonte) no audit trail |
-| `tools` | MCP server | 50 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
+| `tools` | MCP server | 52 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
 | `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs (+ `costs usage`), agenda, worktree, guardian, daemon, voice, backup, help |
 | `voice` | Pipeline de voz | VAD (hysteresis), AudioRecorder (sox), STT (Whisper local via @xenova/transformers), TTS (say.js) |
 
@@ -220,14 +220,14 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 | POST | `/api/pipelines/meeting-ingest` \| `/email-ingest` | Ingestão de reuniões/e-mails |
 | WS | `/` | WebSocket de eventos em tempo real (token via `?token=`) |
 
-### MCP Tools (50 tools)
+### MCP Tools (52 tools)
 
-**Soul**: `souls_list`, `soul_context`, `soul_chat`, `soul_anotar`, `soul_licao`, `soul_decidir`, `soul_record_lesson`, `soul_get_lessons`, `soul_generate_aiia`
+**Soul**: `souls_list`, `soul_context`, `soul_chat`, `soul_create` (L3, dry-run/commit por `plan_hash`), `soul_anotar`, `soul_licao`, `soul_decidir`, `soul_record_lesson`, `soul_get_lessons`, `soul_generate_aiia`
 **Memória**: `memory_search`, `memory_index`, `memory_status`
 **Grafo**: `graph_list`, `observation_add`
 **Agenda**: `agenda_add`, `agenda_list`
 **Custos/Infra**: `costs_summary`, `router_status`, `action_execute`
-**Worktree**: `worktree_create`, `worktree_merge_locally` (L3), `worktree_destroy` (L3) — isolamento de tarefas agênticas paralelas via git worktree
+**Worktree**: `worktree_create`, `worktree_list`, `worktree_merge_locally` (L3), `worktree_destroy` (L3) — isolamento de tarefas agênticas paralelas via git worktree
 **Guardian (golden rules)**: `guardian_audit_execution`, `guardian_promote_golden_rule`, `guardian_pending_rules`, `guardian_approve_rule`, `guardian_reject_rule`, `guardian_resend_approval_code`, `guardian_get_golden_rules` — `approve`/`reject` exigem o código de aprovação enviado por Telegram, nunca devolvido pelas próprias tools
 **Sales Intelligence**: `sales_ingest_meeting`, `sales_get_lead_brief`
 **Spec Grill**: `spec_grill_plan` (refinamento de requisitos em duas fases antes de autorizar modo build)

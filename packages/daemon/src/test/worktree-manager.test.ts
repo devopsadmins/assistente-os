@@ -309,4 +309,37 @@ describe("Standalone functions (backward compatibility)", () => {
   it("destroyWorktree standalone: delega para WorktreeManager", async () => {
     assert.equal(typeof destroyWorktree, "function");
   });
+
+  it("listWorktrees: filtra só as worktrees sob o workspaces root e extrai branch/HEAD (E5)", async () => {
+    const root = getWorkspacesRoot();
+    const porcelain = [
+      `worktree ${process.cwd()}`,
+      "HEAD 1111111111111111111111111111111111111111",
+      "branch refs/heads/main",
+      "",
+      `worktree ${root}/task-abc`,
+      "HEAD 2222222222222222222222222222222222222222",
+      "branch refs/heads/task/task-abc",
+      "",
+      `worktree ${root}/task-xyz`,
+      "HEAD 3333333333333333333333333333333333333333",
+      "detached",
+      "",
+    ].join("\n");
+    const exec: CommandExecutor = async (command, args) => {
+      if (command === "git" && args.join(" ") === "worktree list --porcelain") {
+        return mockExecResult({ code: 0, stdout: porcelain });
+      }
+      return mockExecResult({ code: 1 });
+    };
+    const { listWorktrees } = await import("../tools/worktree-manager.js");
+    const list = await listWorktrees(exec);
+    assert.equal(list.length, 2, "repo root não conta, só as 2 worktrees de tarefa");
+    assert.deepEqual(list.map((w) => w.taskId).sort(), ["task-abc", "task-xyz"]);
+    const abc = list.find((w) => w.taskId === "task-abc")!;
+    assert.equal(abc.branch, "task/task-abc");
+    assert.equal(abc.head, "2222222222222222222222222222222222222222");
+    const xyz = list.find((w) => w.taskId === "task-xyz")!;
+    assert.equal(xyz.branch, null, "detached → branch null");
+  });
 });

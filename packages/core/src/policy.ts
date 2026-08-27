@@ -54,6 +54,7 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "soul_get_lessons", level: "L1" },
   { pattern: "souls_list", level: "L1" },
   { pattern: "soul_create_questions", level: "L1" },
+  { pattern: "worktree_list", level: "L1", description: "Lista worktrees de tarefa ativas — leitura" },
 
   // L2 — escrita local reversível (altera estado próprio da soul)
   { pattern: "observation_add", level: "L2" },

@@ -339,3 +339,50 @@ export async function destroyWorktree(taskId: string): Promise<void> {
   const manager = new WorktreeManager("system");
   return manager.destroyWorktree(taskId);
 }
+
+export interface WorktreeInfo {
+  taskId: string;
+  path: string;
+  branch: string | null;
+  head: string | null;
+}
+
+/**
+ * Lista as worktrees de tarefa (as que vivem sob getWorkspacesRoot()).
+ * Fonte de verdade é `git worktree list --porcelain` — pega branch/HEAD reais,
+ * não só o nome do diretório. Diretórios órfãos (sem worktree git) são ignorados.
+ */
+export async function listWorktrees(executor: CommandExecutor = defaultExecutor): Promise<WorktreeInfo[]> {
+  const root = resolve(getWorkspacesRoot());
+  const res = await executor("git", ["worktree", "list", "--porcelain"], process.cwd(), GIT_TIMEOUT_MS);
+  if (res.code !== 0) return [];
+
+  const out: WorktreeInfo[] = [];
+  let cur: Partial<WorktreeInfo> = {};
+  const flush = () => {
+    if (cur.path) {
+      const abs = resolve(cur.path);
+      if (abs.startsWith(root + "/")) {
+        out.push({
+          taskId: abs.slice(root.length + 1),
+          path: cur.path,
+          branch: cur.branch ?? null,
+          head: cur.head ?? null,
+        });
+      }
+    }
+    cur = {};
+  };
+  for (const line of res.stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      flush();
+      cur.path = line.slice("worktree ".length).trim();
+    } else if (line.startsWith("HEAD ")) {
+      cur.head = line.slice("HEAD ".length).trim();
+    } else if (line.startsWith("branch ")) {
+      cur.branch = line.slice("branch ".length).trim().replace(/^refs\/heads\//, "");
+    }
+  }
+  flush();
+  return out;
+}

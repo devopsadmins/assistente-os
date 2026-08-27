@@ -509,3 +509,65 @@ test("mcp: soul_generate_aiia grava AIIA.md real da soul", async () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("mcp: worktree_list está em tools/list e responde (E5)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const list = await server.handleMessage({ jsonrpc: "2.0", id: 40, method: "tools/list" });
+    const names = ((list?.result as { tools?: { name: string }[] }).tools ?? []).map((t) => t.name);
+    assert.ok(names.includes("worktree_list"), "worktree_list exposta");
+    assert.ok(names.includes("soul_create"), "soul_create exposta");
+
+    const res = await server.handleMessage({
+      jsonrpc: "2.0", id: 41, method: "tools/call",
+      params: { name: "worktree_list", arguments: {} },
+    });
+    const content = (res?.result as { content?: { text: string }[] }).content ?? [];
+    const parsed = JSON.parse(content[0]?.text ?? "{}") as { worktrees: unknown[] };
+    assert.ok(Array.isArray(parsed.worktrees));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: soul_create dry_run valida sem escrever; commit exige plan_hash (E5)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  const prevAgentSoul = process.env.AGENT_SOUL_ID;
+  process.env.AGENT_SOUL_ID = "main";
+  try {
+    createSoul(home, "main", { name: "main", agent: { permissions: { tools: ["soul_create"] }, guardrails: {}, autonomy: "auto" } });
+
+    const dry = await server.handleMessage({
+      jsonrpc: "2.0", id: 50, method: "tools/call",
+      params: { name: "soul_create", arguments: { soul_id: "nova-soul", purpose: "teste", capabilities: "memory_search,graph_list" } },
+    });
+    const dryOut = JSON.parse((dry?.result as { content?: { text: string }[] }).content?.[0]?.text ?? "{}") as { dry_run: boolean; ok: boolean; plan_hash: string };
+    assert.equal(dryOut.dry_run, true);
+    assert.equal(dryOut.ok, true);
+    assert.ok(dryOut.plan_hash);
+    const fs = await import("node:fs");
+    assert.ok(!fs.existsSync(join(home, "souls", "nova-soul")), "dry_run não escreve");
+
+    // commit com hash errado → erro
+    const bad = await server.handleMessage({
+      jsonrpc: "2.0", id: 51, method: "tools/call",
+      params: { name: "soul_create", arguments: { soul_id: "nova-soul", purpose: "teste", capabilities: "memory_search,graph_list", dry_run: false, plan_hash: "deadbeef" } },
+    });
+    assert.match(JSON.stringify(bad?.result ?? bad?.error), /plan_hash divergente/);
+
+    // commit com hash correto → cria
+    const ok = await server.handleMessage({
+      jsonrpc: "2.0", id: 52, method: "tools/call",
+      params: { name: "soul_create", arguments: { soul_id: "nova-soul", purpose: "teste", capabilities: "memory_search,graph_list", dry_run: false, plan_hash: dryOut.plan_hash } },
+    });
+    const okOut = JSON.parse((ok?.result as { content?: { text: string }[] }).content?.[0]?.text ?? "{}") as { created: boolean; soul_id: string };
+    assert.equal(okOut.created, true);
+    assert.ok(fs.existsSync(join(home, "souls", "nova-soul", "config.json")));
+  } finally {
+    if (prevAgentSoul === undefined) delete process.env.AGENT_SOUL_ID;
+    else process.env.AGENT_SOUL_ID = prevAgentSoul;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
