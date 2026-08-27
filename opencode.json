@@ -24,10 +24,7 @@
     },
     "postgres": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-postgres"],
-      "env": {
-        "POSTGRES_URL": "postgres://assistente_os:assistente_os@127.0.0.1:5432/assistente_os"
-      },
+      "command": ["npx", "-y", "@modelcontextprotocol/server-postgres", "postgres://assistente_os:assistente_os@127.0.0.1:5432/assistente_os"],
       "enabled": true
     },
     "cloudflare": {

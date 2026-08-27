@@ -10,6 +10,7 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
 import { resolveHome } from "@assistente-os/core";
+import { authorizeExecution, type AuthorizeExecutionInput, type AgentConfig } from "@assistente-os/core";
 
 export interface WorktreeResult {
   success: boolean;
@@ -32,10 +33,13 @@ interface ExecResult {
   timedOut: boolean;
 }
 
+type CommandExecutor = (command: string, args: string[], cwd: string, timeoutMs: number) => Promise<ExecResult>;
+
 const WORKSPACES_DIR = "workspaces";
 const DEFAULT_BASE_BRANCH = "main";
 const TEST_TIMEOUT_MS = 300_000; // 5 min
 const GIT_TIMEOUT_MS = 60_000; // 1 min
+const BUILD_TIMEOUT_MS = 300_000; // 5 min
 
 export function getWorkspacesRoot(): string {
   return join(resolveHome(), WORKSPACES_DIR);
@@ -45,12 +49,7 @@ export function getWorktreePath(taskId: string): string {
   return join(getWorkspacesRoot(), taskId);
 }
 
-function runCommand(
-  command: string,
-  args: string[],
-  cwd: string,
-  timeoutMs: number,
-): Promise<ExecResult> {
+function defaultExecutor(command: string, args: string[], cwd: string, timeoutMs: number): Promise<ExecResult> {
   return new Promise((resolve) => {
     const child = execFile(command, args, { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 });
     let stdout = "";
@@ -68,169 +67,275 @@ function runCommand(
   });
 }
 
-async function runGit(args: string[], cwd: string): Promise<ExecResult> {
-  return runCommand("git", args, cwd, GIT_TIMEOUT_MS);
-}
+export class WorktreeManager {
+  private soulId: string;
+  private agentConfig?: AgentConfig;
+  private executor: CommandExecutor;
 
-async function runNpmTest(cwd: string): Promise<ExecResult> {
-  return runCommand("npm", ["test"], cwd, TEST_TIMEOUT_MS);
-}
-
-async function ensureWorkspacesDir(): Promise<void> {
-  const root = getWorkspacesRoot();
-  await fs.mkdir(root, { recursive: true });
-}
-
-/**
- * Cria worktree isolada para uma tarefa.
- * @param taskId Identificador único da tarefa
- * @param baseBranch Branch base (default: main)
- */
-export async function createWorktree(taskId: string, baseBranch = DEFAULT_BASE_BRANCH): Promise<WorktreeResult> {
-  await ensureWorkspacesDir();
-
-  const worktreePath = getWorktreePath(taskId);
-  const branch = `task/${taskId}`;
-
-  // Remove worktree anterior se existir (idempotente)
-  try {
-    await fs.access(worktreePath);
-    await runGit(["worktree", "remove", "--force", worktreePath], process.cwd());
-    await runGit(["branch", "-D", branch], process.cwd());
-  } catch {
-    // não existe, segue
+  constructor(soulId: string, agentConfig?: AgentConfig, executor?: CommandExecutor) {
+    this.soulId = soulId;
+    this.agentConfig = agentConfig;
+    this.executor = executor ?? defaultExecutor;
   }
 
-  const result = await runGit(
-    ["worktree", "add", worktreePath, "-b", branch, baseBranch],
-    process.cwd(),
-  );
-
-  if (result.code !== 0) {
-    return {
-      success: false,
-      path: worktreePath,
-      branch,
-      error: `git worktree add falhou: ${result.stderr || result.stdout}`,
+  private async checkL3Authorization(capability: string): Promise<void> {
+    const authInput: AuthorizeExecutionInput = {
+      soulId: this.soulId,
+      capability,
+      agentConfig: this.agentConfig,
+      effect: "external",
     };
+    const decision = authorizeExecution(authInput);
+    if (!decision.allow) {
+      throw new Error(`L3 authorization denied: ${decision.reason}`);
+    }
   }
 
-  return { success: true, path: worktreePath, branch };
-}
-
-/**
- * Configura ambiente na worktree (copia .env, cria symlinks de cache/db).
- * Best-effort: falhas não bloqueiam, apenas logam warning.
- */
-export async function setupEnvironment(taskId: string): Promise<void> {
-  const worktreePath = getWorktreePath(taskId);
-  const home = resolveHome();
-
-  // Copia .env se existir
-  try {
-    const envSrc = join(home, ".env");
-    const envDst = join(worktreePath, ".env");
-    await fs.copyFile(envSrc, envDst);
-  } catch {
-    // .env não existe na raiz — ignora
+  private async runGit(args: string[], cwd: string): Promise<ExecResult> {
+    return this.executor("git", args, cwd, GIT_TIMEOUT_MS);
   }
 
-  // Symlinks para cache e kernel.db (opcional, best-effort)
-  const links = [
-    { src: join(home, ".assistant-os", "cache"), dst: join(worktreePath, ".cache") },
-    { src: join(home, ".assistant-os", "kernel.db"), dst: join(worktreePath, "kernel.db") },
-  ];
+  private async runNpmTest(cwd: string): Promise<ExecResult> {
+    return this.executor("npm", ["test"], cwd, TEST_TIMEOUT_MS);
+  }
 
-  for (const { src, dst } of links) {
+  private async runNpmBuild(cwd: string): Promise<ExecResult> {
+    return this.executor("npm", ["run", "build", "--workspaces"], cwd, BUILD_TIMEOUT_MS);
+  }
+
+  private async ensureWorkspacesDir(): Promise<void> {
+    const root = getWorkspacesRoot();
+    await fs.mkdir(root, { recursive: true });
+  }
+
+  /**
+   * Cria worktree isolada para uma tarefa.
+   * @param taskId Identificador único da tarefa
+   * @param baseBranch Branch base (default: main)
+   */
+  async createWorktree(taskId: string, baseBranch = DEFAULT_BASE_BRANCH): Promise<WorktreeResult> {
+    await this.ensureWorkspacesDir();
+
+    const worktreePath = getWorktreePath(taskId);
+    const branch = `task/${taskId}`;
+
+    // Remove worktree anterior se existir (idempotente)
     try {
-      await fs.access(src);
-      await fs.symlink(src, dst, "dir");
+      await fs.access(worktreePath);
+      await this.runGit(["worktree", "remove", "--force", worktreePath], process.cwd());
+      await this.runGit(["branch", "-D", branch], process.cwd());
     } catch {
-      // fonte não existe ou link já existe — ignora
+      // não existe, segue
+    }
+
+    const result = await this.runGit(
+      ["worktree", "add", worktreePath, "-b", branch, baseBranch],
+      process.cwd(),
+    );
+
+    if (result.code !== 0) {
+      return {
+        success: false,
+        path: worktreePath,
+        branch,
+        error: `git worktree add falhou: ${result.stderr || result.stdout}`,
+      };
+    }
+
+    return { success: true, path: worktreePath, branch };
+  }
+
+  /**
+   * Configura ambiente na worktree (copia .env, cria symlinks de cache/db).
+   * Best-effort: falhas não bloqueiam, apenas logam warning.
+   */
+  async setupEnvironment(taskId: string): Promise<void> {
+    const worktreePath = getWorktreePath(taskId);
+    const home = resolveHome();
+
+    // Copia .env se existir
+    try {
+      const envSrc = join(home, ".env");
+      const envDst = join(worktreePath, ".env");
+      await fs.copyFile(envSrc, envDst);
+    } catch {
+      // .env não existe na raiz — ignora
+    }
+
+    // Symlinks para cache e kernel.db (opcional, best-effort)
+    const links = [
+      { src: join(home, ".assistant-os", "cache"), dst: join(worktreePath, ".cache") },
+      { src: join(home, ".assistant-os", "kernel.db"), dst: join(worktreePath, "kernel.db") },
+    ];
+
+    for (const { src, dst } of links) {
+      try {
+        await fs.access(src);
+        await fs.symlink(src, dst, "dir");
+      } catch {
+        // fonte não existe ou link já existe — ignora
+      }
+    }
+  }
+
+  /**
+   * Executa validação (npm run build --workspaces + npm test) e faz merge local na branch alvo.
+   * Rollback automático se testes falharem.
+   * Exige autorização L3 (worktree_merge_locally).
+   */
+  async mergeLocally(taskId: string, targetBranch = DEFAULT_BASE_BRANCH): Promise<MergeResult> {
+    // L3 Gate: worktree_merge_locally
+    await this.checkL3Authorization("worktree_merge_locally");
+
+    const worktreePath = getWorktreePath(taskId);
+    const branch = `task/${taskId}`;
+
+    // 1. Roda build na worktree (Regra 1: compilação limpa)
+    const buildResult = await this.runNpmBuild(worktreePath);
+    if (buildResult.code !== 0 || buildResult.timedOut) {
+      return {
+        success: false,
+        testsPassed: false,
+        merged: false,
+        error: `Build falhou (código ${buildResult.code}${buildResult.timedOut ? ", timeout" : ""}): ${buildResult.stderr.slice(-500) || buildResult.stdout.slice(-500)}`,
+      };
+    }
+
+    // 2. Roda testes na worktree
+    const testResult = await this.runNpmTest(worktreePath);
+    const testsPassed = testResult.code === 0 && !testResult.timedOut;
+
+    if (!testsPassed) {
+      return {
+        success: false,
+        testsPassed: false,
+        merged: false,
+        error: `Testes falharam (código ${testResult.code}${testResult.timedOut ? ", timeout" : ""}): ${testResult.stderr.slice(-500) || testResult.stdout.slice(-500)}`,
+      };
+    }
+
+    // 3. Rebase na targetBranch
+    const rebaseResult = await this.runGit(["rebase", targetBranch], worktreePath);
+    if (rebaseResult.code !== 0) {
+      // Tenta abortar rebase
+      await this.runGit(["rebase", "--abort"], worktreePath);
+      return {
+        success: false,
+        testsPassed: true,
+        merged: false,
+        error: `Rebase falhou: ${rebaseResult.stderr || rebaseResult.stdout}`,
+      };
+    }
+
+    // 4. Checkout targetBranch e merge
+    const checkoutResult = await this.runGit(["checkout", targetBranch], process.cwd());
+    if (checkoutResult.code !== 0) {
+      return {
+        success: false,
+        testsPassed: true,
+        merged: false,
+        error: `Checkout ${targetBranch} falhou: ${checkoutResult.stderr || checkoutResult.stdout}`,
+      };
+    }
+
+    const mergeResult = await this.runGit(["merge", branch], process.cwd());
+    if (mergeResult.code !== 0) {
+      await this.runGit(["merge", "--abort"], process.cwd());
+      return {
+        success: false,
+        testsPassed: true,
+        merged: false,
+        error: `Merge falhou: ${mergeResult.stderr || mergeResult.stdout}`,
+      };
+    }
+
+    return { success: true, testsPassed: true, merged: true };
+  }
+
+  /**
+   * Destroi worktree e limpa referências git.
+   * Força remoção mesmo se branch não foi merged.
+   * Exige autorização L3 (git_commit_push - efeito externo irreversível).
+   * Garantia WORKTREE_CLEANUP_INTEGRITY: try/catch/finally com prune forçado.
+   */
+  async destroyWorktree(taskId: string): Promise<void> {
+    // L3 Gate: git_commit_push (efeito externo irreversível)
+    await this.checkL3Authorization("git_commit_push");
+
+    const worktreePath = getWorktreePath(taskId);
+    const branch = `task/${taskId}`;
+
+    let pruneExecuted = false;
+
+    try {
+      // Remove worktree (força se necessário)
+      await this.runGit(["worktree", "remove", "--force", worktreePath], process.cwd());
+    } catch {
+      // ignora erro, continua cleanup
+    } finally {
+      try {
+        // Deleta branch local
+        await this.runGit(["branch", "-D", branch], process.cwd());
+      } catch {
+        // ignora
+      } finally {
+        try {
+          // Prune para limpar refs órfãs - SEMPRE executa
+          await this.runGit(["worktree", "prune"], process.cwd());
+          pruneExecuted = true;
+        } catch {
+          // ignora
+        } finally {
+          // Remove diretório se ainda existir (fallback final)
+          try {
+            await fs.rm(worktreePath, { recursive: true, force: true });
+          } catch {
+            // ignora
+          }
+        }
+      }
+    }
+
+    if (!pruneExecuted) {
+      // Last resort: force prune even if everything else failed
+      await this.runGit(["worktree", "prune"], process.cwd()).catch(() => {});
     }
   }
 }
 
 /**
- * Executa validação (npm test) e faz merge local na branch alvo.
- * Rollback automático se testes falharem.
+ * Cria worktree isolada para uma tarefa (função standalone para compatibilidade).
+ * @param taskId Identificador único da tarefa
+ * @param baseBranch Branch base (default: main)
  */
-export async function mergeLocally(taskId: string, targetBranch = DEFAULT_BASE_BRANCH): Promise<MergeResult> {
-  const worktreePath = getWorktreePath(taskId);
-  const branch = `task/${taskId}`;
-
-  // 1. Roda testes na worktree
-  const testResult = await runNpmTest(worktreePath);
-  const testsPassed = testResult.code === 0 && !testResult.timedOut;
-
-  if (!testsPassed) {
-    return {
-      success: false,
-      testsPassed: false,
-      merged: false,
-      error: `Testes falharam (código ${testResult.code}${testResult.timedOut ? ", timeout" : ""}): ${testResult.stderr.slice(-500) || testResult.stdout.slice(-500)}`,
-    };
-  }
-
-  // 2. Rebase na targetBranch
-  const rebaseResult = await runGit(["rebase", targetBranch], worktreePath);
-  if (rebaseResult.code !== 0) {
-    // Tenta abortar rebase
-    await runGit(["rebase", "--abort"], worktreePath);
-    return {
-      success: false,
-      testsPassed: true,
-      merged: false,
-      error: `Rebase falhou: ${rebaseResult.stderr || rebaseResult.stdout}`,
-    };
-  }
-
-  // 3. Checkout targetBranch e merge
-  const checkoutResult = await runGit(["checkout", targetBranch], process.cwd());
-  if (checkoutResult.code !== 0) {
-    return {
-      success: false,
-      testsPassed: true,
-      merged: false,
-      error: `Checkout ${targetBranch} falhou: ${checkoutResult.stderr || checkoutResult.stdout}`,
-    };
-  }
-
-  const mergeResult = await runGit(["merge", branch], process.cwd());
-  if (mergeResult.code !== 0) {
-    await runGit(["merge", "--abort"], process.cwd());
-    return {
-      success: false,
-      testsPassed: true,
-      merged: false,
-      error: `Merge falhou: ${mergeResult.stderr || mergeResult.stdout}`,
-    };
-  }
-
-  return { success: true, testsPassed: true, merged: true };
+export async function createWorktree(taskId: string, baseBranch = DEFAULT_BASE_BRANCH): Promise<WorktreeResult> {
+  const manager = new WorktreeManager("system");
+  return manager.createWorktree(taskId, baseBranch);
 }
 
 /**
- * Destroi worktree e limpa referências git.
+ * Configura ambiente na worktree (função standalone para compatibilidade).
+ * Best-effort: falhas não bloqueiam, apenas logam warning.
+ */
+export async function setupEnvironment(taskId: string): Promise<void> {
+  const manager = new WorktreeManager("system");
+  return manager.setupEnvironment(taskId);
+}
+
+/**
+ * Executa validação (npm run build --workspaces + npm test) e faz merge local na branch alvo (função standalone).
+ * Rollback automático se testes falharem.
+ */
+export async function mergeLocally(taskId: string, targetBranch = DEFAULT_BASE_BRANCH): Promise<MergeResult> {
+  const manager = new WorktreeManager("system");
+  return manager.mergeLocally(taskId, targetBranch);
+}
+
+/**
+ * Destroi worktree e limpa referências git (função standalone para compatibilidade).
  * Força remoção mesmo se branch não foi merged.
  */
 export async function destroyWorktree(taskId: string): Promise<void> {
-  const worktreePath = getWorktreePath(taskId);
-  const branch = `task/${taskId}`;
-
-  // Remove worktree (força se necessário)
-  await runGit(["worktree", "remove", "--force", worktreePath], process.cwd()).catch(() => {});
-
-  // Deleta branch local
-  await runGit(["branch", "-D", branch], process.cwd()).catch(() => {});
-
-  // Prune para limpar refs órfãs
-  await runGit(["worktree", "prune"], process.cwd()).catch(() => {});
-
-  // Remove diretório se ainda existir (fallback)
-  try {
-    await fs.rm(worktreePath, { recursive: true, force: true });
-  } catch {
-    // ignora
-  }
+  const manager = new WorktreeManager("system");
+  return manager.destroyWorktree(taskId);
 }

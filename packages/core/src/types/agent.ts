@@ -80,6 +80,10 @@ export const DEFAULT_ALLOWED_TOOLS: ToolPattern[] = [
   "costs_summary",
   "router_status",
   "spec_grill_plan",
+  "worktree_create",
+  "worktree_merge_locally",
+  "worktree_destroy",
+  "git_commit_push",
 ];
 
 export const DEFAULT_GUARDRAILS: AgentGuardrails = {
