@@ -1,5 +1,6 @@
 import { loadConfig, getPool, claimEntityExtractionJobs, finishEntityExtractionJob } from "@assistente-os/core";
 import { processExtractionJob } from "@assistente-os/memory";
+import { recordLlmCall } from "./observability/record-llm-call.js";
 
 export interface EntityExtractionConsumerOptions {
   home: string;
@@ -20,11 +21,28 @@ export async function processEntityExtractionJobs(options: EntityExtractionConsu
   let processed = 0;
   for (const job of jobs) {
     try {
-      await processExtractionJob(pool, { soul: job.soul, body: job.body }, {
+      const { usage } = await processExtractionJob(pool, { soul: job.soul, body: job.body }, {
         ollamaUrl: config.ollamaUrl,
         chatModel: config.ollamaChatModel,
       });
       await finishEntityExtractionJob(pool, job.id, "completed");
+      if (usage) {
+        try {
+          await recordLlmCall({
+            pool,
+            soul: { id: job.soul },
+            route: "entity-extraction",
+            provider: "ollama",
+            model: config.ollamaChatModel,
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            latencyMs: usage.latencyMs,
+            source: "provider",
+          });
+        } catch {
+          /* telemetria best-effort */
+        }
+      }
       onDone?.({ id: job.id, soul: job.soul, status: "completed" });
     } catch (err) {
       await finishEntityExtractionJob(pool, job.id, "failed", err instanceof Error ? err.message : String(err));

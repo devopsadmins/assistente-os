@@ -259,12 +259,15 @@ export async function runMission(missionId: string, opts: RunMissionOptions = {}
       const pool = getPool(config.databaseUrl);
       const soul = resolveSoulId(h, opts.soulOverride);
       const session = await openSession(pool, soul, config.defaultMaxTurns);
+      // Linha de orquestração (sem tokens): cada step que chama LLM já grava
+      // sua própria telemetria via recordLlmCall (route="<pipeline>"), então
+      // somar aqui contaria em dobro no getUsageSummary.
       await recordExecution(pool, {
         sessionId: session.id,
         soul,
         kind: `mission:${missionId}`,
         status: status === "ok" ? "ok" : "failed",
-        note: `mode=${mission.mode}; steps=${steps.length}; status=${status}`,
+        note: `mode=${mission.mode}; steps=${steps.length}; status=${status}; tokens=por-step`,
       });
     } catch {
       /* telemetria non-fatal */

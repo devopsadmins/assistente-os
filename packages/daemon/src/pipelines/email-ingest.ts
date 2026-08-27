@@ -17,7 +17,9 @@ import {
   readFileSync
 } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { todayISODate } from "@assistente-os/core";
+import { ollamaUsage, recordLlmCall, type LlmUsage } from "../observability/record-llm-call.js";
 
 // ── Tipos de saída estruturada ───────────────────────────────────────
 
@@ -32,6 +34,8 @@ interface EmailExtractionResult {
   }[];
   licoes?: string[] | null;
   raw_transcript: string;
+  /** Telemetria da chamada LLM (só presente quando o Ollama respondeu). */
+  _usage?: LlmUsage;
 }
 
 /**
@@ -80,6 +84,7 @@ async function extractWithOllama(
   // Usar AbortController para timeout
   const ac = new AbortController();
   const timeoutId = setTimeout(() => ac.abort(), 30000);
+  const startedAt = Date.now();
 
   try {
     const resp = await fetch(`${ollamaUrl}/api/chat`, {
@@ -104,6 +109,7 @@ async function extractWithOllama(
 
     const data = await resp.json() as any;
     const content = data.message?.content || String(data);
+    const _usage = ollamaUsage(data, startedAt, prompt, content);
 
     try {
       const parsed = JSON.parse(content);
@@ -114,6 +120,7 @@ async function extractWithOllama(
         acoes: parsed.acoes || [],
         licoes: parsed.lições || [],
         raw_transcript: prompt,
+        _usage,
       };
     } catch (err) {
       console.error("LLM output não é JSON válido");
@@ -123,6 +130,7 @@ async function extractWithOllama(
         decisoes: [],
         acoes: [],
         licoes: [],
+        _usage,
         raw_transcript: prompt,
       };
     }
@@ -256,8 +264,7 @@ export async function emailIngestPipeline(
   triggeredReindex: Promise<void>;
 }> {
   const homeDir =
-    process.env.ASSISTENTE_OS_HOME ||
-    (require("node:os").homedir?.() || "~") + "/.assistant-os";
+    process.env.ASSISTENTE_OS_HOME || join(homedir() || "~", ".assistant-os");
 
   const _core = await import("@assistente-os/core");
   const targetSoulId =
@@ -281,6 +288,26 @@ ${cleanBody}`,
     config.ollamaChatModel
   );
 
+  // Telemetria da chamada LLM (Epic B) — best-effort, não bloqueia o pipeline.
+  if (extractionResult._usage) {
+    try {
+      const pool = _core.getPool(_core.loadConfig({ home: homeDir }).databaseUrl);
+      await recordLlmCall({
+        pool,
+        soul: { id: targetSoulId },
+        route: "email-ingest",
+        provider: "ollama",
+        model: config.ollamaChatModel,
+        promptTokens: extractionResult._usage.promptTokens,
+        completionTokens: extractionResult._usage.completionTokens,
+        latencyMs: extractionResult._usage.latencyMs,
+        source: extractionResult._usage.source,
+      });
+    } catch {
+      /* telemetria best-effort */
+    }
+  }
+
   // 3. Persistir em Markdown
   const conhecimentoPath = writeEmailKnowledgeToMarkdown(
     join(homeDir, "souls", targetSoulId),
@@ -298,39 +325,3 @@ ${cleanBody}`,
   };
 }
 
-// ── Teste standalone ─────────────────────────────────────────────────
-
-if (require.main === module) {
-  ;(async () => {
-    const sampleEmail = `
-De: fulano@empresa.com
-Para: equipe@produto.com
-Data: 2025-01-15
-
-Olá equipe,
-
-Decidimos adiar o lançamento para a próxima quinzena devido a bugs críticos encontrados no QA.
-
-Tarefas:
-- Corrigir bug de login no módulo auth
-- Atualizar documentação da API
-
-Atenciosamente,
-Fulano
-`;
-
-    try {
-      const result = await emailIngestPipeline(sampleEmail);
-      console.log("✅ Pipeline email-ingest concluído:");
-      console.log("   - Arquivo: " + result.conhecimentoPath);
-      console.log("   - Tópicos: " + result.extractionResult.topicos.length);
-      console.log("   - Decisões: " + result.extractionResult.decisoes.length);
-      console.log("   - Ações: " + result.extractionResult.acoes.length);
-      console.log(
-        "   - Lições: " + (result.extractionResult.licoes?.length || 0)
-      );
-    } catch (err) {
-      console.error("❌ Pipeline falhou:", err);
-    }
-  })();
-}

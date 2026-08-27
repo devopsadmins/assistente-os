@@ -9,5 +9,6 @@ export * from "./orchestrator/router.js";
 export * from "./orchestrator/mission-runner.js";
 export * from "./orchestrator/sales-intelligence.js";
 export * from "./orchestrator/spec-grill.js";
+export * from "./observability/record-llm-call.js";
 export * from "./pipelines/meeting-ingest.js";
 export * from "./channels/whatsapp.js";

@@ -11,7 +11,7 @@ test("gerarPerguntasGrill: fallback offline gera 3-5 perguntas categorizadas", a
   const prevUrl = process.env.OLLAMA_URL;
   process.env.OLLAMA_URL = "http://127.0.0.1:1"; // porta sem listener: força o fallback
   try {
-    const questions = await gerarPerguntasGrill("Adicionar exportação de relatórios em PDF");
+    const { questions } = await gerarPerguntasGrill("Adicionar exportação de relatórios em PDF");
     assert.ok(questions.length >= 3 && questions.length <= 5);
     for (const q of questions) {
       assert.ok(CATEGORIAS_VALIDAS.has(q.categoria), `categoria inválida: ${q.categoria}`);

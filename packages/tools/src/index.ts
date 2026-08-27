@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, type SoulSpec, type SkillFrontmatter } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
+import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -1247,9 +1247,26 @@ export class McpServer {
           const { arquivo } = finalizarPlanoGrill(soulDir, featureDraft, answers);
           result = { ok: true, soulId: soul.id, buildModeAuthorized: true, arquivo };
         } else {
-          const questions = await gerarPerguntasGrill(featureDraft);
+          const { questions, usage } = await gerarPerguntasGrill(featureDraft);
           const arquivo = persistirPerguntasGrill(soulDir, featureDraft, questions);
           result = { ok: true, soulId: soul.id, questions, arquivo };
+          if (usage) {
+            try {
+              await recordLlmCall({
+                pool: getPool(this.config.databaseUrl),
+                soul: { id: soul.id },
+                route: "spec-grill",
+                provider: "ollama",
+                model: process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free",
+                promptTokens: usage.promptTokens,
+                completionTokens: usage.completionTokens,
+                latencyMs: usage.latencyMs,
+                source: usage.source,
+              });
+            } catch {
+              /* telemetria best-effort */
+            }
+          }
         }
 
         logFullAuditEntry({

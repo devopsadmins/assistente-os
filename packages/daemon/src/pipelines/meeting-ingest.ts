@@ -23,6 +23,7 @@ import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { todayISODate } from "@assistente-os/core";
+import { recordLlmCall } from "../observability/record-llm-call.js";
 
 // ── Funções auxiliares de parse (inline - baseadas no meeting-ingest original) ──
 
@@ -308,6 +309,22 @@ ${rawTranscript}`;
     ].filter(Boolean);
     if (summaryParts.length > 0) {
       await addObservation(pool, targetSoulId, meetingPayload.fonteArquivo ?? "reuniao", summaryParts.join("\n"), "meeting-ingest");
+    }
+
+    // Telemetria da chamada LLM (Epic B) — além do bloco `## Telemetria` no markdown.
+    const u = meetingPayload.usage;
+    if (u.promptTokens !== undefined || u.completionTokens !== undefined) {
+      await recordLlmCall({
+        pool,
+        soul: { id: targetSoulId },
+        route: "meeting-ingest",
+        provider: "ollama",
+        model: config.ollamaChatModel,
+        promptTokens: u.promptTokens ?? 0,
+        completionTokens: u.completionTokens ?? 0,
+        latencyMs: u.latencyMs,
+        source: "provider",
+      });
     }
   } catch (err) {
     console.debug(

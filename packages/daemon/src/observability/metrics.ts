@@ -30,8 +30,16 @@ export const chatLatency = new Histogram({
 
 export const tokensTotal = new Counter({
   name: "aos_tokens_total",
-  help: "Tokens consumidos por chat (prompt/completion)",
-  labelNames: ["soul", "tier", "kind", "source"] as const,
+  help: "Tokens consumidos por LLM (prompt/completion). `route`: chat | email-ingest | spec-grill | meeting-ingest | entity-extraction | mission:<id>",
+  labelNames: ["soul", "tier", "kind", "source", "route"] as const,
+  registers: [registry],
+});
+
+export const llmLatency = new Histogram({
+  name: "aos_llm_latency_seconds",
+  help: "Latência de uma chamada LLM por rota (fora do fluxo de chat: pipelines e orquestradores)",
+  labelNames: ["route"] as const,
+  buckets: [0.25, 0.5, 1, 2, 5, 10, 20, 45, 90, 180],
   registers: [registry],
 });
 

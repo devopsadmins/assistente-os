@@ -48,9 +48,17 @@ export interface ExtractedRelation {
   to: string;
 }
 
+/** Telemetria da chamada LLM (só presente quando o Ollama devolveu contagem). */
+export interface LlmUsageLite {
+  promptTokens: number;
+  completionTokens: number;
+  latencyMs: number;
+}
+
 export interface ExtractionResult {
   entities: ExtractedEntity[];
   relations: ExtractedRelation[];
+  usage?: LlmUsageLite;
 }
 
 function normalizeEntityName(name: string): string {
@@ -123,6 +131,7 @@ export async function extractEntitiesWithOllama(
 
   const ac = new AbortController();
   const timeoutId = setTimeout(() => ac.abort(), EXTRACTION_TIMEOUT_MS);
+  const startedAt = Date.now();
 
   let resp: Response;
   try {
@@ -144,7 +153,11 @@ export async function extractEntitiesWithOllama(
     throw new Error(`Ollama respondeu HTTP ${resp.status}`);
   }
 
-  const data = (await resp.json()) as { message?: { content?: string } };
+  const data = (await resp.json()) as {
+    message?: { content?: string };
+    prompt_eval_count?: number;
+    eval_count?: number;
+  };
   const content = data.message?.content;
   if (!content) {
     throw new Error("Ollama não retornou conteúdo");
@@ -157,7 +170,15 @@ export async function extractEntitiesWithOllama(
     throw new Error("Ollama retornou JSON inválido na extração de entidades");
   }
 
-  return validateAndClamp(parsed);
+  const result = validateAndClamp(parsed);
+  if (typeof data.prompt_eval_count === "number" || typeof data.eval_count === "number") {
+    result.usage = {
+      promptTokens: data.prompt_eval_count ?? 0,
+      completionTokens: data.eval_count ?? 0,
+      latencyMs: Date.now() - startedAt,
+    };
+  }
+  return result;
 }
 
 /**
@@ -169,8 +190,8 @@ export async function processExtractionJob(
   pool: Pool,
   job: { soul: string; body: string },
   opts: { ollamaUrl: string; chatModel: string },
-): Promise<{ entitiesCreated: number; relationsCreated: number }> {
-  const { entities, relations } = await extractEntitiesWithOllama(job.body, opts.ollamaUrl, opts.chatModel);
+): Promise<{ entitiesCreated: number; relationsCreated: number; usage?: LlmUsageLite }> {
+  const { entities, relations, usage } = await extractEntitiesWithOllama(job.body, opts.ollamaUrl, opts.chatModel);
 
   for (const e of entities) {
     const safeName = sanitizeLLMResponse(e.name).sanitized;
@@ -185,5 +206,5 @@ export async function processExtractionJob(
     await upsertRelation(pool, job.soul, from, rel, to);
   }
 
-  return { entitiesCreated: entities.length, relationsCreated: relations.length };
+  return { entitiesCreated: entities.length, relationsCreated: relations.length, usage };
 }

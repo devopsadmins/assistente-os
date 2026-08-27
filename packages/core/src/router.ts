@@ -33,7 +33,8 @@ export interface RouteDecision {
 
 /** Grava uma escolha de roteador no histórico (kernel.db), imutável. */
 export interface RouterSelectionRecord {
-  soul: Soul;
+  /** Só `.id` é usado — aceita a Soul completa ou um `{ id }` de pipeline. */
+  soul: { id: string };
   target: RouteTarget;
   reason: string;
   /**
@@ -50,18 +51,20 @@ export interface RouterSelectionRecord {
   executionMode?: string;
   /** "provider" (contagem real do LLM) ou "estimate" (heurística chars/4). Vai pro campo reason como sufixo. */
   tokenSource?: "provider" | "estimate";
+  /** Latência da execução em ms. Preenche router_history.latency_ms (antes sempre null). */
+  latencyMs?: number;
 }
 
 export async function recordRouterSelection(
   pool: Pool,
   input: RouterSelectionRecord,
 ): Promise<void> {
-  const { soul, target, reason, status = "selected", promptTokens = 0, completionTokens = 0, totalTokens = 0, modelUsed, executionMode, tokenSource } = input;
+  const { soul, target, reason, status = "selected", promptTokens = 0, completionTokens = 0, totalTokens = 0, modelUsed, executionMode, tokenSource, latencyMs } = input;
   const reasonWithSource = tokenSource ? `${reason} [tokens:${tokenSource}]` : reason;
   await pool.query(
     `INSERT INTO router_history (ts, soul, tier, provider, model, status, latency_ms, reason, prompt_tokens, completion_tokens, total_tokens, model_used, execution_mode)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, status, null, reasonWithSource, promptTokens, completionTokens, totalTokens, modelUsed ?? null, executionMode ?? null],
+    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, status, latencyMs ?? null, reasonWithSource, promptTokens, completionTokens, totalTokens, modelUsed ?? null, executionMode ?? null],
   );
 }
 

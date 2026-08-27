@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { todayISODate } from "@assistente-os/core";
+import { ollamaUsage, type LlmUsage } from "../observability/record-llm-call.js";
 
 export interface GrillQuestion {
   id: number;
@@ -38,11 +39,14 @@ const FALLBACK_QUESTIONS: Omit<GrillQuestion, "id">[] = [
 
 const CATEGORIAS_VALIDAS = new Set<GrillQuestion["categoria"]>(["regra-negocio", "edge-case", "dependencia-banco-api"]);
 
-async function gerarPerguntasViaOllama(featureDraft: string): Promise<GrillQuestion[] | null> {
+async function gerarPerguntasViaOllama(
+  featureDraft: string,
+): Promise<{ questions: GrillQuestion[] | null; usage?: LlmUsage }> {
   const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
   const model = process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free";
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 30_000);
+  const startedAt = Date.now();
   try {
     const resp = await fetch(`${ollamaUrl}/api/chat`, {
       method: "POST",
@@ -62,12 +66,13 @@ async function gerarPerguntasViaOllama(featureDraft: string): Promise<GrillQuest
         ],
       }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) return { questions: null };
     const data = (await resp.json()) as { message?: { content?: string } };
     const raw = data.message?.content;
-    if (!raw) return null;
+    const usage = ollamaUsage(data, startedAt, featureDraft, raw ?? "");
+    if (!raw) return { questions: null, usage };
     const parsed = JSON.parse(raw) as { questions?: { categoria?: string; pergunta?: string }[] };
-    if (!Array.isArray(parsed.questions)) return null;
+    if (!Array.isArray(parsed.questions)) return { questions: null, usage };
     const questions: GrillQuestion[] = [];
     for (const q of parsed.questions.slice(0, 5)) {
       if (typeof q.pergunta !== "string" || !q.pergunta.trim()) continue;
@@ -76,19 +81,25 @@ async function gerarPerguntasViaOllama(featureDraft: string): Promise<GrillQuest
         : "regra-negocio";
       questions.push({ id: questions.length + 1, categoria, pergunta: q.pergunta.trim() });
     }
-    return questions.length >= 3 ? questions : null;
+    return { questions: questions.length >= 3 ? questions : null, usage };
   } catch {
-    return null;
+    return { questions: null };
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Fase 1: gera as perguntas de esclarecimento (Ollama com fallback heurístico). */
-export async function gerarPerguntasGrill(featureDraft: string): Promise<GrillQuestion[]> {
+/**
+ * Fase 1: gera as perguntas de esclarecimento (Ollama com fallback heurístico).
+ * Devolve também `usage` da chamada LLM quando o Ollama respondeu (para o
+ * caller gravar telemetria via recordLlmCall).
+ */
+export async function gerarPerguntasGrill(
+  featureDraft: string,
+): Promise<{ questions: GrillQuestion[]; usage?: LlmUsage }> {
   const viaOllama = await gerarPerguntasViaOllama(featureDraft);
-  if (viaOllama) return viaOllama;
-  return FALLBACK_QUESTIONS.map((q, i) => ({ id: i + 1, ...q }));
+  if (viaOllama.questions) return { questions: viaOllama.questions, usage: viaOllama.usage };
+  return { questions: FALLBACK_QUESTIONS.map((q, i) => ({ id: i + 1, ...q })), usage: viaOllama.usage };
 }
 
 function contextoPath(soulDir: string): string {

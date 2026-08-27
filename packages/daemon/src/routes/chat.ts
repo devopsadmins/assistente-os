@@ -508,6 +508,7 @@ export async function handleChat(
           modelUsed: model,
           executionMode: orchDecision.mode,
           tokenSource: finalUsage.source,
+          latencyMs: Date.now() - startedAt,
         });
       }
       emitStep("persistencia", `custo e execução registrados (${totalTokens} tokens, ${finalUsage.source})`);
@@ -516,8 +517,8 @@ export async function handleChat(
       chatRequests.inc({ soul: soul.id, tier, mode: orchDecision.mode, status: succeeded ? "ok" : "failed" });
       chatLatency.observe({ tier }, (Date.now() - startedAt) / 1000);
       if (succeeded) {
-        tokensTotal.inc({ soul: soul.id, tier, kind: "prompt", source: finalUsage.source }, finalUsage.promptTokens);
-        tokensTotal.inc({ soul: soul.id, tier, kind: "completion", source: finalUsage.source }, finalUsage.completionTokens);
+        tokensTotal.inc({ soul: soul.id, tier, kind: "prompt", source: finalUsage.source, route: "chat" }, finalUsage.promptTokens);
+        tokensTotal.inc({ soul: soul.id, tier, kind: "completion", source: finalUsage.source, route: "chat" }, finalUsage.completionTokens);
       }
       // evento WS de conclusão (fire-and-forget; não bloqueia a resposta)
       try {
