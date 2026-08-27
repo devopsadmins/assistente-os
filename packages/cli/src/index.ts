@@ -22,6 +22,8 @@ import {
   approveRule,
   rejectRule,
   resendApprovalCode,
+  getUsageSummary,
+  type UsageSummaryFilters,
 } from "@assistente-os/core";
 import {
   indexDirectory,
@@ -43,33 +45,35 @@ const HELP = `
 os — Assistente OS
 
 Uso:
-  os status                    mostra home, souls e modelo padrão
-  os souls                     lista as souls
-  os soul <id>                 mostra config e arquivos de uma soul
-  os soul <id> ativa           define a soul ativa
-  os chat <soul> <prompt...>   roda opencode run headless na soul
-  os migrate <src>             migra almas do SLC-OS para <home>/souls
-  os import-sc <src>           importa Segundo Cérebro para <home>/souls/segundo-cerebro
-  os memory <soul> index       indexa a pasta da soul (md/txt) no memory.db
-  os memory <soul> search <q>  busca RAG (literal se Ollama ausente)
-  os memory <soul> status      contagem de chunks e grafo
-  os graph <soul> list         lista entidades/relações/observações
-  os costs                     resumo de custos
+  os status                          mostra home, souls e modelo padrão
+  os souls                           lista as souls
+  os soul <id>                       mostra config e arquivos de uma soul
+  os soul <id> ativa                 define a soul ativa
+  os chat <soul> <prompt...>         roda opencode run headless na soul
+  os migrate <src>                   migra almas do SLC-OS para <home>/souls
+  os import-sc <src>                 importa Segundo Cérebro para <home>/souls/segundo-cerebro
+  os memory <soul> index             indexa a pasta da soul (md/txt) no memory.db
+  os memory <soul> search <q>        busca RAG (literal se Ollama ausente)
+  os memory <soul> status            contagem de chunks e grafo
+  os graph <soul> list               lista entidades/relações/observações
+  os costs                           resumo de custos
+  os costs usage [--soul <id>] [--from <date>] [--to <date>]  resumo agregado de uso/tokens
   os agenda add <soul> <título> [--due <iso>] [corpo...]
-                                agenda uma tarefa (soul "-" = nenhuma)
-  os agenda list [pending|done|all]
-                                lista itens da agenda (padrão: pending)
-  os guardian pending          lista propostas de regra aguardando aprovação
-  os guardian approve <id> <código>
-                                aprova uma proposta (código enviado por Telegram)
-  os guardian reject <id> <código>
-                                rejeita uma proposta
-  os guardian resend <id>      gera e reenvia um novo código de aprovação
-  os daemon [port]             inicia o daemon REST+WS (padrão 4310)
-  os voice                     inicia o pipeline de voz (VAD + STT + TTS)
-  os backup                    gera um ZIP completo do perfil, RAG e conhecimento em
-                                ASSISTENTE_OS_BACKUP_DIR (padrão ~/.assistant-os-backups; retenção de 7 dias)
-  os help                      mostra esta ajuda
+                                     agenda uma tarefa (soul "-" = nenhuma)
+  os agenda list [pending|done|all]  lista itens da agenda (padrão: pending)
+  os worktree create <taskId> [--base <branch>] [--soul <id>]  cria worktree isolada
+  os worktree merge <taskId> [--target <branch>]               merge local + testes
+  os worktree destroy <taskId>       destrói worktree e limpa refs git
+  os worktree list                   lista worktrees ativas
+  os guardian pending                lista propostas de regra aguardando aprovação
+  os guardian approve <id> <código>  aprova uma proposta (código enviado por Telegram)
+  os guardian reject <id> <código>   rejeita uma proposta
+  os guardian resend <id>            gera e reenvia um novo código de aprovação
+  os daemon [port]                   inicia o daemon REST+WS (padrão 4310)
+  os voice                           inicia o pipeline de voz (VAD + STT + TTS)
+  os backup                          gera um ZIP completo do perfil, RAG e conhecimento em
+                                     ASSISTENTE_OS_BACKUP_DIR (padrão ~/.assistant-os-backups; retenção de 7 dias)
+  os help                            mostra esta ajuda
 
 Variáveis de ambiente: ASSISTENTE_OS_HOME (padrão ~/.assistant-os),
 ASSISTENTE_OS_BACKUP_DIR (padrão ~/.assistant-os-backups),
@@ -295,6 +299,51 @@ async function main(): Promise<void> {
     }
 
     case "costs": {
+      const sub = args[0];
+
+      if (sub === "usage") {
+        const pool = getPool(config.databaseUrl);
+        const filters: UsageSummaryFilters = {};
+        for (let i = 1; i < args.length; i++) {
+          if (args[i] === "--soul" && args[i + 1]) {
+            filters.soul = args[i + 1]!;
+            i++;
+          } else if (args[i] === "--from" && args[i + 1]) {
+            filters.from = args[i + 1]!;
+            i++;
+          } else if (args[i] === "--to" && args[i + 1]) {
+            filters.to = args[i + 1]!;
+            i++;
+          }
+        }
+        const summary = await getUsageSummary(pool, filters);
+        if (summary.length === 0) {
+          console.log("(nenhum dado de uso encontrado)");
+          return;
+        }
+        for (const row of summary) {
+          console.log(`\nSoul: ${row.soul}`);
+          console.log(`  Total calls: ${row.total_calls}`);
+          console.log(`  Prompt tokens: ${row.total_prompt_tokens}`);
+          console.log(`  Completion tokens: ${row.total_completion_tokens}`);
+          console.log(`  Total tokens: ${row.total_tokens}`);
+          if (Object.keys(row.by_mode).length > 0) {
+            console.log("  By mode:");
+            for (const [mode, data] of Object.entries(row.by_mode)) {
+              console.log(`    ${mode}: ${data.calls} calls, ${data.tokens} tokens`);
+            }
+          }
+          if (Object.keys(row.by_model).length > 0) {
+            console.log("  By model:");
+            for (const [model, data] of Object.entries(row.by_model)) {
+              console.log(`    ${model}: ${data.calls} calls, ${data.tokens} tokens`);
+            }
+          }
+        }
+        return;
+      }
+
+      // Original costs summary
       const pool = getPool(config.databaseUrl);
       const souls = listSouls(config.home);
       console.log("custo por soul:");
@@ -305,6 +354,110 @@ async function main(): Promise<void> {
       for (const c of await recentCalls(pool, "main", 5)) {
         console.log(`  ${c.ts} ${c.provider}/${c.model} ${c.inputTokens}+${c.outputTokens}t $${c.cost.toFixed(6)} ${c.status}`);
       }
+      return;
+    }
+
+    case "worktree": {
+      const sub = args[0];
+      const daemon = await import("@assistente-os/daemon");
+      const { createWorktree, mergeLocally, destroyWorktree, setupEnvironment } = daemon;
+
+      if (sub === "create") {
+        const taskId = args[1];
+        if (!taskId) {
+          console.log("uso: os worktree create <taskId> [--base <branch>] [--soul <id>]");
+          process.exitCode = 1;
+          return;
+        }
+        let baseBranch = "main";
+        let soul: string | null = null;
+        for (let i = 2; i < args.length; i++) {
+          if (args[i] === "--base" && args[i + 1]) {
+            baseBranch = args[i + 1]!;
+            i++;
+          } else if (args[i] === "--soul" && args[i + 1]) {
+            soul = args[i + 1]!;
+            i++;
+          }
+        }
+        if (soul && !getSoul(config.home, soul)) {
+          console.error(`soul não encontrada: ${soul}`);
+          process.exitCode = 1;
+          return;
+        }
+        const result = await createWorktree(taskId, baseBranch);
+        if (result.success) {
+          if (soul) {
+            await setupEnvironment(taskId);
+          }
+          console.log(`worktree criada: ${result.path} (branch: ${result.branch})`);
+        } else {
+          console.error(`falha: ${result.error}`);
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (sub === "merge") {
+        const taskId = args[1];
+        if (!taskId) {
+          console.log("uso: os worktree merge <taskId> [--target <branch>]");
+          process.exitCode = 1;
+          return;
+        }
+        let targetBranch = "main";
+        for (let i = 2; i < args.length; i++) {
+          if (args[i] === "--target" && args[i + 1]) {
+            targetBranch = args[i + 1]!;
+            i++;
+          }
+        }
+        const result = await mergeLocally(taskId, targetBranch);
+        if (result.success) {
+          console.log(`merge bem-sucedido (testes: ${result.testsPassed ? "passaram" : "falharam"})`);
+        } else {
+          console.error(`falha: ${result.error}`);
+          console.log(`testes passaram: ${result.testsPassed}`);
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (sub === "destroy") {
+        const taskId = args[1];
+        if (!taskId) {
+          console.log("uso: os worktree destroy <taskId>");
+          process.exitCode = 1;
+          return;
+        }
+        await destroyWorktree(taskId);
+        console.log(`worktree ${taskId} destruída`);
+        return;
+      }
+
+      if (sub === "list" || sub === undefined) {
+        const daemon = await import("@assistente-os/daemon");
+        const { getWorkspacesRoot } = daemon;
+        const fs = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const root = getWorkspacesRoot();
+        try {
+          const entries = await fs.readdir(root, { withFileTypes: true });
+          const worktrees = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+          if (worktrees.length === 0) {
+            console.log("(nenhuma worktree ativa)");
+            return;
+          }
+          for (const w of worktrees) {
+            console.log(`  ${w} -> ${join(root, w)}`);
+          }
+        } catch {
+          console.log("(nenhuma worktree ativa)");
+        }
+        return;
+      }
+
+      console.log("uso: os worktree create <taskId> [--base <branch>] [--soul <id>] | os worktree merge <taskId> [--target <branch>] | os worktree destroy <taskId> | os worktree list");
       return;
     }
 
