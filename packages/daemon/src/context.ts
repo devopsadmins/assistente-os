@@ -60,12 +60,15 @@ ${sessao ? `--- Sessão atual (${today}) ---\n${sessao}\n` : ""}`.trim();
     try {
       const pool = getPool(config.databaseUrl);
       const res = await retrieveContext(pool, soul.id, prompt, 5);
+      // Screening de prompt injection nos chunks já rodou dentro de retrieveContext;
+      // aqui só propagamos os findings pelo verdict para o chat.ts logar/alertar.
+      const injection = res.injectionFindings ?? [];
       if (res.hasRelevantDocs) {
         ragCtx = `## Contexto de conhecimento relevante (RAG)
 ${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
-        verdict = { ok: true, sources: res.sources };
+        verdict = { ok: true, sources: res.sources, injection };
       } else {
-        verdict = { ok: false, motivo: "nenhum documento relevante encontrado" };
+        verdict = { ok: false, motivo: "nenhum documento relevante encontrado", injection };
       }
     } catch {
       ragCtx = "";

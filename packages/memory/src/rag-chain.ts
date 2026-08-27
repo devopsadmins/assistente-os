@@ -15,8 +15,14 @@ import { search } from "./indexer.js";
 import { langchainTemplates } from "./prompt-templates.js";
 import { getEmbedder } from "./embedder-provider.js";
 import { rerank, rerankConfig } from "./rerank.js";
+import {
+  screenRetrievedChunks,
+  ragInjectionMode,
+  type ScreenableChunk,
+  type RagInjectionFinding,
+} from "./rag-injection.js";
 import { createHash } from "node:crypto";
-import { loadConfig, cache, type Pool } from "@assistente-os/core";
+import { loadConfig, cache, logger, type Pool } from "@assistente-os/core";
 
 export interface RagChunk {
   doc: string;
@@ -32,12 +38,16 @@ export interface RagResult {
   model: string;
   query: string;
   tokensUsed?: number;
+  /** Chunks recuperados que casaram a heurística de prompt injection (E: RAG injection screening). */
+  injectionFindings: RagInjectionFinding[];
 }
 
 export interface RagContext {
   context: string;
   sources: RagChunk[];
   hasRelevantDocs: boolean;
+  /** Chunks recuperados que casaram a heurística de prompt injection (E: RAG injection screening). */
+  injectionFindings: RagInjectionFinding[];
 }
 
 /**
@@ -65,22 +75,25 @@ function createLLM() {
   });
 }
 
+/** Monta os `ScreenableChunk` (chunk + body bruto) a partir do resultado do indexer. */
+function toScreenable(results: Awaited<ReturnType<typeof search>>): ScreenableChunk[] {
+  return results.map((r) => ({
+    chunk: {
+      doc: r.docKey,
+      path: r.path,
+      score: r.score,
+      method: r.method === "vector" ? "semantic" : "literal",
+      snippet: r.body.slice(0, 200),
+    } satisfies RagChunk,
+    body: r.body,
+  }));
+}
+
 function createRetriever(pool: Pool, soul: string, embedder: Embedder, limit: number) {
   return RunnableLambda.from(async (input: string): Promise<{ context: string; question: string; sources: RagChunk[] }> => {
     const results = await search(pool, soul, input, embedder, limit);
-
-    let chunks: RagChunk[];
-    if (results.length > 0) {
-      chunks = results.map((r): RagChunk => ({
-        doc: r.docKey,
-        path: r.path,
-        score: r.score,
-        method: r.method === "vector" ? "semantic" : "literal",
-        snippet: r.body.slice(0, 200),
-      }));
-    } else {
-      chunks = await literalSearchFallback(pool, soul, input, limit);
-    }
+    const screenable = results.length > 0 ? toScreenable(results) : await literalSearchFallback(pool, soul, input, limit);
+    const { chunks } = screenRetrievedChunks(screenable, ragInjectionMode());
 
     const context = formatContext(chunks);
     return { context, question: input, sources: chunks };
@@ -92,7 +105,7 @@ async function literalSearchFallback(
   soul: string,
   query: string,
   limit: number
-): Promise<RagChunk[]> {
+): Promise<ScreenableChunk[]> {
   const { rows } = await pool.query(
     `SELECT entity_name AS doc, body, ts AS path
      FROM observations
@@ -101,12 +114,15 @@ async function literalSearchFallback(
     [soul, `%${query}%`, limit]
   );
 
-  return rows.map((r: any): RagChunk => ({
-    doc: r.doc,
-    path: r.path,
-    score: 0.5,
-    method: "literal",
-    snippet: r.body?.slice(0, 200) ?? "",
+  return rows.map((r: any): ScreenableChunk => ({
+    chunk: {
+      doc: r.doc,
+      path: r.path,
+      score: 0.5,
+      method: "literal",
+      snippet: r.body?.slice(0, 200) ?? "",
+    },
+    body: r.body ?? "",
   }));
 }
 
@@ -141,7 +157,7 @@ export async function retrieveContext(
     .update((pool as unknown as { options?: { connectionString?: string } }).options?.connectionString ?? "")
     .digest("hex")
     .slice(0, 8);
-  const cacheKey = `rag:${poolTag}:${soul}:${createHash("sha1").update(`${limit}\n${process.env.RAG_RERANK ?? "off"}\n${query}`).digest("hex")}`;
+  const cacheKey = `rag:${poolTag}:${soul}:${createHash("sha1").update(`${limit}\n${process.env.RAG_RERANK ?? "off"}\n${ragInjectionMode()}\n${query}`).digest("hex")}`;
   try {
     const hit = await cache.get(cacheKey);
     if (hit) return JSON.parse(hit) as RagContext;
@@ -159,18 +175,13 @@ export async function retrieveContext(
     results = await rerank(query, results, { ...rcfg, topK: limit });
   }
 
-  let chunks: RagChunk[];
-  if (results.length > 0) {
-    chunks = results.map((r): RagChunk => ({
-      doc: r.docKey,
-      path: r.path,
-      score: r.score,
-      method: r.method === "vector" ? "semantic" : "literal",
-      snippet: r.body.slice(0, 200),
-    }));
-  } else {
-    chunks = await literalSearchFallback(pool, soul, query, limit);
-  }
+  const screenable: ScreenableChunk[] =
+    results.length > 0 ? toScreenable(results) : await literalSearchFallback(pool, soul, query, limit);
+
+  // Screening de indirect prompt injection sobre o body bruto de cada chunk,
+  // antes do assembly do prompt. Em modo `recusar`, chunks de severidade alta
+  // são descartados aqui (não abortam a chamada).
+  const { chunks, findings: injectionFindings } = screenRetrievedChunks(screenable, ragInjectionMode());
 
   const context = formatContext(chunks);
   const result: RagContext = {
@@ -179,6 +190,7 @@ export async function retrieveContext(
     // >= (não >): literalSearchFallback atribui score exatamente 0.5 de propósito
     // (o mesmo valor do gate) — com > estrito, o fallback literal nunca passava.
     hasRelevantDocs: chunks.length > 0 && chunks[0].score >= 0.5,
+    injectionFindings,
   };
   try {
     await cache.set(cacheKey, JSON.stringify(result), 60);
@@ -226,19 +238,17 @@ export async function runRagChain(
 ): Promise<RagResult> {
   const embedder: Embedder = getEmbedder();
 
-  const documents = await (async () => {
-    const results = await search(pool, soul, query, embedder, limit);
-    if (results.length > 0) {
-      return results.map((r): RagChunk => ({
-        doc: r.docKey,
-        path: r.path,
-        score: r.score,
-        method: r.method === "vector" ? "semantic" : "literal",
-        snippet: r.body.slice(0, 200),
-      }));
-    }
-    return await literalSearchFallback(pool, soul, query, limit);
-  })();
+  const results = await search(pool, soul, query, embedder, limit);
+  const screenable: ScreenableChunk[] =
+    results.length > 0 ? toScreenable(results) : await literalSearchFallback(pool, soul, query, limit);
+  const { chunks: documents, findings: injectionFindings } = screenRetrievedChunks(screenable, ragInjectionMode());
+  if (injectionFindings.length > 0) {
+    // Sem sessionId aqui para o audit trail — o backstop deste caminho (agente
+    // LangGraph) é authorizeExecution() antes de qualquer tool. Só registra o sinal.
+    logger.warn(
+      `[prompt-injection] ${injectionFindings.length} chunk(s) de RAG com padrão de injection na soul ${soul} (runRagChain)`,
+    );
+  }
 
   if (documents.length === 0) {
     return {
@@ -246,6 +256,7 @@ export async function runRagChain(
       sources: [],
       model: "hybrid-embedder",
       query,
+      injectionFindings,
     };
   }
 
@@ -268,5 +279,6 @@ export async function runRagChain(
     sources: documents,
     model: usedConfig.zenApiKey ? usedConfig.zenChatModel : usedConfig.ollamaChatModel,
     query,
+    injectionFindings,
   };
 }

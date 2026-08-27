@@ -23,7 +23,8 @@ import {
   logFullAuditEntry,
   estimateTokens,
 } from "@assistente-os/core";
-import type { RagChunk } from "@assistente-os/memory";
+import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
+import { maxFindingSeverity } from "@assistente-os/memory";
 import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
@@ -232,7 +233,7 @@ export async function handleChat(
           toolsCalled: [],
           params: { patterns: injection.matches.map((m) => m.name) },
         });
-        promptInjectionAlerts.inc({ severity: injection.maxSeverity });
+        promptInjectionAlerts.inc({ severity: injection.maxSeverity, source: "user_input" });
         const modo = process.env.PROMPT_INJECTION_MODO || "aviso";
         if (modo === "recusar" && injection.maxSeverity === "high") {
           sendJson(res, 400, {
@@ -256,7 +257,9 @@ export async function handleChat(
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
       const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
       {
-        const verdict = built.verdict as { ok: boolean; sources?: RagChunk[]; motivo?: string } | null;
+        const verdict = built.verdict as
+          | { ok: boolean; sources?: RagChunk[]; motivo?: string; injection?: RagInjectionFinding[] }
+          | null;
         const filesLoaded = built.files.filter((f) => f.chars > 0).length;
         const ragMsg =
           verdict == null
@@ -282,6 +285,41 @@ export async function handleChat(
               sources: verdict.sources.map((s) => ({ path: s.path, method: s.method, score: s.score })),
             },
           });
+        }
+
+        // ---- Indirect prompt injection em conteúdo recuperado (RAG) ----
+        // O screening rodou dentro de retrieveContext; aqui registramos a origem
+        // (`retrieved_chunk`, distinta de `user_input`) no audit trail + métrica.
+        const ragInjection = verdict?.injection ?? [];
+        if (ragInjection.length > 0) {
+          const maxSev = maxFindingSeverity(ragInjection);
+          const excluded = ragInjection.filter((f) => f.excluded).length;
+          logger.warn(
+            `[prompt-injection] ${ragInjection.length} chunk(s) de RAG com padrão de injection (sev. máx ${maxSev}) na soul ${soul.id}`,
+          );
+          logFullAuditEntry({
+            ts: new Date().toISOString(),
+            sessionId: String(session.id),
+            soulId: soul.id,
+            intention: "ALERTA: possível prompt injection em conteúdo recuperado (RAG)",
+            toolsCalled: [],
+            params: {
+              source: "retrieved_chunk",
+              findings: ragInjection.map((f) => ({
+                doc: f.doc,
+                path: f.path,
+                severity: f.severity,
+                patterns: f.patterns,
+                excluded: f.excluded,
+              })),
+            },
+          });
+          promptInjectionAlerts.inc({ severity: maxSev, source: "retrieved_chunk" });
+          emitStep(
+            "seguranca",
+            `RAG: ${ragInjection.length} chunk(s) sinalizado(s) por prompt injection` +
+              (excluded > 0 ? `, ${excluded} descartado(s)` : ""),
+          );
         }
       }
 

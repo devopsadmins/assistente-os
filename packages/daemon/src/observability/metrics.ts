@@ -44,8 +44,8 @@ export const routerFallback = new Counter({
 
 export const promptInjectionAlerts = new Counter({
   name: "aos_prompt_injection_alerts_total",
-  help: "Alertas do detector de prompt injection",
-  labelNames: ["severity"] as const,
+  help: "Alertas do detector de prompt injection (source: user_input | retrieved_chunk)",
+  labelNames: ["severity", "source"] as const,
   registers: [registry],
 });
 

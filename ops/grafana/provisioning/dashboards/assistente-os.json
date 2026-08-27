@@ -44,7 +44,7 @@
       "title": "Alertas de prompt injection (10m)",
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
       "targets": [
-        { "expr": "sum by (severity) (increase(aos_prompt_injection_alerts_total[10m]))", "legendFormat": "{{severity}}" }
+        { "expr": "sum by (severity, source) (increase(aos_prompt_injection_alerts_total[10m]))", "legendFormat": "{{source}} / {{severity}}" }
       ]
     }
   ]
