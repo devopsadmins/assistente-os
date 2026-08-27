@@ -334,3 +334,33 @@ export async function matchSkills(
     .sort((a, b) => b.score - a.score)
     .slice(0, max);
 }
+
+// ── Renderer do bloco de prompt ────────────────────────────────────────
+
+/**
+ * Bloco pronto para o prompt: índice de TODAS as skills da allowlist (nome +
+ * description) + o corpo completo das ativas. `""` se `available` vazio.
+ * `isToolAllowed` marca as `skill.tools` fora da allowlist da soul.
+ */
+export function renderSkillsPrompt(
+  available: LoadedSkill[],
+  active: SkillMatch[],
+  isToolAllowed: (tool: string) => boolean,
+): string {
+  if (available.length === 0) return "";
+  const parts: string[] = [
+    "## Skills disponíveis (ative mentalmente a que se aplica)",
+    ...available.map((s) => `- ${s.name} — ${s.description}`),
+  ];
+  for (const m of active) {
+    const s = m.skill;
+    parts.push("", `## Skill ativa: ${s.name}`, s.body);
+    if (s.tools.length > 0) {
+      const rendered = s.tools
+        .map((t) => (isToolAllowed(t) ? `\`${t}\`` : `\`${t}\` (indisponível para esta soul)`))
+        .join(", ");
+      parts.push(`Ferramentas relevantes: ${rendered}`);
+    }
+  }
+  return parts.join("\n");
+}

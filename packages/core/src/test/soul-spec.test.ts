@@ -191,3 +191,19 @@ test("resolveSoulSpecDefaults: aplica defaults de memoryPolicy/approvalPolicy/co
   assert.deepEqual(resolved.skills, []);
   assert.equal(resolved.memoryPolicy?.enforcement, "partial");
 });
+
+// ── validateSoulSpec: skillResolver ─────────────────────────────────────
+
+test("validateSoulSpec: skillResolver rejeita nome de skill desconhecido", () => {
+  const r = validateSoulSpec(baseSpec({ skills: ["existe", "nao-existe"] }), {
+    existingIds: new Set(),
+    skillResolver: (n) => n === "existe",
+  });
+  assert.equal(r.ok, false);
+  assert.ok(r.issues.some((i) => i.field === "skills" && /nao-existe/.test(i.message)));
+});
+
+test("validateSoulSpec: sem skillResolver, skills não são checadas contra arquivos (compat)", () => {
+  const r = validateSoulSpec(baseSpec({ skills: ["qualquer-nome"] }), { existingIds: new Set() });
+  assert.equal(r.ok, true);
+});

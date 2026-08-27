@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSkillFrontmatter, resolveSkillPath, scanSkillDirs, listSkills, matchSkills, skillMatchThreshold, type LoadedSkill } from "../skills.js";
+import { parseSkillFrontmatter, resolveSkillPath, scanSkillDirs, listSkills, matchSkills, skillMatchThreshold, renderSkillsPrompt, type LoadedSkill } from "../skills.js";
 import { createSoulFull } from "../souls.js";
 import type { Soul } from "../souls.js";
 
@@ -170,4 +170,25 @@ test("matchSkills: embed ok → usedEmbedding true e score combina léxico+embed
   const res = await matchSkills("qualquer coisa", skills, { threshold: 0.01, max: 3, embed: fakeEmbed });
   assert.equal(res[0]!.usedEmbedding, true);
   assert.ok(res[0]!.score >= 0.5);
+});
+
+// ── Task 4: renderer ────────────────────────────────────────────────────
+
+test("renderSkillsPrompt: índice sempre; corpo só das ativas; tool indisponível marcada", () => {
+  const a = mk("xx", "faz X");
+  const b = mk("yy", "faz Y");
+  b.tools = ["tool_ok", "tool_no"];
+  const out = renderSkillsPrompt([a, b], [{ skill: b, score: 0.9, lexicalHits: [], usedEmbedding: false }], (t) => t === "tool_ok");
+  assert.match(out, /## Skills disponíveis/);
+  assert.match(out, /- xx — faz X/);
+  assert.match(out, /- yy — faz Y/);
+  assert.match(out, /## Skill ativa: yy/);
+  assert.match(out, /corpo yy/);
+  assert.doesNotMatch(out, /## Skill ativa: xx/);
+  assert.match(out, /`tool_ok`/);
+  assert.match(out, /`tool_no` \(indisponível para esta soul\)/);
+});
+
+test("renderSkillsPrompt: sem skills → string vazia", () => {
+  assert.equal(renderSkillsPrompt([], [], () => true), "");
 });

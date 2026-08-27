@@ -110,7 +110,12 @@ function issue(field: string, message: string): SoulSpecValidationIssue {
 
 export function validateSoulSpec(
   spec: SoulSpec,
-  opts: { existingIds: Set<string>; limits?: Partial<SoulSpecLimits> },
+  opts: {
+    existingIds: Set<string>;
+    limits?: Partial<SoulSpecLimits>;
+    /** Resolve um nome de skill para true se existir um SKILL.md (global ou per-soul). Sem ele, `spec.skills` não é checado contra arquivos (compat). */
+    skillResolver?: (name: string) => boolean;
+  },
 ): SoulSpecValidationResult {
   const limits = { ...DEFAULT_SOUL_SPEC_LIMITS, ...opts.limits };
   const issues: SoulSpecValidationIssue[] = [];
@@ -144,6 +149,13 @@ export function validateSoulSpec(
   const skillsCount = spec.skills?.length ?? 0;
   if (skillsCount > limits.maxSkills) {
     issues.push(issue("skills", `número de skills (${skillsCount}) excede o limite de ${limits.maxSkills}`));
+  }
+  if (opts.skillResolver) {
+    for (const name of spec.skills ?? []) {
+      if (!opts.skillResolver(name)) {
+        issues.push(issue("skills", `skill '${name}' não encontrada (SKILL.md ausente na soul ou no diretório global)`));
+      }
+    }
   }
 
   const connectorsCount = spec.connectors?.length ?? 0;
