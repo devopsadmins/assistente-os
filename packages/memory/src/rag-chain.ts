@@ -14,6 +14,7 @@ import type { Embedder } from "./embedders.js";
 import { search } from "./indexer.js";
 import { langchainTemplates } from "./prompt-templates.js";
 import { getEmbedder } from "./embedder-provider.js";
+import { rerank, rerankConfig } from "./rerank.js";
 import { createHash } from "node:crypto";
 import { loadConfig, cache, type Pool } from "@assistente-os/core";
 
@@ -140,7 +141,7 @@ export async function retrieveContext(
     .update((pool as unknown as { options?: { connectionString?: string } }).options?.connectionString ?? "")
     .digest("hex")
     .slice(0, 8);
-  const cacheKey = `rag:${poolTag}:${soul}:${createHash("sha1").update(`${limit}\n${query}`).digest("hex")}`;
+  const cacheKey = `rag:${poolTag}:${soul}:${createHash("sha1").update(`${limit}\n${process.env.RAG_RERANK ?? "off"}\n${query}`).digest("hex")}`;
   try {
     const hit = await cache.get(cacheKey);
     if (hit) return JSON.parse(hit) as RagContext;
@@ -149,7 +150,14 @@ export async function retrieveContext(
   }
 
   const embedder: Embedder = getEmbedder();
-  const results = await search(pool, soul, query, embedder, limit);
+  // E10: com rerank ativo, busca um top-N amplo e reordena par (query, trecho)
+  // antes de cortar no `limit`. Com RAG_RERANK=off (default), fetchN == limit.
+  const rcfg = rerankConfig(limit);
+  const fetchN = rcfg.mode === "off" ? limit : Math.max(rcfg.topN, limit);
+  let results = await search(pool, soul, query, embedder, fetchN);
+  if (rcfg.mode !== "off" && results.length > 0) {
+    results = await rerank(query, results, { ...rcfg, topK: limit });
+  }
 
   let chunks: RagChunk[];
   if (results.length > 0) {

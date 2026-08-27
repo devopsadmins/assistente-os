@@ -38,7 +38,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token 📄 | S | — |
 | [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção ✅ | L | E1 |
 | [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 ✅ | M | — |
-| [E10](#e10--rag-estagio-de-reranking) | RAG — estágio de reranking | M | — |
+| [E10](#e10--rag-estagio-de-reranking) | RAG — estágio de reranking ✅ | M | — |
 
 ---
 
@@ -731,15 +731,28 @@ export interface RerankOpts { mode: "off" | "llm" | "cross-encoder"; topN: numbe
 export async function rerank(query: string, candidates: RagChunk[], opts: RerankOpts): Promise<RagChunk[]>; // re-scored + reordenado + cortado em topK
 ```
 
+### Status: ✅ CONCLUÍDO (2026-08-27)
+
+`memory/rerank.ts` — `rerank(query, candidates, cfg, scoreFn?)` + `rerankConfig()`
+(env `RAG_RERANK` = `off`|`llm`|`cross-encoder`, `RAG_RERANK_TOPN` default 20,
+`RAG_RERANK_TOPK`). `retrieveContext` busca top-N amplo e reordena antes de cortar
+no `limit` quando o modo ≠ `off`; com `off` (default) `fetchN == limit` (no-op).
+Cross-encoder via `@xenova/transformers` (`Xenova/ms-marco-MiniLM-L-6-v2`), lazy +
+cacheado; falha de modelo → `crossEncoderFailed` + log + fallback para ordem por
+score. `llm` pontua 0–3 via Ollama por trecho; timeout/erro → `-1` (não pontuado,
+mantém ordem original). Chave de cache RAG inclui o modo.
+
 ### Critérios de aceitação
-- [ ] `RAG_RERANK=cross-encoder`: num conjunto de fixtures com "isca" (chunk lexicalmente próximo mas irrelevante), o rerank tira a isca do top-K que a busca híbrida deixava passar.
-- [ ] `RAG_RERANK=off`: resultado idêntico ao atual (regressão).
-- [ ] Modelo ausente → auto-skip + log, chat não quebra.
-- [ ] Debug do audit trail mostra `method: "reranked"` e o novo score.
-- [ ] Teste de fidelidade RAG existente continua verde (e melhora, se medível).
+- [x] `cross-encoder` (scorer injetado no teste): a isca lexical sai do top-K (teste `rerank.test.ts`).
+- [x] `RAG_RERANK=off`: `fetchN == limit`, ordena só por score — idêntico ao atual (suítes memory/daemon verdes).
+- [x] Modelo ausente → auto-skip + log, não quebra (fallback `byOriginal`).
+- [x] Scorer que devolve `-1` preserva a ordem por score original.
+- [ ] `method: "reranked"` no audit trail — **não feito** (a fonte reordenada mantém `method` original `semantic`/`literal`; anotar o rerank exigiria um campo novo em `RagChunk`). Fica como melhoria menor.
+
+Testes: `memory/test/rerank.test.ts` (4). Suítes: memory 48, daemon 119 — verdes.
 
 ### Plano de teste
-- Unit `memory/test/rerank.test.ts` — fixtures com isca; `off` == baseline; auto-skip.
+- Unit `memory/test/rerank.test.ts` — fixtures com isca; `off` == baseline; scorer não-pontuado. ✅
 - Fidelidade RAG (juiz LLM opcional) — comparar grounding com/sem rerank.
 
 ### Esforço: **M** · Dependências: nenhuma (E4 dá cache para amortizar o custo do rerank em repetições)

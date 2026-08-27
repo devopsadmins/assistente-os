@@ -11,3 +11,4 @@ export * from "./indexer.js";
 export * from "./graph.js";
 export * from "./entity-extraction.js";
 export * from "./relevance.js";
+export * from "./rerank.js";

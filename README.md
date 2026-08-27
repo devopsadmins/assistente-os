@@ -93,6 +93,7 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **Grafo de conhecimento**: entidades, relações, observações em Postgres
 - **Gate de relevância**: threshold configurável com modos (recusar/aviso/livre)
 - **Busca híbrida**: vetorial + literal com scores
+- **Reranking** (opcional, `RAG_RERANK=cross-encoder|llm`, default `off`): busca um top-N amplo e reordena por relevância par (query, trecho) antes de cortar no top-K. Cross-encoder local (`Xenova/ms-marco-MiniLM-L-6-v2`) ou juiz LLM via Ollama; auto-skip para ordem por score se o modelo não carregar
 - **Debug controlado de retrieval**: cada fonte recuperada carrega `method` (`semantic`/`literal`/`hybrid`) e `score`; o daemon grava isso no audit trail existente a cada chat com RAG — dá visibilidade sobre degradação silenciosa pra busca literal (ex.: embedder de indexação incompatível com o de consulta) sem precisar de infraestrutura de observabilidade nova
 - **Testes de fidelidade RAG**: grounding lexical determinístico (sempre roda no CI) + juiz LLM opcional via Ollama (pergunta binária se a resposta é sustentada só pelo contexto recuperado; auto-skip quando Ollama não está disponível)
 
