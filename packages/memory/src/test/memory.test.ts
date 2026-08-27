@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LiteralEmbedder, cosine } from "../embedders.js";
-import { chunkText, indexDirectory, search, indexStats, scanTextFiles } from "../indexer.js";
+import { chunkText, indexDirectory, indexFile, search, indexStats, scanTextFiles } from "../indexer.js";
 import { upsertEntity, upsertRelation, addObservation, listEntities, listRelations, listObservations, graphStats } from "../graph.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
@@ -59,17 +59,76 @@ test("indexDirectory faz upsert idempotente + busca literal (degradação)", asy
   try {
     makeDocs(dir);
     const embedder = new LiteralEmbedder();
-    const n1 = await indexDirectory(testDb.pool, "s1", join(dir, "docs"), embedder);
-    assert.ok(n1 > 0);
-    const n2 = await indexDirectory(testDb.pool, "s1", join(dir, "docs"), embedder);
-    assert.equal(n2, n1, "reindexar é idempotente");
-    assert.equal((await indexStats(testDb.pool, "s1")).chunks, n1);
+    const r1 = await indexDirectory(testDb.pool, "s1", join(dir, "docs"), embedder);
+    assert.ok(r1.chunks > 0);
+    const r2 = await indexDirectory(testDb.pool, "s1", join(dir, "docs"), embedder);
+    assert.equal(r2.chunks, r1.chunks, "reindexar é idempotente");
+    assert.equal(r2.embedded, 0, "conteúdo inalterado não re-embeda");
+    assert.equal(r2.deleted, 0, "nada órfão");
+    assert.equal((await indexStats(testDb.pool, "s1")).chunks, r1.chunks);
     assert.equal((await indexStats(testDb.pool, "s1")).files, 3);
 
     const r = await search(testDb.pool, "s1", "segurança", embedder, 5);
     assert.ok(r.length >= 1);
     assert.equal(r[0]?.method, "literal");
     assert.ok(r.some((x) => x.body.includes("segurança")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    await testDb.cleanup();
+  }
+});
+
+test("indexDirectory: arquivo removido do disco → chunks órfãos são apagados", async () => {
+  const dir = tempDir("index-orphan");
+  const testDb = await createTestSchema();
+  try {
+    makeDocs(dir);
+    const embedder = new LiteralEmbedder();
+    await indexDirectory(testDb.pool, "s1", join(dir, "docs"), embedder);
+    assert.equal((await indexStats(testDb.pool, "s1")).files, 3);
+
+    rmSync(join(dir, "docs", "b.md"));
+    const r = await indexDirectory(testDb.pool, "s1", join(dir, "docs"), embedder);
+    assert.ok(r.deleted >= 1, "chunk(s) de b.md removido(s)");
+    assert.equal((await indexStats(testDb.pool, "s1")).files, 2);
+
+    const hits = await search(testDb.pool, "s1", "segurança", embedder, 5);
+    assert.ok(!hits.some((h) => h.path.endsWith("b.md")), "b.md não retorna mais");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    await testDb.cleanup();
+  }
+});
+
+test("indexFile: doc que encolhe → chunks de índice alto somem; hash evita re-embed", async () => {
+  const dir = tempDir("index-shrink");
+  const testDb = await createTestSchema();
+  try {
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const big =
+      "# Doc\n\n" + Array.from({ length: 6 }, (_, i) => `Parágrafo ${i} com conteúdo suficiente.`).join("\n\n") + "\n";
+    writeFileSync(join(dir, "docs", "d.md"), big);
+    const embedder = new LiteralEmbedder();
+
+    // heading "# Doc" vira 1 chunk + 6 parágrafos = 7
+    const first = await indexFile(testDb.pool, "s1", join(dir, "docs"), join(dir, "docs", "d.md"), embedder);
+    assert.equal(first.chunks, 7);
+    assert.equal(first.embedded, 7);
+
+    // reindexa igual: nenhum re-embed
+    const same = await indexFile(testDb.pool, "s1", join(dir, "docs"), join(dir, "docs", "d.md"), embedder);
+    assert.equal(same.embedded, 0);
+
+    // encolhe para 2 parágrafos (heading + p0 + p1 = 3 chunks)
+    writeFileSync(join(dir, "docs", "d.md"), "# Doc\n\nParágrafo 0 com conteúdo suficiente.\n\nParágrafo 1 com conteúdo suficiente.\n");
+    const shrunk = await indexFile(testDb.pool, "s1", join(dir, "docs"), join(dir, "docs", "d.md"), embedder);
+    assert.equal(shrunk.chunks, 3);
+    assert.equal(shrunk.embedded, 0, "heading e os 2 parágrafos que sobraram têm o mesmo hash");
+
+    const { rows } = await testDb.pool.query<{ doc_key: string }>(
+      "SELECT doc_key FROM chunks WHERE soul = 's1' ORDER BY doc_key",
+    );
+    assert.deepEqual(rows.map((r) => r.doc_key), ["d.md::0", "d.md::1", "d.md::2"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     await testDb.cleanup();

@@ -330,4 +330,16 @@ export const MIGRATIONS: Migration[] = [
       COMMENT ON COLUMN familias.consent_evidence_ref IS 'Referência à evidência de consentimento dos responsáveis (id/timestamp da mensagem ou mídia WhatsApp, responsável). Obrigatória para status = ativo — ADR-PRIV-001 §7.';
     `,
   },
+  {
+    // Higiene do índice RAG: content_hash permite pular re-embed de chunk cujo
+    // conteúdo não mudou entre reindexações; updated_at carimba a última
+    // sincronização (usado por indexStats().lastIndexedAt e pelo aviso de
+    // "índice defasado" no `os memory <soul> status`).
+    id: "0014_chunks_hygiene",
+    sql: `
+      ALTER TABLE chunks
+        ADD COLUMN IF NOT EXISTS content_hash TEXT,
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    `,
+  },
 ];

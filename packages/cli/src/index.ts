@@ -243,8 +243,10 @@ async function main(): Promise<void> {
       const pool = getPool(config.databaseUrl);
       const embedder = getEmbedder();
       if (action === "index") {
-        const n = await indexDirectory(pool, id, soul.dir, embedder);
-        console.log(`indexado: ${n} arquivos (idempotente)`);
+        const r = await indexDirectory(pool, id, soul.dir, embedder);
+        console.log(
+          `indexado: ${r.files} arquivo(s), ${r.chunks} chunk(s) — ${r.embedded} (re)embedado(s), ${r.deleted} órfão(s) removido(s)`,
+        );
       } else if (action === "search") {
         const q = args.slice(2).join(" ");
         if (!q) {

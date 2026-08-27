@@ -982,8 +982,8 @@ export class McpServer {
         if ("error" in soul) throw new Error(soul.error);
         authorizeTool(this.config.home, soul.id, name);
         const pool = getPool(this.config.databaseUrl);
-        const n = await indexDirectory(pool, soul.id, join(this.config.home, "souls", soul.id), getEmbedder());
-        return { indexed: n };
+        const r = await indexDirectory(pool, soul.id, join(this.config.home, "souls", soul.id), getEmbedder());
+        return { indexed: r.chunks, ...r };
       }
 
       case "memory_status": {

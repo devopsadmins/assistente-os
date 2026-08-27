@@ -1,6 +1,7 @@
 import type { Pool } from "@assistente-os/core";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
+import { createHash } from "node:crypto";
 import type { Embedder } from "./embedders.js";
 
 export interface Chunk {
@@ -65,22 +66,61 @@ function toVectorLiteral(embedding: number[] | null): string | null {
 }
 
 const UPSERT_CHUNK_SQL = `
-  INSERT INTO chunks (soul, doc_key, path, title, body, embedding)
-  VALUES ($1, $2, $3, $4, $5, $6::vector)
+  INSERT INTO chunks (soul, doc_key, path, title, body, embedding, content_hash, updated_at)
+  VALUES ($1, $2, $3, $4, $5, $6::vector, $7, now())
   ON CONFLICT (soul, doc_key) DO UPDATE SET
-    path = excluded.path, title = excluded.title, body = excluded.body, embedding = excluded.embedding
+    path = excluded.path, title = excluded.title, body = excluded.body,
+    embedding = excluded.embedding, content_hash = excluded.content_hash, updated_at = now()
 `;
 
+export interface IndexDirResult {
+  /** arquivos .md/.markdown/.txt varridos */
+  files: number;
+  /** total de chunks presentes no índice para esta run */
+  chunks: number;
+  /** chunks efetivamente (re)embedados — conteúdo novo ou alterado */
+  embedded: number;
+  /** chunks removidos por não existirem mais no disco (arquivo apagado/renomeado) */
+  deleted: number;
+}
+
 /**
- * Re-sincroniza o índice: para cada arquivo .md/.txt, faz upsert idempotente
- * dos chunks (doc_key = caminho relativo::indice). Retorna total de chunks.
+ * Re-sincroniza o índice: para cada arquivo .md/.txt, faz upsert dos chunks
+ * (doc_key = caminho relativo::indice), pulando o re-embed de chunks cujo
+ * conteúdo não mudou (content_hash). Ao final, remove chunks órfãos — de
+ * arquivos que sumiram do disco.
  */
-export async function indexDirectory(pool: Pool, soul: string, root: string, embedder: Embedder): Promise<number> {
-  let total = 0;
-  for (const file of scanTextFiles(root)) {
-    total += await indexFile(pool, soul, root, file, embedder);
+export async function indexDirectory(
+  pool: Pool,
+  soul: string,
+  root: string,
+  embedder: Embedder,
+): Promise<IndexDirResult> {
+  const files = scanTextFiles(root);
+  let chunks = 0;
+  let embedded = 0;
+  const seenKeys: string[] = [];
+  for (const file of files) {
+    const rel = relative(root, file).replaceAll("\\", "/");
+    const r = await indexFile(pool, soul, root, file, embedder);
+    chunks += r.chunks;
+    embedded += r.embedded;
+    for (let i = 0; i < r.chunks; i++) seenKeys.push(`${rel}::${i}`);
   }
-  return total;
+
+  // Órfãos de nível de diretório: arquivos que sumiram desde a última run.
+  // Só varre quando há pelo menos um arquivo — apontar o indexador para uma
+  // pasta vazia não deve zerar o índice inteiro da soul (footgun).
+  let deleted = 0;
+  if (files.length > 0) {
+    const del = await pool.query(
+      "DELETE FROM chunks WHERE soul = $1 AND doc_key <> ALL($2::text[])",
+      [soul, seenKeys],
+    );
+    deleted = del.rowCount ?? 0;
+  }
+
+  return { files: files.length, chunks, embedded, deleted };
 }
 
 export interface SearchResult {
@@ -135,24 +175,79 @@ export async function search(pool: Pool, soul: string, query: string, embedder: 
   }));
 }
 
-export async function indexStats(pool: Pool, soul: string): Promise<{ chunks: number; files: number }> {
-  const { rows } = await pool.query<{ chunks: string; files: string }>(
-    "SELECT COUNT(*) AS chunks, COUNT(DISTINCT path) AS files FROM chunks WHERE soul = $1",
+export async function indexStats(
+  pool: Pool,
+  soul: string,
+): Promise<{ chunks: number; files: number; lastIndexedAt: string | null }> {
+  const { rows } = await pool.query<{ chunks: string; files: string; last_indexed_at: string | null }>(
+    "SELECT COUNT(*) AS chunks, COUNT(DISTINCT path) AS files, MAX(updated_at) AS last_indexed_at FROM chunks WHERE soul = $1",
     [soul],
   );
-  return { chunks: Number(rows[0]?.chunks ?? 0), files: Number(rows[0]?.files ?? 0) };
+  return {
+    chunks: Number(rows[0]?.chunks ?? 0),
+    files: Number(rows[0]?.files ?? 0),
+    lastIndexedAt: rows[0]?.last_indexed_at ? new Date(rows[0].last_indexed_at).toISOString() : null,
+  };
 }
 
-/** Helper de raiz para permitir reindexar por arquivo (mais barato). */
-export async function indexFile(pool: Pool, soul: string, root: string, file: string, embedder: Embedder): Promise<number> {
+export interface IndexFileResult {
+  /** chunks do arquivo agora no índice */
+  chunks: number;
+  /** quantos foram (re)embedados — 0 quando o conteúdo não mudou */
+  embedded: number;
+}
+
+/**
+ * (Re)indexa um único arquivo. Chunks cujo `content_hash` bate com o índice
+ * não são re-embedados (só o carimbo `updated_at` é renovado). Chunks de
+ * índice mais alto sobrando de uma versão maior do arquivo são removidos.
+ */
+export async function indexFile(
+  pool: Pool,
+  soul: string,
+  root: string,
+  file: string,
+  embedder: Embedder,
+): Promise<IndexFileResult> {
   const rel = relative(root, file).replaceAll("\\", "/");
   const text = readFileSync(file, "utf8");
   const chunks = chunkText(text);
-  const title = text.split(/\r?\n/).find((l) => l.trim().startsWith("# "))?.replace(/^#\s+/, "").trim();
+  const title =
+    text.split(/\r?\n/).find((l) => l.trim().startsWith("# "))?.replace(/^#\s+/, "").trim() ?? null;
+
+  const { rows: existing } = await pool.query<{ doc_key: string; content_hash: string | null }>(
+    "SELECT doc_key, content_hash FROM chunks WHERE soul = $1 AND path = $2",
+    [soul, file],
+  );
+  const priorHash = new Map(existing.map((r) => [r.doc_key, r.content_hash]));
+
+  const keys: string[] = [];
+  let embedded = 0;
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i] ?? "";
+    const key = `${rel}::${i}`;
+    keys.push(key);
+    const hash = createHash("sha256").update(chunk).digest("hex");
+    if (priorHash.get(key) === hash) {
+      // Conteúdo idêntico — mantém o embedding, só renova metadados/carimbo.
+      await pool.query(
+        "UPDATE chunks SET path = $3, title = $4, updated_at = now() WHERE soul = $1 AND doc_key = $2",
+        [soul, key, file, title],
+      );
+      continue;
+    }
     const embedding = await embedder.embed(chunk);
-    await pool.query(UPSERT_CHUNK_SQL, [soul, `${rel}::${i}`, file, title ?? null, chunk, toVectorLiteral(embedding)]);
+    embedded++;
+    await pool.query(UPSERT_CHUNK_SQL, [soul, key, file, title, chunk, toVectorLiteral(embedding), hash]);
   }
-  return chunks.length;
+
+  // Órfãos do próprio arquivo: se o doc encolheu (menos chunks), apaga os
+  // doc_key antigos de índice mais alto. Com `keys` vazio (arquivo virou vazio),
+  // `<> ALL('{}')` é verdadeiro para todo doc_key → limpa o arquivo inteiro.
+  await pool.query(
+    "DELETE FROM chunks WHERE soul = $1 AND path = $2 AND doc_key <> ALL($3::text[])",
+    [soul, file, keys],
+  );
+
+  return { chunks: chunks.length, embedded };
 }

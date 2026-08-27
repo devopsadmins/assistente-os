@@ -6,7 +6,6 @@ export * from "./rag-chain.js";
 export * from "./prompt-templates.js";
 export * from "./agent-state.js";
 export * from "./agent-workflow.js";
-export * from "./advanced-rag.js";
 export * from "./indexer.js";
 export * from "./graph.js";
 export * from "./entity-extraction.js";

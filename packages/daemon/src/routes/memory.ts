@@ -133,7 +133,7 @@ export async function handleMemory(
         let indexed = 0;
         for (const file of newFiles) {
           try {
-            indexed += await indexFile(pool, soul.id, soul.dir, file, embedder);
+            indexed += (await indexFile(pool, soul.id, soul.dir, file, embedder)).chunks;
           } catch (err) {
             logger.warn({ err, file }, "falha ao indexar arquivo de upload");
           }

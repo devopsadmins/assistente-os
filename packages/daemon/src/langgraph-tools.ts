@@ -72,8 +72,8 @@ export function createAgentTools(options: CreateToolsOptions) {
       func: async () => {
         const soul = getSoul(home, soulId);
         if (!soul) return { error: "soul não encontrada" };
-        const n = await indexDirectory(pool, soulId, soul.dir, embedder);
-        return { indexed: n };
+        const r = await indexDirectory(pool, soulId, soul.dir, embedder);
+        return { indexed: r.chunks, ...r };
       },
     }),
 
