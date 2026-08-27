@@ -297,4 +297,14 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_router_history_mode_ts ON router_history (execution_mode, ts);
     `,
   },
+  {
+    // E1 (FinOps): getUsageSummary() passa a agregar SÓ linhas status='executed'
+    // (execução real, com tokens). Índice parcial pra essa varredura por soul/período.
+    id: "0011_router_history_executed_idx",
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_router_history_executed
+        ON router_history (soul, ts)
+        WHERE status = 'executed';
+    `,
+  },
 ];

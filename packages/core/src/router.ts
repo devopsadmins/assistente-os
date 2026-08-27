@@ -28,23 +28,32 @@ export interface RouterSelectionRecord {
   soul: Soul;
   target: RouteTarget;
   reason: string;
-  status?: "selected" | "ok" | "fail";
+  /**
+   * - `selected` — degrau escolhido antes de executar (legado; não entra em getUsageSummary).
+   * - `ok`/`fail` — resultado de sonda gravado por route()/selectRoute() (linha de diagnóstico).
+   * - `executed` — inferência de fato concluída neste degrau, com tokens reais/estimados.
+   *   getUsageSummary() conta SÓ estas linhas (1 por turno de chat).
+   */
+  status?: "selected" | "ok" | "fail" | "executed";
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
   modelUsed?: string;
   executionMode?: string;
+  /** "provider" (contagem real do LLM) ou "estimate" (heurística chars/4). Vai pro campo reason como sufixo. */
+  tokenSource?: "provider" | "estimate";
 }
 
 export async function recordRouterSelection(
   pool: Pool,
   input: RouterSelectionRecord,
 ): Promise<void> {
-  const { soul, target, reason, status = "selected", promptTokens = 0, completionTokens = 0, totalTokens = 0, modelUsed, executionMode } = input;
+  const { soul, target, reason, status = "selected", promptTokens = 0, completionTokens = 0, totalTokens = 0, modelUsed, executionMode, tokenSource } = input;
+  const reasonWithSource = tokenSource ? `${reason} [tokens:${tokenSource}]` : reason;
   await pool.query(
     `INSERT INTO router_history (ts, soul, tier, provider, model, status, latency_ms, reason, prompt_tokens, completion_tokens, total_tokens, model_used, execution_mode)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, status, null, reason, promptTokens, completionTokens, totalTokens, modelUsed ?? null, executionMode ?? null],
+    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, status, null, reasonWithSource, promptTokens, completionTokens, totalTokens, modelUsed ?? null, executionMode ?? null],
   );
 }
 
@@ -152,7 +161,10 @@ export async function getUsageSummary(
   pool: Pool,
   filters: UsageSummaryFilters = {},
 ): Promise<UsageSummaryRow[]> {
-  const conditions: string[] = [];
+  // Só linhas de execução real entram na agregação de custo/uso. route()/selectRoute()
+  // gravam uma linha por sonda de degrau (status 'ok'/'fail', 0 tokens) — sem este
+  // filtro cada turno de chat contaria N vezes e diluía tokens com zeros.
+  const conditions: string[] = ["status = 'executed'"];
   const params: (string | number)[] = [];
   let paramIdx = 1;
 
