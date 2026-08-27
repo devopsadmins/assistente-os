@@ -11,7 +11,8 @@ describe("CacheService", () => {
   });
 
   after(async () => {
-    // Cleanup if needed
+    // Fecha a conexão Redis para o processo do teste conseguir encerrar.
+    await cache.close();
   });
 
   it("deve inicializar o cache", () => {

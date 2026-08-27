@@ -1,6 +1,6 @@
 # Assistente OS
 
-Copiloto residente em Node/TS, API-first, local-first. Monorepo npm workspaces com 6 pacotes, soul-based knowledge management, RAG + knowledge graph, agente LangGraph com tool-calling, interface web responsiva (PWA), canais WhatsApp/Telegram, pipeline de voz, e deploy em produção via PM2 + Cloudflare Tunnel + CI no GitHub Actions.
+Copiloto residente em Node/TS, API-first, local-first. Monorepo npm workspaces com 6 pacotes, soul-based knowledge management, RAG + knowledge graph, agente LangGraph com tool-calling, orquestração ORCA (modos de execução fast/pro + isolamento de tarefas em git worktree), interface web responsiva (PWA), canais WhatsApp/Telegram, pipeline de voz, e deploy em produção via PM2 + Cloudflare Tunnel + CI no GitHub Actions.
 
 ## Quick Start
 
@@ -29,13 +29,15 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ opencode                                                     │
-│   ├─ MCP assistente-os ─── packages/tools (stdio, 47 tools) │
+│   ├─ MCP assistente-os ─── packages/tools (stdio, 50 tools) │
 │   └─ providers zen-* ──── 7 chaves OpenCode Zen (grátis)    │
 └─────────────────────┬────────────────────────────────────────┘
                       │
 ┌─────────────────────▼────────────────────────────────────────┐
 │ packages/daemon (REST + WebSocket autenticado, porta 4310)   │
 │   ├─ Chat com router local-first (local/zen/soul) + langgraph│
+│   ├─ ORCA: orquestrador com modo fast/pro + mission runner   │
+│   ├─ Worktree manager (git worktree isolado, merge L3-gated) │
 │   ├─ LangGraph agent com tool-calling (11 tools LangChain)   │
 │   ├─ Canais: WhatsApp (Baileys), Telegram (Bot API)          │
 │   ├─ Pipeline de voz (VAD + STT + TTS)                       │
@@ -47,8 +49,10 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 │  ~/.assistant-os/           memory.db (SQLite) + pgvector    │
 │  ├─ souls/<id>/...           ├─ chunks + embeddings (RAG)    │
 │  ├─ kernel.db (SQLite)       ├─ LangChain LCEL RAG chain     │
-│  ├─ active.json              ├─ LangGraph agent workflow     │
-│  └─ .env (credenciais)       └─ entidades/relações (grafo)   │
+│  ├─ workspaces/<taskId>/     ├─ LangGraph agent workflow     │
+│  ├─ active.json              └─ entidades/relações (grafo)   │
+│  ├─ cache em camadas (Redis + memória, opcional)             │
+│  └─ .env (credenciais)                                       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,11 +62,11 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 
 | Pacote | Papel | Capacidades |
 |---|---|---|
-| `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), migração, content filter (12 padrões de segredo + detector de prompt injection), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
+| `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), agregação de uso/tokens por soul/mode/model (`getUsageSummary`), cache em camadas (Redis + fallback em memória, `cache.ts`), migração, content filter (12 padrões de segredo + detector de prompt injection), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
 | `memory` | RAG + Grafo | Chunks + embeddings (Ollama ou fallback Xenova/ILIKE), LangChain LCEL RAG, LangGraph agent workflow com tool-calling, grafo de entidades/relações/observações, gate de relevância |
-| `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection, log de debug de retrieval RAG (method/score por fonte) no audit trail |
-| `tools` | MCP server | 47 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
-| `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs, agenda, guardian, daemon, voice, backup, help |
+| `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, orquestrador ORCA (modo fast/pro dinâmico + mission runner), worktree manager (git worktree isolado por tarefa, merge local L3-gated), terminal sanitizer, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection, log de debug de retrieval RAG (method/score por fonte) no audit trail |
+| `tools` | MCP server | 50 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
+| `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs (+ `costs usage`), agenda, worktree, guardian, daemon, voice, backup, help |
 | `voice` | Pipeline de voz | VAD (hysteresis), AudioRecorder (sox), STT (Whisper local via @xenova/transformers), TTS (say.js) |
 
 Serviço auxiliar fora dos workspaces npm: `services/soul-rag-watcher` — observa `souls/*/` e pede `memory_index` via MCP quando `.md`/`.txt` mudam (zero dependência do monorepo, só stdio JSON-RPC), rodando como app separado no PM2.
@@ -113,6 +117,23 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **7 providers Zen**: zen-sousa, zen-devocional, zen-iecsjc, zen-evertongame, zen-escritor, zen-iso, zen-avancei
 - **Histórico imutável**: cada tentativa de roteamento fica registrada em `router_history` (kernel.db)
 
+### ORCA — Orquestração
+
+Camada de orquestração no daemon (`packages/daemon/src/orchestrator/`) que decide *como* uma tarefa é processada, isola execuções agênticas e mede o custo real.
+
+- **Modo de execução dinâmico** (`orchestrator/router.ts`): seleciona `fast` vs. `pro` por prompt
+  - **fast** (default): execução linear, modelo local leve, RAG pontual (top-K 3, só semântico), teto de 2 iterações, sem deep extraction
+  - **pro**: busca híbrida 70/30 (semântica + literal), extração profunda de links/relações, até 5 iterações, modelo da soul ou zen
+  - Gatilhos de `pro`: modo explícito do cliente, keywords de complexidade (scraping, análise, tabela, relação, pipeline, links — inclui keywords do Orca para análise de código), ou prompt > 500 chars (`LANGGRAPH_PRO_THRESHOLD_CHARS`)
+- **Worktree Manager** (`tools/worktree-manager.ts`): cada tarefa agêntica roda numa git worktree isolada em `~/.assistant-os/workspaces/<taskId>` na branch `task/<taskId>`
+  - `createWorktree` — idempotente (remove worktree/branch anteriores), setup de ambiente best-effort (copia `.env`, symlinks de cache/kernel.db)
+  - `mergeLocally` — roda `npm run build --workspaces` + `npm test` na worktree, rebase na branch alvo, checkout + merge; rollback automático (abort) em qualquer falha. **Exige autorização L3** (`worktree_merge_locally`)
+  - `destroyWorktree` — cleanup com `try/catch/finally` e `worktree prune` sempre executado. **Exige autorização L3** (`git_commit_push`)
+  - Exposto por REST (`/api/worktree`), CLI (`os worktree`) e MCP (`worktree_create`, `worktree_merge_locally`, `worktree_destroy`)
+- **Cost / Usage Tracking**: migração `0010` adiciona `prompt_tokens`, `completion_tokens`, `total_tokens`, `model_used`, `execution_mode` a `router_history`; `getUsageSummary()` agrega por soul, período, `mode` e `model` — servido em `GET /api/costs/usage` e `os costs usage`
+- **`GET /api/capabilities`**: JSON estruturado com souls, tools MCP (com namespace), endpoints REST e missões operacionais — companheiro do `/llms.txt` para ingestão por agentes externos
+- **Base do ORCA** (scaffolding, ainda não ligado ao fluxo de chat): Mission Runner (`orchestrator/mission-runner.ts`, missões compostas headless/guarded/full), Terminal Sanitizer (`tools/terminal-sanitizer.ts`, trunca saída de `npm test`/`git status`/`ls` para poupar tokens) e cache em camadas (`core/cache.ts`, Redis → memória)
+
 ### Segurança
 
 - **Zero Trust permissions**: allowlist por soul para tools, skills, diretórios externos
@@ -125,6 +146,7 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **HMAC webhooks**: SHA-256 com verificação de timestamp
 - **Zip-slip protection**: sanitização de nomes de arquivo no upload
 - **Agent guardrails**: maxTurns, maxIterations, ragThreshold, dailyLimitTokens
+- **Catálogo L1/L2/L3 versionado** (`policy.ts`): operações de worktree entram como L3 (`worktree_merge_locally`, `git_commit_push` — efeito irreversível/externo) e `annotate_diff` como L2; `authorizeExecution()` combina autonomy da soul, `approvalPolicy` e budget numa decisão pura
 - **Audit trail**: compliance ISO/IEC 42001 (`logFullAuditEntry`), incluindo alertas de prompt injection e debug de retrieval RAG
 - **Credenciais por instalação**: tokens/segredos só em `~/.assistant-os/.env` (nunca no repo) — inclusive o token do Cloudflare Tunnel, lido via symlink `.env` na raiz
 
@@ -174,6 +196,11 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 | POST | `/souls/:id/anotar` \| `/licao` \| `/decidir` | Escrita direta na alma da soul |
 | GET | `/souls/:id/health` | Health check por soul |
 | GET | `/costs` | Resumo de custos por soul |
+| GET | `/api/costs/usage` | Uso/tokens agregado por soul/mode/model (`?soul=&from=&to=`) |
+| GET | `/api/capabilities` | Catálogo JSON estruturado (souls, tools MCP, endpoints, missões) |
+| GET \| POST | `/api/worktree` | Lista/cria worktree isolada por tarefa |
+| POST | `/api/worktree/:taskId/merge` | Build + testes + merge local (rollback automático) |
+| DELETE | `/api/worktree/:taskId` | Destrói worktree e limpa refs git |
 | GET | `/router/status` | Degraus do roteador e config do Ollama |
 | GET | `/sessions/stats` | Total de sessões |
 | GET \| POST | `/agenda` | Lista/cria itens da agenda |
@@ -193,13 +220,14 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 | POST | `/api/pipelines/meeting-ingest` \| `/email-ingest` | Ingestão de reuniões/e-mails |
 | WS | `/` | WebSocket de eventos em tempo real (token via `?token=`) |
 
-### MCP Tools (47 tools)
+### MCP Tools (50 tools)
 
 **Soul**: `souls_list`, `soul_context`, `soul_chat`, `soul_anotar`, `soul_licao`, `soul_decidir`, `soul_record_lesson`, `soul_get_lessons`, `soul_generate_aiia`
 **Memória**: `memory_search`, `memory_index`, `memory_status`
 **Grafo**: `graph_list`, `observation_add`
 **Agenda**: `agenda_add`, `agenda_list`
 **Custos/Infra**: `costs_summary`, `router_status`, `action_execute`
+**Worktree**: `worktree_create`, `worktree_merge_locally` (L3), `worktree_destroy` (L3) — isolamento de tarefas agênticas paralelas via git worktree
 **Guardian (golden rules)**: `guardian_audit_execution`, `guardian_promote_golden_rule`, `guardian_pending_rules`, `guardian_approve_rule`, `guardian_reject_rule`, `guardian_resend_approval_code`, `guardian_get_golden_rules` — `approve`/`reject` exigem o código de aprovação enviado por Telegram, nunca devolvido pelas próprias tools
 **Sales Intelligence**: `sales_ingest_meeting`, `sales_get_lead_brief`
 **Spec Grill**: `spec_grill_plan` (refinamento de requisitos em duas fases antes de autorizar modo build)
@@ -223,7 +251,12 @@ os memory <soul> search <q>  busca RAG
 os memory <soul> status      contagem de chunks e grafo
 os graph <soul> list         entidades/relações/observações
 os costs                     resumo de custos
+os costs usage [--soul <id>] [--from <date>] [--to <date>]  uso/tokens agregado por mode/model
 os agenda add|list           gerenciamento de agenda
+os worktree create <taskId> [--base <branch>] [--soul <id>]  cria worktree isolada
+os worktree merge <taskId> [--target <branch>]              merge local + build + testes
+os worktree destroy <taskId>  destrói worktree e limpa refs git
+os worktree list             lista worktrees ativas
 os guardian pending          lista propostas de golden rule aguardando aprovação
 os guardian approve <id> <código>  aprova (código enviado por Telegram)
 os guardian reject <id> <código>   rejeita
@@ -278,21 +311,23 @@ docker compose up -d tunnel
 ## Testes
 
 ```bash
-npm test              # todos os workspaces (309 testes)
+npm run build         # build completo antes de testar (os testes rodam sobre dist/)
+npm test              # node --test em todos os workspaces (ordem: cli → core → daemon → memory → tools → voice)
 npm run typecheck     # tsc em todos os workspaces (0 erros)
-npm run build         # build completo antes de testar
 ```
 
 | Pacote | Testes | Status |
 |--------|--------|--------|
-| core | 184 | ✅ todos passando |
-| daemon | 60 | ✅ todos passando |
+| core | 211 | ✅ todos passando |
+| daemon | 101 | ✅ todos passando |
 | memory | 44 | ✅ todos passando |
 | tools | 19 | ✅ todos passando |
 | cli | 2 | ✅ todos passando |
 | voice | 0 | — sem testes ainda |
 
-**Total**: 309 testes, zero erros de build. Um teste de fidelidade RAG usa um juiz LLM via Ollama e demora ~30-50s quando Ollama está disponível (auto-skip, quase instantâneo, quando não está — mesmo padrão já usado nos testes que dependem de Ollama real). Testes de integração manual contra um daemon real (`*.live.ts`, não entram no `npm test`) rodam via `npm run test:live --workspace=@assistente-os/daemon`.
+**Total**: 377 testes, zero erros de build/typecheck (`npm test` completo em ~4-5 min). Um teste de fidelidade RAG usa um juiz LLM via Ollama e demora ~30-50s quando Ollama está disponível (auto-skip, quase instantâneo, quando não está — mesmo padrão já usado nos testes que dependem de Ollama real). Testes de integração manual contra um daemon real (`*.live.ts`, não entram no `npm test`) rodam via `npm run test:live --workspace=@assistente-os/daemon`.
+
+`CacheService` (`core/test/cache.test.ts`) fecha a conexão Redis no `after()` (via `cache.close()`); sem isso o socket com reconnect do ioredis segura o event loop e, com `--test-timeout=0`, trava a run do pacote quando há Redis acessível.
 
 ## Status
 
@@ -305,6 +340,7 @@ npm run build         # build completo antes de testar
 | **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram | Tool-calling e canais em produção; sessões multi-turno persistidas e skills por soul ainda não implementadas |
 | **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
 | **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
+| **F8** | ORCA: modo de execução fast/pro dinâmico, worktree manager (isolamento de tarefas + merge L3-gated) via REST/CLI/MCP, cost/usage tracking (migração `0010` + `getUsageSummary` + `/api/costs/usage`), `/api/capabilities`, catálogo MCP com namespace | Worktree, cost tracking e capabilities em produção; mission runner, terminal sanitizer e cache em camadas ainda são scaffolding não ligado ao fluxo de chat |
 
 ### Pendências
 
@@ -313,6 +349,9 @@ npm run build         # build completo antes de testar
 - Prometheus/Grafana (métricas — hoje só `/infra/status` sob demanda)
 - Sessões multi-turno persistidas (hoje cada prompt é isolado; a tabela `sessions` só conta turnos)
 - Skills por soul (instruções declarativas)
+- Captura de tokens no fluxo de chat: as colunas `prompt_tokens`/`completion_tokens`/`execution_mode` de `router_history` existem e são agregadas por `getUsageSummary`, mas o chat ainda não as grava (ficam em 0)
+- Wiring do scaffolding ORCA: Mission Runner sem interface exposta e com etapas placeholder (browser-*, guardian-audit); Terminal Sanitizer e cache em camadas (`cache.ts`) não consumidos por nenhum caminho de produção
+- `worktree_list` só existe em REST/CLI, não como tool MCP
 - Tool MCP `soul_create` (criação guiada de souls via chat) — o backend já existe e está testado (`createSoulFull`, `SoulSpec`/`validateSoulSpec`, catálogo de capabilities L1/L2/L3), falta só expor a tool e mapear o payload wire (snake_case) para o tipo de domínio
 - App Android (proposta: Capacitor empacotando o frontend atual — ver `docs/BACKLOG.md`)
 - ADR-PRIV-001 (LGPD de famílias) com pendências datadas em aberto

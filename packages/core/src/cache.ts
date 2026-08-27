@@ -153,6 +153,25 @@ class CacheService {
     return this.redis !== null;
   }
 
+  /**
+   * Fecha a conexão Redis e libera o event loop.
+   * Sem isto, o socket do ioredis (com reconnect automático) mantém o
+   * processo vivo — o que trava runners com `--test-timeout=0`.
+   */
+  async close(): Promise<void> {
+    if (this.redis) {
+      try {
+        this.redis.disconnect();
+      } catch {
+        // ignora — já desconectado
+      }
+      this.redis = null;
+    }
+    this.memoryCache.clear();
+    this.ttlMap.clear();
+    this.initialized = false;
+  }
+
   /** Obter status do cache */
   getStatus(): {
     redis: boolean;

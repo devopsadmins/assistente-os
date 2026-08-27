@@ -56,15 +56,20 @@ test("generateAiiaReport: soul sem agent config usa os defaults globais", () => 
       "memory:*", "soul_context", "soul_chat", "graph_list", "observation_add",
       "soul_anotar", "soul_licao", "soul_decidir", "agenda_add", "agenda_list",
       "action_execute", "costs_summary", "router_status", "spec_grill_plan",
+      "worktree_create", "worktree_merge_locally", "worktree_destroy", "git_commit_push",
     ]);
     assert.equal(report.capabilities.autonomy, "ask");
     assert.equal(report.guardrails.maxTurns, 10);
     assert.equal(report.guardrails.maxIterations, 5);
     assert.equal(report.guardrails.ragRelevanceThreshold, 0.70);
     assert.equal(report.personalData.isFamiliaSoul, false);
-    // DEFAULT_ALLOWED_TOOLS já inclui algumas capabilities L3 (soul_chat,
-    // action_execute, spec_grill_plan) — o relatório deve refletir isso, não escondê-las.
-    assert.deepEqual(report.capabilities.l3Capabilities.sort(), ["action_execute", "soul_chat", "spec_grill_plan"]);
+    // DEFAULT_ALLOWED_TOOLS já inclui capabilities L3 (soul_chat, action_execute,
+    // spec_grill_plan, worktree_merge_locally, git_commit_push) — o relatório deve
+    // refletir isso, não escondê-las. worktree_create/worktree_destroy não estão no
+    // catálogo de risco, então não contam como L3.
+    assert.deepEqual(report.capabilities.l3Capabilities.sort(), [
+      "action_execute", "git_commit_push", "soul_chat", "spec_grill_plan", "worktree_merge_locally",
+    ]);
   });
 });
 
