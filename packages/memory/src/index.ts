@@ -12,3 +12,4 @@ export * from "./entity-extraction.js";
 export * from "./relevance.js";
 export * from "./rerank.js";
 export * from "./rag-injection.js";
+export * from "./rag-eval.js";

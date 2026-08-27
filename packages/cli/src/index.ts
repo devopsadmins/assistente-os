@@ -40,6 +40,7 @@ import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createFullBackup, pruneOldBackups } from "./backup.js";
 import { runSkillCommand } from "./skill.js";
+import { runRagCommand } from "./rag.js";
 
 const BACKUP_RETENTION_DAYS = 7;
 
@@ -57,6 +58,8 @@ Uso:
   os memory <soul> index             indexa a pasta da soul (md/txt) no memory.db
   os memory <soul> search <q>        busca RAG (literal se Ollama ausente)
   os memory <soul> status            contagem de chunks e grafo
+  os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <p>] [--min-hit1 0.7]
+                                     avalia recuperação: hit@k / MRR / recall@5
   os graph <soul> list               lista entidades/relações/observações
   os costs                           resumo de custos
   os costs usage [--soul <id>] [--from <date>] [--to <date>]  resumo agregado de uso/tokens
@@ -370,6 +373,12 @@ async function main(): Promise<void> {
 
     case "skill": {
       console.log(runSkillCommand(config.home, args));
+      return;
+    }
+
+    case "rag": {
+      const code = await runRagCommand(config, args);
+      if (code !== 0) process.exitCode = 1;
       return;
     }
 

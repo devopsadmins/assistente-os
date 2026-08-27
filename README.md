@@ -390,6 +390,7 @@ Backlog do roadmap: **zerado** (E7 é ação no dashboard Cloudflare, fora do re
 - [Arquitetura](docs/ARCHITECTURE.md)
 - [LangGraph](docs/LANGGRAPH.md)
 - [MCPs](docs/MCPS.md)
+- [Avaliação de RAG (`os rag eval`)](docs/RAG-EVAL.md)
 - [Providers gratuitos](docs/FREE_PROVIDERS.md)
 - [Roadmap de implementação](docs/ROADMAP.md)
 - [Inventário de sistemas de IA](docs/AI-INVENTORY.md) · [Cloudflare Access](docs/CLOUDFLARE-ACCESS.md)

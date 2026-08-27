@@ -1,0 +1,17 @@
+// Golden set de exemplo para `os rag eval` (Epic C). Linhas `kind:"doc"` só
+// existem nesta fixture de CI (corpus toy indexado com LiteralEmbedder); um
+// golden set real (~/.assistant-os/rag-golden.jsonl) tem só linhas de caso.
+{"kind":"doc","path":"api/patterns.md","body":"# Padroes API\n\nO controller e fino e sem logica de negocio. O acesso a dados usa JOOQ multi-tenant com schema por cliente."}
+{"kind":"doc","path":"api/rules.md","body":"# Regras API\n\nToda rota tem anotacao Secured. Preferir JOOQ para queries novas. Lombok obrigatorio em DTOs."}
+{"kind":"doc","path":"web/patterns.md","body":"# Padroes Web\n\nToda chamada externa passa por um Route Handler em app slash api. A traducao de erro e centralizada num unico ponto."}
+{"kind":"doc","path":"web/rules.md","body":"# Regras Web\n\nNunca fazer fetch direto no cliente. Rodar o comando de verificacao de tipos e lint antes de abrir o PR."}
+{"kind":"doc","path":"app/patterns.md","body":"# Padroes App\n\nO logging nunca deve lancar excecao. Modulos nativos sao carregados via lazy require com cache."}
+{"kind":"doc","path":"misc/history.md","body":"# Historia\n\nO projeto comecou em 2023. Instalar dependencias com o gerenciador de pacotes padrao antes do primeiro build."}
+{"kind":"case","id":"api-jooq-mt","soul":"__eval__","query":"JOOQ multi-tenant","expect_path_substr":["api/patterns.md"]}
+{"kind":"case","id":"api-secured","soul":"__eval__","query":"Toda rota tem anotacao Secured","expect_path_substr":["api/rules.md"]}
+{"kind":"case","id":"web-route-handler","soul":"__eval__","query":"Route Handler em app slash api","expect_path_substr":["web/patterns.md"]}
+{"kind":"case","id":"web-check","soul":"__eval__","query":"verificacao de tipos e lint antes de abrir o PR","expect_path_substr":["web/rules.md"]}
+{"kind":"case","id":"app-logging","soul":"__eval__","query":"logging nunca deve lancar excecao","expect_path_substr":["app/patterns.md"]}
+{"kind":"case","id":"app-lazy-require","soul":"__eval__","query":"lazy require com cache","expect_path_substr":["app/patterns.md"]}
+{"kind":"case","id":"jooq-recall","soul":"__eval__","query":"JOOQ","expect_path_substr":["api/patterns.md","api/rules.md"]}
+{"kind":"case","id":"trap-instalar","soul":"__eval__","query":"Instalar dependencias","expect_path_substr":["misc/history.md"]}
