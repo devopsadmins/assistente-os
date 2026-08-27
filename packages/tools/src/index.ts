@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, type GrillPlanResult } from "@assistente-os/daemon";
+import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { writeFile, unlink } from "node:fs/promises";
@@ -648,6 +648,45 @@ const TOOLS: Tool[] = [
         fullPage: { type: "boolean", description: "Screenshot da página inteira (default: false)", default: false },
         metadata: { type: "object", description: "metadata adicional a anexar ao registro de auditoria" },
       },
+    },
+  },
+  // Worktree Management Tools
+  {
+    name: "worktree_create",
+    description: "Cria worktree isolada para tarefa agêntica paralela.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul" },
+        taskId: { type: "string", description: "id da tarefa" },
+        baseBranch: { type: "string", description: "branch base (default: main)", default: "main" },
+      },
+      required: ["soul", "taskId"],
+    },
+  },
+  {
+    name: "worktree_merge_locally",
+    description: "Valida testes e faz merge local da worktree na branch alvo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul" },
+        taskId: { type: "string", description: "id da tarefa" },
+        targetBranch: { type: "string", description: "branch alvo (default: main)", default: "main" },
+      },
+      required: ["soul", "taskId"],
+    },
+  },
+  {
+    name: "worktree_destroy",
+    description: "Destrói worktree e limpa referências git.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul" },
+        taskId: { type: "string", description: "id da tarefa" },
+      },
+      required: ["soul", "taskId"],
     },
   },
 ];
@@ -1494,6 +1533,37 @@ export class McpServer {
         const metadata = args.metadata && typeof args.metadata === "object" ? args.metadata as Record<string, unknown> : undefined;
         this.authorizeAgentSoul(name);
         return await captureAuditedScreenshot(taskId, metadata, fullPage);
+      }
+
+      // Worktree Management Tools
+      case "worktree_create": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
+        const baseBranch = typeof args.baseBranch === "string" && args.baseBranch.trim() ? args.baseBranch.trim() : "main";
+        if (!taskId) throw new Error("parâmetro taskId é obrigatório");
+        return await createWorktree(taskId, baseBranch);
+      }
+
+      case "worktree_merge_locally": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
+        const targetBranch = typeof args.targetBranch === "string" && args.targetBranch.trim() ? args.targetBranch.trim() : "main";
+        if (!taskId) throw new Error("parâmetro taskId é obrigatório");
+        return await mergeLocally(taskId, targetBranch);
+      }
+
+      case "worktree_destroy": {
+        const soul = this.requireSoul(args.soul);
+        if ("error" in soul) throw new Error(soul.error);
+        authorizeTool(this.config.home, soul.id, name);
+        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
+        if (!taskId) throw new Error("parâmetro taskId é obrigatório");
+        await destroyWorktree(taskId);
+        return { ok: true };
       }
 
       default:

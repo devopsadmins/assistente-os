@@ -15,9 +15,10 @@
   },
   "dependencies": {
     "@assistente-os/core": "*",
-    "@assistente-os/memory": "*",
     "@assistente-os/daemon": "*",
-    "archiver": "^8.0.0"
+    "@assistente-os/memory": "*",
+    "archiver": "^8.0.0",
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",

@@ -88,6 +88,72 @@ describe("selectExecutionMode", () => {
     }));
     assert.equal(result, "pro");
   });
+
+  // ── Orca Keywords ────────────────────────────────────────────────────
+
+  it("retorna 'pro' com keyword Orca 'scraping'", () => {
+    const result = selectExecutionMode(makeInput({
+      prompt: "fazer scraping de dados da página",
+    }));
+    assert.equal(result, "pro");
+  });
+
+  it("retorna 'pro' com keyword Orca 'análise'", () => {
+    const result = selectExecutionMode(makeInput({
+      prompt: "análise do código fonte",
+    }));
+    assert.equal(result, "pro");
+  });
+
+  it("retorna 'pro' com keyword Orca 'tabelas'", () => {
+    const result = selectExecutionMode(makeInput({
+      prompt: "mostre as tabelas do banco",
+    }));
+    assert.equal(result, "pro");
+  });
+
+  it("retorna 'pro' com keyword Orca 'relações'", () => {
+    const result = selectExecutionMode(makeInput({
+      prompt: "quais as relações entre entidades",
+    }));
+    assert.equal(result, "pro");
+  });
+
+  it("retorna 'pro' com keyword Orca 'multi-step'", () => {
+    const result = selectExecutionMode(makeInput({
+      prompt: "execute multi-step workflow",
+    }));
+    assert.equal(result, "pro");
+  });
+
+  it("retorna 'pro' com keyword Orca 'links'", () => {
+    const result = selectExecutionMode(makeInput({
+      prompt: "extraia todos os links da página",
+    }));
+    assert.equal(result, "pro");
+  });
+
+  // ── Threshold Configurável ───────────────────────────────────────────
+
+  it("respeita LANGGRAPH_PRO_THRESHOLD_CHARS customizado", () => {
+    process.env.LANGGRAPH_PRO_THRESHOLD_CHARS = "100";
+    try {
+      const result = selectExecutionMode(makeInput({
+        prompt: "a".repeat(101),
+      }));
+      assert.equal(result, "pro");
+    } finally {
+      delete process.env.LANGGRAPH_PRO_THRESHOLD_CHARS;
+    }
+  });
+
+  it("usa default 500 quando env não definido", () => {
+    delete process.env.LANGGRAPH_PRO_THRESHOLD_CHARS;
+    const result = selectExecutionMode(makeInput({
+      prompt: "a".repeat(499),
+    }));
+    assert.equal(result, "fast");
+  });
 });
 
 // ── describeMode ────────────────────────────────────────────────────

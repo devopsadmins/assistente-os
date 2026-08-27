@@ -263,7 +263,7 @@ export async function handleChat(
       let decision = orchDecision.route;
       if (requestedTier === "langgraph") {
         const forcedTarget = resolveTarget(config, soul, "langgraph");
-        await recordRouterSelection(pool, soul, forcedTarget, "tier explícito do usuário: langgraph");
+        await recordRouterSelection(pool, { soul, target: forcedTarget, reason: "tier explícito do usuário: langgraph" });
         decision = { target: forcedTarget };
       }
       const model = requestedModel ?? orchDecision.model;

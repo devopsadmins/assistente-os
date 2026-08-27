@@ -24,17 +24,27 @@ export interface RouteDecision {
 }
 
 /** Grava uma escolha de roteador no histórico (kernel.db), imutável. */
+export interface RouterSelectionRecord {
+  soul: Soul;
+  target: RouteTarget;
+  reason: string;
+  status?: "selected" | "ok" | "fail";
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  modelUsed?: string;
+  executionMode?: string;
+}
+
 export async function recordRouterSelection(
   pool: Pool,
-  soul: Soul,
-  target: RouteTarget,
-  reason: string,
-  status: "selected" | "ok" | "fail" = "selected",
+  input: RouterSelectionRecord,
 ): Promise<void> {
+  const { soul, target, reason, status = "selected", promptTokens = 0, completionTokens = 0, totalTokens = 0, modelUsed, executionMode } = input;
   await pool.query(
-    `INSERT INTO router_history (ts, soul, tier, provider, model, status, latency_ms, reason)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, status, null, reason],
+    `INSERT INTO router_history (ts, soul, tier, provider, model, status, latency_ms, reason, prompt_tokens, completion_tokens, total_tokens, model_used, execution_mode)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+    [new Date().toISOString(), soul.id, target.tier, target.provider, target.model, status, null, reason, promptTokens, completionTokens, totalTokens, modelUsed ?? null, executionMode ?? null],
   );
 }
 
@@ -116,4 +126,92 @@ export function resolveTarget(config: AssistenteOsConfig, soul: Soul, tier: stri
     default:
       return { tier, provider: tier, model: tier };
   }
+}
+
+export interface UsageSummaryFilters {
+  soul?: string;
+  from?: string; // ISO date
+  to?: string;   // ISO date
+}
+
+export interface UsageSummaryRow {
+  soul: string;
+  total_calls: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  by_mode: Record<string, { calls: number; tokens: number }>;
+  by_model: Record<string, { calls: number; tokens: number }>;
+}
+
+/**
+ * Consulta agregada de uso/tokens por soul e período.
+ * Usada pelo endpoint GET /api/costs/usage e CLI `os costs usage`.
+ */
+export async function getUsageSummary(
+  pool: Pool,
+  filters: UsageSummaryFilters = {},
+): Promise<UsageSummaryRow[]> {
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  let paramIdx = 1;
+
+  if (filters.soul) {
+    conditions.push(`soul = $${paramIdx++}`);
+    params.push(filters.soul);
+  }
+  if (filters.from) {
+    conditions.push(`ts >= $${paramIdx++}`);
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    conditions.push(`ts <= $${paramIdx++}`);
+    params.push(filters.to);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  // Aggregation principal + breakdown por mode e model
+  const { rows } = await pool.query<UsageSummaryRow>(
+    `SELECT
+       soul,
+       COUNT(*) AS total_calls,
+       COALESCE(SUM(prompt_tokens), 0) AS total_prompt_tokens,
+       COALESCE(SUM(completion_tokens), 0) AS total_completion_tokens,
+       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+       COALESCE(
+         JSON_OBJECT_AGG(
+           execution_mode,
+           JSON_BUILD_OBJECT('calls', mode_calls, 'tokens', mode_tokens)
+         ) FILTER (WHERE execution_mode IS NOT NULL),
+         '{}'::json
+       ) AS by_mode,
+       COALESCE(
+         JSON_OBJECT_AGG(
+           model_used,
+           JSON_BUILD_OBJECT('calls', model_calls, 'tokens', model_tokens)
+         ) FILTER (WHERE model_used IS NOT NULL),
+         '{}'::json
+       ) AS by_model
+     FROM (
+       SELECT
+         soul,
+         prompt_tokens,
+         completion_tokens,
+         total_tokens,
+         execution_mode,
+         model_used,
+         COUNT(*) OVER (PARTITION BY soul, execution_mode) AS mode_calls,
+         SUM(total_tokens) OVER (PARTITION BY soul, execution_mode) AS mode_tokens,
+         COUNT(*) OVER (PARTITION BY soul, model_used) AS model_calls,
+         SUM(total_tokens) OVER (PARTITION BY soul, model_used) AS model_tokens
+       FROM router_history
+       ${where}
+     ) sub
+     GROUP BY soul
+     ORDER BY total_tokens DESC`,
+    params,
+  );
+
+  return rows;
 }

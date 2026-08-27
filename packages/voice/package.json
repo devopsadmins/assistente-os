@@ -11,7 +11,8 @@
     "test": "node --test \"dist/test/**/*.test.js\""
   },
   "dependencies": {
-    "@assistente-os/core": "*"
+    "@assistente-os/core": "*",
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

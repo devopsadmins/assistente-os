@@ -68,6 +68,7 @@ const PRO_CONFIG: Omit<RoutingDecision, "model" | "route"> = {
 /**
  * Keywords que indicam necessidade de Pro Mode (pesquisa profunda,
  * análise de tabelas, scraping, relações, etc.).
+ * Inclui palavras-chave do Orca para análise de código/dados.
  */
 const PRO_KEYWORDS = [
   // Scraping/navegação
@@ -84,7 +85,20 @@ const PRO_KEYWORDS = [
   "passo a passo", "pipeline", "workflow", "fluxo",
   // Link extraction
   "links", "urls", "hyperlinks", "navegar",
+  // Orca keywords — análise de código e arquitetura
+  "scraping", "scraping de",
+  "análise", "analisar",
+  "tabelas", "tabela de",
+  "relações", "relação de",
+  "multi-step", "multi step", "multi-step",
+  "links", "link",
 ];
+
+// Threshold configurável via env para detecção por tamanho do prompt
+function getProThresholdChars(): number {
+  const env = process.env.LANGGRAPH_PRO_THRESHOLD_CHARS;
+  return env ? parseInt(env, 10) : 500;
+}
 
 // ── Seleção de Modo ────────────────────────────────────────────────────
 
@@ -113,8 +127,8 @@ export function selectExecutionMode(input: ModeSelectionInput): ExecutionMode {
     if (promptLower.includes(kw)) return "pro";
   }
 
-  // 3. Tamanho do prompt (heurística)
-  if (input.prompt.length > 500) return "pro";
+  // 3. Tamanho do prompt (heurística configurável via LANGGRAPH_PRO_THRESHOLD_CHARS)
+  if (input.prompt.length > getProThresholdChars()) return "pro";
 
   // Default: fast
   return "fast";

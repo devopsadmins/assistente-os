@@ -282,4 +282,19 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages (session_id, id);
     `,
   },
+{
+    // Cost/Usage Tracking: adiciona colunas de tokens e execution_mode ao router_history
+    // para suportar Feature 3 do plano Orca (Enhanced Cost/Usage Tracking).
+    id: "0010_cost_usage_tracking",
+    sql: `
+      ALTER TABLE router_history
+        ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS completion_tokens INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS total_tokens INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS model_used TEXT,
+        ADD COLUMN IF NOT EXISTS execution_mode TEXT;
+
+      CREATE INDEX IF NOT EXISTS idx_router_history_mode_ts ON router_history (execution_mode, ts);
+    `,
+  },
 ];

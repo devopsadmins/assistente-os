@@ -85,6 +85,9 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "action_execute", level: "L3" },
   { pattern: "soul_create", level: "L3" },
   { pattern: "spec_grill_plan", level: "L3" },
+  { pattern: "worktree_merge_locally", level: "L3", description: "Merge local de worktree — efeito irreversível na árvore de trabalho" },
+  { pattern: "git_commit_push", level: "L3", description: "Commit + push remoto — efeito externo irreversível" },
+  { pattern: "annotate_diff", level: "L2", description: "Anotação de diff no grafo da soul — escrita local reversível" },
 ];
 
 /** Retorna o nível de risco de uma capability, ou undefined se desconhecida. */
