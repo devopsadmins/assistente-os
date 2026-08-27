@@ -382,6 +382,12 @@ Feito (2026-08-27):
 - **Chaves Zen**: rodízio round-robin (`ZEN_API_KEYS` / `ZEN_API_KEY_1..7`) por
   chamada em chat/RAG/LangGraph (`nextZenApiKey()`) — substituiu o mapa soul→chave,
   que era decisão de posse e ficou adiado.
+- **RAG audit-readiness** (7 epics): higiene do índice (remove órfãos + `content_hash`),
+  telemetria de LLM em todas as rotas (`recordLlmCall`), golden eval
+  ([`os rag eval`](docs/RAG-EVAL.md)), latência do reranker instrumentada
+  ([ADR-RAG-001](docs/adr/ADR-RAG-001.md)), embedder/rerank no hash do manifesto,
+  screening de injection antes do rerank `llm`, proveniência `doc_key` no audit
+  trail + aviso de índice defasado + `hnsw.ef_search` fixo.
 
 Backlog do roadmap: **zerado** (E7 é ação no dashboard Cloudflare, fora do repo).
 

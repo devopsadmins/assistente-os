@@ -40,7 +40,7 @@ import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createFullBackup, pruneOldBackups } from "./backup.js";
 import { runSkillCommand } from "./skill.js";
-import { runRagCommand } from "./rag.js";
+import { runRagCommand, isIndexStale } from "./rag.js";
 
 const BACKUP_RETENTION_DAYS = 7;
 
@@ -271,6 +271,10 @@ async function main(): Promise<void> {
         const g = await graphStats(pool, id);
         console.log(`chunks: ${stats.chunks} (arquivos: ${stats.files})`);
         console.log(`grafo: ${g.entities} entidades, ${g.relations} relações, ${g.observations} observações`);
+        const stale = isIndexStale(soul.dir, stats.lastIndexedAt);
+        console.log(
+          `índice: ${stats.lastIndexedAt ?? "nunca"} · ${stale ? "defasado (markdown mais novo — rode `os memory " + id + " index`)" : "atualizado"}`,
+        );
       } else {
         console.log("ação inválida: use index|search|status");
       }

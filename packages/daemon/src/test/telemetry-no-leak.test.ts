@@ -19,7 +19,7 @@ test("sanitizeVerdictForLog: descarta snippet/body das fontes de RAG", () => {
   const raw = JSON.stringify({
     ok: true,
     sources: [
-      { path: "souls/x/perfil.md", method: "semantic", score: 0.82, snippet: "TEXTO SENSÍVEL do documento que não pode vazar" },
+      { doc: "perfil.md::0", path: "souls/x/perfil.md", method: "semantic", score: 0.82, snippet: "TEXTO SENSÍVEL do documento que não pode vazar" },
       { path: "souls/x/soul.md", method: "literal", score: 0.5, body: "outro TEXTO SENSÍVEL" },
     ],
   });
@@ -27,7 +27,9 @@ test("sanitizeVerdictForLog: descarta snippet/body das fontes de RAG", () => {
   assert.ok(!clean.includes("SENSÍVEL"), "nenhum trecho de conteúdo sobrevive");
   const parsed = JSON.parse(clean) as { ok: boolean; sources: Array<Record<string, unknown>> };
   assert.equal(parsed.ok, true);
-  assert.deepEqual(parsed.sources[0], { path: "souls/x/perfil.md", method: "semantic", score: 0.82 });
+  // `doc` (doc_key) é proveniência estável — sobrevive; snippet/body não.
+  assert.deepEqual(parsed.sources[0], { doc: "perfil.md::0", path: "souls/x/perfil.md", method: "semantic", score: 0.82 });
+  assert.deepEqual(parsed.sources[1], { doc: null, path: "souls/x/soul.md", method: "literal", score: 0.5 });
   assert.equal(sanitizeVerdictForLog("texto livre não-JSON"), null);
   assert.equal(sanitizeVerdictForLog(undefined), null);
 });

@@ -207,7 +207,14 @@ export function sanitizeVerdictForLog(verdict: string | undefined): string | nul
   const sources = Array.isArray(v.sources)
     ? v.sources.map((s) => {
         const src = (s ?? {}) as Record<string, unknown>;
-        return { path: src.path ?? null, method: src.method ?? null, score: src.score ?? null };
+        // `doc` (doc_key: "<path>::<i>") é metadado de proveniência estável — liga
+        // a resposta ao chunk exato; não carrega conteúdo, então entra na allowlist.
+        return {
+          doc: typeof src.doc === "string" ? src.doc : null,
+          path: src.path ?? null,
+          method: src.method ?? null,
+          score: src.score ?? null,
+        };
       })
     : undefined;
   return JSON.stringify({

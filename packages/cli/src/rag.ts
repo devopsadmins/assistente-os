@@ -3,11 +3,30 @@
  * imprime hit@k / MRR / recall@5. Evidência de auditoria e comparação
  * off × cross-encoder × llm.
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPool, type AssistenteOsConfig } from "@assistente-os/core";
-import { parseGoldenJsonl, runRagEval, formatRagEvalMetrics } from "@assistente-os/memory";
+import { parseGoldenJsonl, runRagEval, formatRagEvalMetrics, scanTextFiles } from "@assistente-os/memory";
+
+/**
+ * O índice está defasado se algum .md/.txt da soul tem mtime posterior ao
+ * `lastIndexedAt` (MAX(chunks.updated_at)). Sem lastIndexedAt (nunca indexou) e
+ * havendo arquivos → defasado.
+ */
+export function isIndexStale(soulDir: string, lastIndexedAt: string | null): boolean {
+  let newest = 0;
+  for (const f of scanTextFiles(soulDir)) {
+    try {
+      newest = Math.max(newest, statSync(f).mtimeMs);
+    } catch {
+      /* arquivo sumiu no meio da varredura */
+    }
+  }
+  if (newest === 0) return false;
+  if (!lastIndexedAt) return true;
+  return newest > Date.parse(lastIndexedAt);
+}
 
 function sampleGoldenPath(): string {
   // packages/cli/dist/rag.js → packages/memory/eval/rag-golden.sample.jsonl

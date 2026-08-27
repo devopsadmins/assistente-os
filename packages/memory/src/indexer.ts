@@ -137,18 +137,37 @@ export interface SearchResult {
  * cosseno) se o embedder gerar vetor; senão degrada para palavra-chave
  * (ILIKE), exatamente como o modo "literal" do SLC-OS.
  */
+/** ef_search do HNSW fixado por env (default 40) — reprodutibilidade da busca. */
+function hnswEfSearch(): number {
+  const n = Math.floor(Number(process.env.RAG_HNSW_EF_SEARCH) || 40);
+  return Math.max(1, Math.min(1000, n));
+}
+
 export async function search(pool: Pool, soul: string, query: string, embedder: Embedder, max = 5): Promise<SearchResult[]> {
   const qVec = await embedder.embed(query);
 
   if (qVec) {
-    const { rows } = await pool.query<{ doc_key: string; path: string; title: string | null; body: string; score: number }>(
-      `SELECT doc_key, path, title, body, 1 - (embedding <=> $1::vector) AS score
-       FROM chunks
-       WHERE soul = $2 AND embedding IS NOT NULL
-       ORDER BY embedding <=> $1::vector
-       LIMIT $3`,
-      [toVectorLiteral(qVec), soul, max],
-    );
+    // SET LOCAL exige transação; conexão dedicada para não vazar o GUC pro pool.
+    const client = await pool.connect();
+    let rows: Array<{ doc_key: string; path: string; title: string | null; body: string; score: number }>;
+    try {
+      await client.query("BEGIN");
+      await client.query(`SET LOCAL hnsw.ef_search = ${hnswEfSearch()}`);
+      ({ rows } = await client.query(
+        `SELECT doc_key, path, title, body, 1 - (embedding <=> $1::vector) AS score
+         FROM chunks
+         WHERE soul = $2 AND embedding IS NOT NULL
+         ORDER BY embedding <=> $1::vector
+         LIMIT $3`,
+        [toVectorLiteral(qVec), soul, max],
+      ));
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
     if (rows.length > 0) {
       return rows.map((r) => ({
         docKey: r.doc_key,
