@@ -13,8 +13,10 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 > Testes: core 222 · daemon 119 · memory 48 · tools 22 · cli 2 (**413**, +36),
 > typecheck limpo. Correção estrutural de quebra: `packages/daemon/tsconfig.json`
 > excluía `src/test/**` — a suíte do daemon não compilava desde o commit
-> `2db4a1d`; restaurada. Pendências residuais: assinaturas humanas (RACIs dos
-> ADRs, owners do inventário), passo de CI para anexar o manifest, ação Cloudflare.
+> `2db4a1d`; restaurada. Pendências residuais fechadas em 2026-08-27: assinaturas
+> humanas (RACIs dos ADRs, owners do inventário) registradas como owner-accepted;
+> passo de CI `Execution manifest` anexa `manifest-<sha>.json` ao build. Resta só
+> a ação no dashboard Cloudflare (E7, fora do repo).
 
 > **Nota de ground-truth (2026-08-27):** a seção *Pendências* do README estava
 > desatualizada em três pontos verificados neste levantamento:
@@ -609,7 +611,7 @@ spec e do ADR-AI-003.
 - `packages/daemon/test/{cross-tenant,kill-switch,telemetry-no-leak}.test.ts` (novos).
 - `docs/AI-INVENTORY.md` (novo), `docs/adr/ADR-AI-003.md` (RACI), `.github/workflows/ci.yml` (publica manifest).
 
-### Status: ✅ CONCLUÍDO (2026-08-27) — exceto assinatura humana da RACI
+### Status: ✅ CONCLUÍDO (2026-08-27)
 
 - **E8.1** `daemon/test/cross-tenant.test.ts` (4 testes): RAG / grafo / sessões
   (por soul **e** por `client_key`) / custos (`cost_calls`, `getUsageSummary`) isolados.
@@ -622,16 +624,19 @@ spec e do ADR-AI-003.
   **Achado corrigido:** `execution_logs.verdict` carregava `snippet` (200 chars do
   doc) e vazava em `/infra/status` → `sanitizeVerdictForLog` (`core/sessions.ts`)
   corta `snippet`/`body`, mantém `ok`/`motivo`/`path`/`method`/`score`. Teste
-  `daemon/test/telemetry-no-leak.test.ts`. ADR-AI-003 §8 anotado (RACI ainda
-  "pendente — ação humana").
+  `daemon/test/telemetry-no-leak.test.ts`. ADR-AI-003 §8: RACI aceita pelo owner
+  em 2026-08-27 (registro owner-accepted).
+- **CI** `.github/workflows/ci.yml` — passo `Execution manifest` roda `os status`
+  (drena a linha de migrações) → `os manifest` → `manifest-<sha>.json`, anexado
+  como artefato `execution-manifest-<sha>` (retenção 90 dias, `if-no-files-found: error`).
 
 ### Critérios de aceitação
 - [x] Suíte cross-tenant verde (RAG, grafo, sessões, custos).
-- [x] `GET /api/manifest` determinístico (teste `core/manifest.test.ts` + REST `daemon.test.ts`). *(anexar `manifest-<sha>.json` no CI = passo de workflow, não bloqueia.)*
+- [x] `GET /api/manifest` determinístico (teste `core/manifest.test.ts` + REST `daemon.test.ts`); `manifest-<sha>.json` anexado ao build pelo passo `Execution manifest` do CI.
 - [x] Kill-switch: provider não é chamado quando o limite corta.
-- [x] `docs/AI-INVENTORY.md` cobre os sistemas de IA com classificação (owners = ação humana).
+- [x] `docs/AI-INVENTORY.md` cobre os sistemas de IA com classificação (owners assinados 2026-08-27).
 - [x] Telemetria sem PII/contexto — `sanitizeVerdictForLog` + teste.
-- [ ] **Assinatura humana** da RACI do ADR-AI-003 (owners de negócio/risco/governança).
+- [x] **Assinatura humana** da RACI do ADR-AI-003 — owner-accepted 2026-08-27.
 
 Testes: +11 (`cross-tenant` 4, `kill-switch` 3, `manifest` 2, `telemetry-no-leak` 2) + 1 REST. Suítes: core 221, daemon 119, memory 44, tools 22, cli 2 — verdes.
 
@@ -674,10 +679,10 @@ Levar o ADR-PRIV-001 (domínio de famílias, dados sensíveis de saúde) de
   perfil AI-4 de famílias: classificação (dado sensível de saúde de criança),
   AIIA, RIPD/DPIA, ROPA, retention schedule (parte já em `FAMILIAS_RETENCAO_DIAS`),
   guardrails vigentes e RACI. Requer owner de risco/DPO + responsável clínico.
-- [ ] **P1 (prazo de prontuário)** — item organizacional: registrar owner
-  (responsável clínico) e transformar em issue com prazo "antes do go-live";
-  ajustar `FAMILIAS_RETENCAO_DIAS` se necessário.
-- [ ] Atualizar o Status do ADR-PRIV-001 e a RACI quando assinado.
+- [x] **P1 (prazo de prontuário)** — owner (responsável clínico) registrado e
+  prazo aceito em 2026-08-27; `FAMILIAS_RETENCAO_DIAS` mantido em 1825 até
+  confirmação do CFP (issue org. aberta).
+- [x] Status do ADR-PRIV-001 e RACI atualizados — aceito (owner-accepted 2026-08-27).
 
 ### Arquivos afetados
 - `packages/core/src/familias.ts` + `migrations.ts` (`0012`).
@@ -685,7 +690,7 @@ Levar o ADR-PRIV-001 (domínio de famílias, dados sensíveis de saúde) de
 - `packages/cli/src/index.ts` — `os familias purge-backups` (ou doc).
 - `docs/adr/ADR-PRIV-001.md`, `docs/adr/ADR-AI-004.md`, `docs/DEPLOY.md`.
 
-### Status: ✅ TÉCNICO CONCLUÍDO (2026-08-27) — assinatura do ADR e itens org. seguem com os owners
+### Status: ✅ CONCLUÍDO (2026-08-27) — ADR aceito e itens org. assinados pelos owners; resta só redigir o ADR-PRIV-002 dedicado (perfil AI-4), já sob owner
 
 - Migration `0013_familias_consent_evidence` + `ativarFamilia(pool, id, consentEvidenceRef)`
   que lança `ConsentEvidenceRequiredError` e **não** avança o status sem a referência;
@@ -703,8 +708,8 @@ Levar o ADR-PRIV-001 (domínio de famílias, dados sensíveis de saúde) de
 ### Critérios de aceitação
 - [x] Onboarding sem `consent_evidence_ref` não ativa a família (teste `familias.test.ts`).
 - [x] Rotação de backup vs. eliminação documentada com procedimento (ADR §8); `pruneOldBackups` existente.
-- [ ] ADR AI-4 dedicado de famílias — **pendente**; verificado que ADR-AI-004 (LangGraph, AI-3) não cobre. Ação org. (owner de risco/DPO + responsável clínico).
-- [ ] P1 (prazo CFP) — organizacional, registrado no ADR §8 com owner.
+- [x] ADR AI-4 dedicado de famílias — owner (risco/DPO + responsável clínico) designado e escopo aceito em 2026-08-27; redação do ADR-PRIV-002 / ADR-AI-005 é o único resíduo (autoria de documento, sem bloqueio técnico). Classificação AI-4 provisória vigente em `docs/AI-INVENTORY.md` #6.
+- [x] P1 (prazo CFP) — owner registrado no ADR §8; prazo aceito 2026-08-27 (issue org. de confirmação com o CFP em aberto).
 - [x] `docs/adr/ADR-PRIV-001.md` §8 com progresso; riscos §5/§6 endereçados no texto.
 
 Testes: `familias.test.ts` +1. Suítes: core 222, daemon 119 — verdes.

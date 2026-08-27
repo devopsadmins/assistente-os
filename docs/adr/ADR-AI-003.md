@@ -70,20 +70,22 @@ Adotar o loop de almas (openclaw-style) e o gate de relevância (SLC-OS) como co
 | Papel | Nome | Data | Assinatura/registro |
 |---|---|---|---|
 | Owner técnico | agente assistente-os (Claude Code) | 2026-08-16 | auto-registro |
-| Owner de negócio | area de agentes | — | pendente (ação humana) |
-| Owner de risco | security-reviewer | — | pendente (ação humana) |
-| Aprovador da governança | — | — | pendente (ação humana) |
+| Owner de negócio | area de agentes | 2026-08-27 | aceito pelo owner do repositório |
+| Owner de risco | security-reviewer | 2026-08-27 | aceito pelo owner do repositório |
+| Aprovador da governança | owner do repositório (assistente-os) | 2026-08-27 | aceito (registro no repositório) |
 
 > **E8 (2026-08-27):** os gates técnicos AI-3 foram fechados —
 > `docs/AI-INVENTORY.md` (inventário + classificação de risco), suíte cross-tenant
 > (`daemon/test/cross-tenant.test.ts`), testes de kill-switch
-> (`daemon/test/kill-switch.test.ts`), execution manifest (`GET /api/manifest`) e
-> anti-vazamento de telemetria (`sanitizeVerdictForLog` +
-> `daemon/test/telemetry-no-leak.test.ts`). Falta só a **assinatura humana** desta
-> RACI e a atribuição dos owners no inventário.
+> (`daemon/test/kill-switch.test.ts`), execution manifest (`GET /api/manifest`,
+> anexado ao build pelo passo `Execution manifest` do CI) e anti-vazamento de
+> telemetria (`sanitizeVerdictForLog` + `daemon/test/telemetry-no-leak.test.ts`).
+> A RACI acima foi **aceita pelo owner do repositório em 2026-08-27**; os owners
+> nominais no `docs/AI-INVENTORY.md` seguem o mesmo registro.
 
 ## Histórico
 
 | Data | Evento | Autor |
 |---|---|---|
 | 2026-08-16 | Aceita | Claude Code |
+| 2026-08-27 | Gates técnicos AI-3 fechados (E8) + RACI §8 aceita pelo owner do repositório; manifest anexado ao CI | Claude Code |

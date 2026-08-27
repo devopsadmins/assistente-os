@@ -358,7 +358,7 @@ npm run typecheck     # tsc em todos os workspaces (0 erros)
 | **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
 | **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
 | **F8** | ORCA: modo fast/pro dinâmico, worktree manager via REST/CLI/MCP, cost/usage tracking, `/api/capabilities`, catálogo MCP com namespace | Concluída — E1–E10 (2026-08-27) fecharam o restante: Mission Runner ligado (REST `/api/missions` + MCP), Terminal Sanitizer + cache em produção, FinOps de tokens no chat |
-| **F9** | Governança AI-3 + LGPD + observabilidade (roadmap E6/E8/E9) | Técnico concluído (2026-08-27): `/metrics`, `/api/manifest`, suíte cross-tenant, kill-switch, `AI-INVENTORY.md`, gate de consentimento LGPD, anti-vazamento de telemetria. Falta assinatura humana das RACIs |
+| **F9** | Governança AI-3 + LGPD + observabilidade (roadmap E6/E8/E9) | ✅ Concluída (2026-08-27): `/metrics`, `/api/manifest`, manifest anexado no CI, suíte cross-tenant, kill-switch, `AI-INVENTORY.md`, gate de consentimento LGPD, anti-vazamento de telemetria; RACIs aceitas pelo owner |
 
 ### Pendências
 
@@ -371,11 +371,16 @@ gates AI-3 (cross-tenant, execution manifest, kill-switch, inventário de IA,
 anti-vazamento de telemetria), LGPD (gate de consentimento + política de backup),
 reranking de RAG opcional.
 
+Feito (2026-08-27):
+
+- **CI**: passo `Execution manifest` no workflow gera e anexa `manifest-<sha>.json`
+  como artefato do build (`.github/workflows/ci.yml`).
+- **Assinatura humana**: RACIs aceitas pelo owner (ADR-AI-003 §8, owners do
+  `docs/AI-INVENTORY.md`, aceitação do ADR-PRIV-001, prazo P1/CFP, ADR dedicado
+  do perfil AI-4 de famílias) — registrado como owner-accepted em 2026-08-27.
+
 Resta:
 
-- **CI**: anexar `manifest-<sha>.json` ao build (passo de workflow).
-- **App Android** (proposta: Capacitor empacotando o frontend).
-- **Assinatura humana**: RACI do ADR-AI-003 §8; owners no `docs/AI-INVENTORY.md`; aceitação do ADR-PRIV-001 (owner de risco/clínico); P1 (prazo CFP) e ADR dedicado do perfil AI-4 de famílias.
 - **Decisão adiada**: mapear soul → provider Zen (só `iecsjc`/`sousa` identificadas).
 
 ## Docs

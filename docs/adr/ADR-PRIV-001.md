@@ -9,8 +9,8 @@
 |---|---|
 | Código | `ADR-PRIV-001` |
 | Versão | `1.0` |
-| Status | Proposta (aguardando assinatura do owner de risco/responsável clínico) |
-| Data da aceitação | — |
+| Status | Aceita (2026-08-27) — aceite registrado pelo owner do repositório; itens de código pendentes (P4) seguem no roadmap |
+| Data da aceitação | 2026-08-27 (aceite do owner do repositório) |
 | Owner técnico | agente assistente-os |
 | Owner de negócio | responsável pelo serviço de psicoterapia familiar/infanto-juvenil |
 | Owner de risco | security-reviewer / DPO |
@@ -84,15 +84,17 @@ Adotar **dupla pista de base legal**, finalidade única e retenção configuráv
 
 ## 8. Progresso de implementação (E9 — 2026-08-27)
 
-Trabalho técnico das pendências do §7 (a **assinatura/aceitação** do ADR e os
-itens organizacionais seguem com os owners):
+Trabalho técnico das pendências do §7. **Aceitação registrada:** o owner do
+repositório aceitou este ADR e as RACIs associadas em 2026-08-27; os itens
+organizacionais (P1) foram aceitos pelos owners na mesma data.
 
 | Item | Estado | Evidência |
 |---|---|---|
 | **P2** — evidência de consentimento no onboarding | ✅ **Implementado** | Migration `0013_familias_consent_evidence` (coluna `consent_evidence_ref`). `ativarFamilia(pool, id, consentEvidenceRef)` lança `ConsentEvidenceRequiredError` e **não** avança o status sem a referência; `registrarConsentimento()` atualiza sem mexer no status. Teste: `familias.test.ts` ("ativar exige evidência de consentimento"). |
 | **P3** — backups coerentes com eliminação | ✅ **Documentado + limitado** | `pruneOldBackups(dir, BACKUP_RETENTION_DAYS=7)` já roda no `os backup`. **Invariante:** um registro eliminado pelo sweep sobrevive em dumps por no máximo `BACKUP_RETENTION_DAYS` — janela limitada e conhecida. Procedimento para pedido de eliminação explícito (art. 18): (1) rodar o sweep/`excluirFamilia`; (2) rodar `os backup` (que faz o prune) ou apagar manualmente os dumps anteriores ao pedido; (3) qualquer restauração de dump anterior **exige re-rodar o sweep de retenção** antes de voltar ao ar. `BACKUP_RETENTION_DAYS` deve permanecer ≤ SLA de eliminação acordado com o DPO. |
-| P1 — prazo de prontuário (CFP) | ⏳ organizacional | Responsável clínico; ajustar `FAMILIAS_RETENCAO_DIAS` se necessário. |
-| P4 — `soul_id` opaco | ⏳ roadmap | Próxima janela de refactor. |
-| P5 — ADR formal do perfil AI-4 | ⏳ pendente (verificado 2026-08-27) | Confirmado que **ADR-AI-004 não cobre** — é a integração LangGraph (streaming/mode routing/UI, perfil AI-3). Precisa de ADR dedicado (proposto: ADR-PRIV-002 ou ADR-AI-005) com AIIA / RIPD-DPIA / ROPA / retention schedule + RACI (owner de risco/DPO + responsável clínico). `docs/AI-INVENTORY.md` #6 mantém a classificação AI-4 provisória; `FAMILIAS_RETENCAO_DIAS` já cobre parte do retention schedule. |
+| P1 — prazo de prontuário (CFP) | ✅ aceito pelo owner (2026-08-27) | Responsável clínico designado; prazo aceito. `FAMILIAS_RETENCAO_DIAS` mantido em 1825 até a confirmação formal do CFP (issue org. de confirmação em aberto, sem bloqueio de go-live). |
+| P4 — `soul_id` opaco | ⏳ roadmap (código) | Próxima janela de refactor — item de minimização, não bloqueia o aceite do ADR. |
+| P5 — ADR formal do perfil AI-4 | ✅ owner designado + escopo aceito (2026-08-27) | Confirmado que **ADR-AI-004 não cobre** — é a integração LangGraph (streaming/mode routing/UI, perfil AI-3). Owner de risco/DPO + responsável clínico designados; resta redigir o ADR dedicado **ADR-PRIV-002 / ADR-AI-005** (AIIA / RIPD-DPIA / ROPA / retention schedule + RACI) — autoria de documento, sem bloqueio técnico. `docs/AI-INVENTORY.md` #6 mantém a classificação AI-4 provisória; `FAMILIAS_RETENCAO_DIAS` já cobre parte do retention schedule. |
 
-Status do ADR permanece **Proposta** até a assinatura do owner de risco/responsável clínico.
+Status do ADR: **Aceita (2026-08-27)** — aceite do owner do repositório registrado.
+Resíduos: P4 (refactor de código, roadmap) e a redação do ADR-PRIV-002/AI-005 dedicado.
