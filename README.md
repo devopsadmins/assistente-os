@@ -29,7 +29,7 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ opencode                                                     │
-│   ├─ MCP assistente-os ─── packages/tools (stdio, 54 tools) │
+│   ├─ MCP assistente-os ─── packages/tools (stdio, 56 tools) │
 │   └─ providers zen-* ──── 7 chaves OpenCode Zen (grátis)    │
 └─────────────────────┬────────────────────────────────────────┘
                       │
@@ -65,8 +65,8 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 | `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), agregação de uso/tokens por soul/mode/model (`getUsageSummary`), cache em camadas (Redis + fallback em memória, `cache.ts`), migração, content filter (12 padrões de segredo + detector de prompt injection: entrada + chunks de RAG), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
 | `memory` | RAG + Grafo | Chunks + embeddings (Ollama ou fallback Xenova/ILIKE), LangChain LCEL RAG, LangGraph agent workflow com tool-calling, grafo de entidades/relações/observações, gate de relevância |
 | `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, orquestrador ORCA (modo fast/pro dinâmico + mission runner), worktree manager (git worktree isolado por tarefa, merge local L3-gated), terminal sanitizer, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection, log de debug de retrieval RAG (method/score por fonte) no audit trail |
-| `tools` | MCP server | 54 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
-| `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs (+ `costs usage`), agenda, worktree, guardian, daemon, voice, backup, help |
+| `tools` | MCP server | 56 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
+| `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs, agenda, worktree, guardian, skill, daemon, voice, backup, help |
 | `voice` | Pipeline de voz | VAD (hysteresis), AudioRecorder (sox), STT (Whisper local via @xenova/transformers), TTS (say.js) |
 
 Serviço auxiliar fora dos workspaces npm: `services/soul-rag-watcher` — observa `souls/*/` e pede `memory_index` via MCP quando `.md`/`.txt` mudam (zero dependência do monorepo, só stdio JSON-RPC), rodando como app separado no PM2.
@@ -84,6 +84,7 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **Config por soul**: provider, modelos, dailyLimit, maxTurns, guardrails de agente
 - **Active tracking**: `active.json` no home directory
 - **Markdown memory**: anotar (notas diárias), registrarLicao (lições), decidir (ADR decisions)
+- **Skills por soul**: `SKILL.md` (frontmatter `name`/`description`/`keywords`/`tools` + corpo markdown) em `~/.assistant-os/skills/<name>/` (global) ou `~/.assistant-os/souls/<id>/skills/<name>/` (por-soul). A soul declara a allowlist em `agent.permissions.skills`; o `buildPrompt` injeta **sempre** o índice nome+description e **só o corpo** das que casam o prompt (matcher híbrido léxico + embedding, com auto-skip). `skill.tools` é advisório — não eleva o Zero Trust. Env: `SKILL_MATCH_THRESHOLD` (0.35), `SKILL_MAX_ACTIVE` (3), `SKILLS_ENABLED`. Tools `skill_list`/`skill_create` + `os skill list|show|create`.
 - **AIIA.md por soul**: relatório de impacto algorítmico gerado sob demanda (tool `soul_generate_aiia`), compondo capabilities/guardrails efetivos, dados pessoais e base legal (quando a soul é do tipo `familia_<telefone>`) e regras de ouro ativas — 100% de dados já existentes no sistema, idempotente
 
 ### RAG + Knowledge Graph
@@ -227,9 +228,10 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 | POST | `/api/pipelines/meeting-ingest` \| `/email-ingest` | Ingestão de reuniões/e-mails |
 | WS | `/` | WebSocket de eventos em tempo real (token via `?token=`) |
 
-### MCP Tools (54 tools)
+### MCP Tools (56 tools)
 
 **Soul**: `souls_list`, `soul_context`, `soul_chat`, `soul_create` (L3, dry-run/commit por `plan_hash`), `soul_anotar`, `soul_licao`, `soul_decidir`, `soul_record_lesson`, `soul_get_lessons`, `soul_generate_aiia`
+**Skills**: `skill_list`, `skill_create` (L3, dry-run/`plan_hash`, scope soul|global)
 **Memória**: `memory_search`, `memory_index`, `memory_status`
 **Grafo**: `graph_list`, `observation_add`
 **Agenda**: `agenda_add`, `agenda_list`
@@ -271,6 +273,7 @@ os guardian reject <id> <código>   rejeita
 os guardian resend <id>      gera e reenvia um novo código de aprovação
 os voice                     pipeline de voz (VAD + STT + TTS)
 os backup                    ZIP completo do perfil, RAG e conhecimento
+os skill list|show|create    gerencia SKILL.md (global ou --soul <id>)
 os daemon [port]             inicia o daemon REST+WS (padrão 4310)
 ```
 
@@ -351,7 +354,7 @@ npm run typecheck     # tsc em todos os workspaces (0 erros)
 | **F2** | Agendador (tabela `agenda` + dispatch) | ✅ Concluída |
 | **F3** | Ferramentas do agente (busca/memória/ação) | ✅ Concluída |
 | **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | ✅ Concluída (service token do Cloudflare Access: procedimento em `docs/CLOUDFLARE-ACCESS.md`, ação no dashboard fora do escopo do repo) |
-| **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram | Tool-calling e canais em produção; multi-turno endurecido (orçamento de tokens, reidratação LangGraph, `client_key`, cobertura events/agenda — E2); skills por soul ainda não implementadas |
+| **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram + skills por soul | ✅ Concluída — tool-calling e canais em produção; multi-turno endurecido (E2); skills por soul (`SKILL.md`, matcher híbrido, `skill_list`/`skill_create`, `os skill`) |
 | **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
 | **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
 | **F8** | ORCA: modo fast/pro dinâmico, worktree manager via REST/CLI/MCP, cost/usage tracking, `/api/capabilities`, catálogo MCP com namespace | Concluída — E1–E10 (2026-08-27) fecharam o restante: Mission Runner ligado (REST `/api/missions` + MCP), Terminal Sanitizer + cache em produção, FinOps de tokens no chat |
@@ -370,7 +373,6 @@ reranking de RAG opcional.
 
 Resta:
 
-- **Skills por soul** (instruções/ferramentas declarativas, versionadas na pasta da soul) — feature não iniciada.
 - **CI**: anexar `manifest-<sha>.json` ao build (passo de workflow).
 - **App Android** (proposta: Capacitor empacotando o frontend).
 - **Assinatura humana**: RACI do ADR-AI-003 §8; owners no `docs/AI-INVENTORY.md`; aceitação do ADR-PRIV-001 (owner de risco/clínico); P1 (prazo CFP) e ADR dedicado do perfil AI-4 de famílias.

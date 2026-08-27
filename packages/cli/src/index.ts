@@ -39,6 +39,7 @@ import {
 import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createFullBackup, pruneOldBackups } from "./backup.js";
+import { runSkillCommand } from "./skill.js";
 
 const BACKUP_RETENTION_DAYS = 7;
 
@@ -362,6 +363,11 @@ async function main(): Promise<void> {
       const pool = getPool(config.databaseUrl);
       const manifest = await buildExecutionManifest({ home: config.home, pool });
       console.log(JSON.stringify(manifest, null, 2));
+      return;
+    }
+
+    case "skill": {
+      console.log(runSkillCommand(config.home, args));
       return;
     }
 
