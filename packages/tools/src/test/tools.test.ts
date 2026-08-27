@@ -599,3 +599,59 @@ test("mcp: mission_list e mission_run expostos; mission_run exige AGENT_SOUL_ID 
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("mcp: skill_list e skill_create — dry-run/plan_hash/L3 + allowlist (Skills)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  const prevAgentSoul = process.env.AGENT_SOUL_ID;
+  process.env.AGENT_SOUL_ID = "main";
+  try {
+    createSoul(home, "main", { name: "main", agent: { permissions: { tools: ["skill_list", "skill_create"], skills: ["ja-na-allowlist"] }, guardrails: {}, autonomy: "auto" } });
+    const fs = await import("node:fs");
+    // uma skill que existe e está na allowlist
+    fs.mkdirSync(join(home, "souls", "main", "skills", "ja-na-allowlist"), { recursive: true });
+    fs.writeFileSync(join(home, "souls", "main", "skills", "ja-na-allowlist", "SKILL.md"), "---\nname: ja-na-allowlist\ndescription: existente\n---\ncorpo");
+
+    const list = await server.handleMessage({ jsonrpc: "2.0", id: 70, method: "tools/list" });
+    const names = ((list?.result as { tools?: { name: string }[] }).tools ?? []).map((t) => t.name);
+    assert.ok(names.includes("skill_list") && names.includes("skill_create"));
+
+    // skill_create dry-run
+    const dry = await server.handleMessage({
+      jsonrpc: "2.0", id: 71, method: "tools/call",
+      params: { name: "skill_create", arguments: { name: "nova-skill", description: "faz algo útil", body: "instruções aqui", keywords: "gatilho-a" } },
+    });
+    const dryOut = JSON.parse((dry?.result as { content?: { text: string }[] }).content?.[0]?.text ?? "{}") as { dry_run: boolean; ok: boolean; plan_hash: string; would_write: string };
+    assert.equal(dryOut.dry_run, true);
+    assert.equal(dryOut.ok, true);
+    assert.match(dryOut.would_write, /souls\/main\/skills\/nova-skill\/SKILL\.md/);
+    assert.ok(!fs.existsSync(join(home, "souls", "main", "skills", "nova-skill")), "dry_run não escreve");
+
+    // hash errado → erro
+    const bad = await server.handleMessage({
+      jsonrpc: "2.0", id: 72, method: "tools/call",
+      params: { name: "skill_create", arguments: { name: "nova-skill", description: "faz algo útil", body: "instruções aqui", keywords: "gatilho-a", dry_run: false, plan_hash: "x" } },
+    });
+    assert.match(JSON.stringify(bad?.result ?? bad?.error), /plan_hash divergente/);
+
+    // commit → cria
+    const ok = await server.handleMessage({
+      jsonrpc: "2.0", id: 73, method: "tools/call",
+      params: { name: "skill_create", arguments: { name: "nova-skill", description: "faz algo útil", body: "instruções aqui", keywords: "gatilho-a", dry_run: false, plan_hash: dryOut.plan_hash } },
+    });
+    const okOut = JSON.parse((ok?.result as { content?: { text: string }[] }).content?.[0]?.text ?? "{}") as { created: boolean; path: string };
+    assert.equal(okOut.created, true);
+    assert.ok(fs.existsSync(join(home, "souls", "main", "skills", "nova-skill", "SKILL.md")));
+
+    // skill_list mostra ambas, com inAllowlist correto
+    const sl = await server.handleMessage({ jsonrpc: "2.0", id: 74, method: "tools/call", params: { name: "skill_list", arguments: {} } });
+    const slOut = JSON.parse((sl?.result as { content?: { text: string }[] }).content?.[0]?.text ?? "{}") as { skills: Array<{ name: string; inAllowlist: boolean }> };
+    const byName = Object.fromEntries(slOut.skills.map((s) => [s.name, s.inAllowlist]));
+    assert.equal(byName["ja-na-allowlist"], true);
+    assert.equal(byName["nova-skill"], false);
+  } finally {
+    if (prevAgentSoul === undefined) delete process.env.AGENT_SOUL_ID;
+    else process.env.AGENT_SOUL_ID = prevAgentSoul;
+    rmSync(home, { recursive: true, force: true });
+  }
+});

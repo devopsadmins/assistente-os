@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, type SoulSpec } from "@assistente-os/core";
+import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, type SoulSpec, type SkillFrontmatter } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
 import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { writeFile, unlink } from "node:fs/promises";
 import { createInterface } from "node:readline";
@@ -39,6 +40,7 @@ const SOUL_SCOPED_TOOLS = new Set([
   "sales_ingest_meeting", "sales_get_lead_brief",
   "spec_grill_plan",
   "soul_create",
+  "skill_create",
   "mission_run",
   "action_execute",
   "browser_navigate", "browser_click", "browser_extract_text",
@@ -711,6 +713,36 @@ const TOOLS: Tool[] = [
         soul: { type: "string", description: "soul para sobrescrever a das etapas (opcional)" },
       },
       required: ["mission_id"],
+    },
+  },
+  {
+    name: "skill_list",
+    description:
+      "Lista as skills visíveis para uma soul (SKILL.md global ou per-soul), com escopo, tools advisórias e se está na allowlist (`agent.permissions.skills`).",
+    inputSchema: {
+      type: "object",
+      properties: { soul: { type: "string", description: "id da soul (default: AGENT_SOUL_ID ou 'main')" } },
+    },
+  },
+  {
+    name: "skill_create",
+    description:
+      "Cria uma skill (SKILL.md). dry_run=true (default) valida o frontmatter e devolve plan_hash sem escrever; " +
+      "dry_run=false exige o plan_hash. scope 'soul' (default) grava na pasta da soul; 'global' no diretório compartilhado. Efeito estrutural (L3).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "slug da skill (a-z, 0-9, hífen; 2-64 chars)" },
+        description: { type: "string", description: "1 linha (≤280) — é o que o matcher usa" },
+        body: { type: "string", description: "corpo markdown com as instruções" },
+        keywords: { type: "string", description: "CSV de gatilhos léxicos explícitos (frases OK)" },
+        tools: { type: "string", description: "CSV de tools MCP relevantes (advisório — não eleva a allowlist)" },
+        scope: { type: "string", description: "soul | global (default: soul)" },
+        soul: { type: "string", description: "id da soul quando scope=soul (default: AGENT_SOUL_ID)" },
+        dry_run: { type: "boolean", description: "default true — só valida e devolve plan_hash" },
+        plan_hash: { type: "string", description: "obrigatório quando dry_run=false" },
+      },
+      required: ["name", "description", "body"],
     },
   },
   {
@@ -1655,6 +1687,71 @@ export class McpServer {
 
       case "mission_list": {
         return { missions: listMissions() };
+      }
+
+      case "skill_list": {
+        const soulId =
+          (typeof args.soul === "string" && args.soul.trim()) || process.env.AGENT_SOUL_ID || "main";
+        const soul = getSoul(this.config.home, soulId);
+        const allow = new Set(soul?.config.agent?.permissions?.skills ?? []);
+        const discovered = scanSkillDirs(this.config.home, soulId);
+        const skills = discovered.map((d) => {
+          let description = "";
+          let tools: string[] = [];
+          try {
+            const p = parseSkillFrontmatter(readFileSync(d.path, "utf8"));
+            if (p.ok) {
+              description = p.frontmatter.description;
+              tools = p.frontmatter.tools;
+            }
+          } catch {
+            /* arquivo ilegível — mantém description vazia */
+          }
+          return { name: d.name, description, scope: d.scope, tools, inAllowlist: allow.has(d.name) };
+        });
+        return { soul: soulId, skills };
+      }
+
+      case "skill_create": {
+        this.authorizeAgentSoul(name); // efeito estrutural: L3
+        const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+        const csv = (v: unknown): string[] =>
+          str(v) ? str(v).split(",").map((x) => x.trim()).filter(Boolean) : [];
+        const scope = str(args.scope) === "global" ? "global" : "soul";
+        const soulId = str(args.soul) || process.env.AGENT_SOUL_ID || "main";
+        const fm: SkillFrontmatter = {
+          name: str(args.name),
+          description: str(args.description),
+          keywords: csv(args.keywords),
+          tools: csv(args.tools),
+        };
+        const body = typeof args.body === "string" ? args.body : "";
+        const md = buildSkillMd(fm, body);
+        const parsed = parseSkillFrontmatter(md);
+        const planHash = createHash("sha256")
+          .update(canonicalJsonStringify({ fm, body, scope, soulId }))
+          .digest("hex");
+        const dryRun = args.dry_run !== false;
+        const targetPath =
+          scope === "soul"
+            ? `souls/${soulId}/skills/${fm.name}/SKILL.md`
+            : `skills/${fm.name}/SKILL.md`;
+        if (dryRun) {
+          return {
+            dry_run: true,
+            ok: parsed.ok,
+            plan_hash: planHash,
+            issues: parsed.ok ? [] : parsed.issues,
+            would_write: targetPath,
+          };
+        }
+        if (!parsed.ok) throw new Error(`skill_create: frontmatter inválido — ${parsed.issues.join("; ")}`);
+        if (str(args.plan_hash) !== planHash) {
+          throw new Error(`skill_create: plan_hash divergente (esperado ${planHash}). Rode dry_run novamente.`);
+        }
+        const r = writeSkillFile(this.config.home, scope, scope === "soul" ? soulId : undefined, fm, body);
+        if (!r.ok) throw new Error(`skill_create: ${r.code} — ${r.reason}`);
+        return { dry_run: false, created: true, path: r.path, plan_hash: planHash };
       }
 
       case "mission_run": {

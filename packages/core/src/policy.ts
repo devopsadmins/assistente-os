@@ -56,6 +56,7 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "soul_create_questions", level: "L1" },
   { pattern: "worktree_list", level: "L1", description: "Lista worktrees de tarefa ativas — leitura" },
   { pattern: "mission_list", level: "L1", description: "Lista missões do Mission Runner — leitura" },
+  { pattern: "skill_list", level: "L1", description: "Lista skills visíveis para a soul — leitura" },
 
   // L2 — escrita local reversível (altera estado próprio da soul)
   { pattern: "observation_add", level: "L2" },
@@ -86,6 +87,7 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "soul_chat", level: "L3" },
   { pattern: "action_execute", level: "L3" },
   { pattern: "soul_create", level: "L3" },
+  { pattern: "skill_create", level: "L3", description: "Cria/edita um SKILL.md — efeito estrutural" },
   { pattern: "mission_run", level: "L3", description: "Executa missão composta (browser/agenda/ingest) — efeito externo" },
   { pattern: "spec_grill_plan", level: "L3" },
   { pattern: "worktree_merge_locally", level: "L3", description: "Merge local de worktree — efeito irreversível na árvore de trabalho" },

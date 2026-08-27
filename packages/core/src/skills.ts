@@ -367,3 +367,59 @@ export function renderSkillsPrompt(
   }
   return parts.join("\n");
 }
+
+// ── Escrita ────────────────────────────────────────────────────────────
+
+export type WriteSkillResult =
+  | { ok: true; path: string }
+  | { ok: false; code: "E_VALIDATION" | "E_CONFLICT"; reason: string };
+
+/** Monta o conteúdo de um SKILL.md a partir dos campos. */
+export function buildSkillMd(fm: SkillFrontmatter, body: string): string {
+  const lines = ["---", `name: ${fm.name}`, `description: ${fm.description}`];
+  if (fm.keywords.length > 0) lines.push(`keywords: [${fm.keywords.join(", ")}]`);
+  if (fm.tools.length > 0) lines.push(`tools: [${fm.tools.join(", ")}]`);
+  lines.push("---", "", body.trim(), "");
+  return lines.join("\n");
+}
+
+/**
+ * Escreve um SKILL.md de forma atômica (temp dir + rename). `scope: "soul"`
+ * exige `soulId`. Não sobrescreve: se já existe → E_CONFLICT.
+ */
+export function writeSkillFile(
+  home: string,
+  scope: "soul" | "global",
+  soulId: string | undefined,
+  fm: SkillFrontmatter,
+  body: string,
+): WriteSkillResult {
+  const parsed = parseSkillFrontmatter(buildSkillMd(fm, body));
+  if (!parsed.ok) return { ok: false, code: "E_VALIDATION", reason: parsed.issues.join("; ") };
+  if (scope === "soul" && !soulId) return { ok: false, code: "E_VALIDATION", reason: "scope 'soul' exige soulId" };
+
+  const baseDir =
+    scope === "soul" ? join(home, "souls", soulId!, "skills") : join(home, "skills");
+  const finalDir = join(baseDir, fm.name);
+  const finalPath = join(finalDir, "SKILL.md");
+  if (existsSync(finalPath)) return { ok: false, code: "E_CONFLICT", reason: `skill '${fm.name}' já existe (${scope})` };
+
+  // baseDir precisa existir para o mkdtemp; createSoulFull já cria souls/<id>/skills.
+  try {
+    const tmp = mkdtempSync(join(baseDir, `.tmp-${fm.name}-`));
+    try {
+      writeFileSync(join(tmp, "SKILL.md"), buildSkillMd(fm, body), "utf8");
+      renameSync(tmp, finalDir);
+      return { ok: true, path: finalPath };
+    } catch (err) {
+      rmSync(tmp, { recursive: true, force: true });
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOTEMPTY" || code === "EEXIST") {
+        return { ok: false, code: "E_CONFLICT", reason: `skill '${fm.name}' já existe (corrida)` };
+      }
+      throw err;
+    }
+  } catch (err) {
+    return { ok: false, code: "E_VALIDATION", reason: (err as Error).message };
+  }
+}
