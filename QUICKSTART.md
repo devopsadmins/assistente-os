@@ -401,4 +401,4 @@ npm run typecheck # verifica tipos sem emitir
 - [Arquitetura detalhada](docs/ARCHITECTURE.md)
 - [Ferramentas MCP](docs/MCPS.md)
 - [Provedores gratuitos](docs/FREE_PROVIDERS.md)
-- [Backlog e roadmap](docs/BACKLOG.md)
+- Status e pendências: seção **Status** do [README](README.md)

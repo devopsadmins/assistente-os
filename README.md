@@ -344,19 +344,20 @@ npm run typecheck     # tsc em todos os workspaces (0 erros)
 
 ### Pendências
 
-- Service token do Cloudflare Access (bypass programático pro domínio público)
-- Sentry (error tracking)
-- Prometheus/Grafana (métricas — hoje só `/infra/status` sob demanda)
-- Sessões multi-turno persistidas (hoje cada prompt é isolado; a tabela `sessions` só conta turnos)
-- Skills por soul (instruções declarativas)
-- Captura de tokens no fluxo de chat: as colunas `prompt_tokens`/`completion_tokens`/`execution_mode` de `router_history` existem e são agregadas por `getUsageSummary`, mas o chat ainda não as grava (ficam em 0)
-- Wiring do scaffolding ORCA: Mission Runner sem interface exposta e com etapas placeholder (browser-*, guardian-audit); Terminal Sanitizer e cache em camadas (`cache.ts`) não consumidos por nenhum caminho de produção
-- `worktree_list` só existe em REST/CLI, não como tool MCP
-- Tool MCP `soul_create` (criação guiada de souls via chat) — o backend já existe e está testado (`createSoulFull`, `SoulSpec`/`validateSoulSpec`, catálogo de capabilities L1/L2/L3), falta só expor a tool e mapear o payload wire (snake_case) para o tipo de domínio
-- App Android (proposta: Capacitor empacotando o frontend atual — ver `docs/BACKLOG.md`)
-- ADR-PRIV-001 (LGPD de famílias) com pendências datadas em aberto
+Backlog acionável com spec por item: [docs/ROADMAP.md](docs/ROADMAP.md). Resumo:
 
-Backlog detalhado e histórico de decisões: [docs/BACKLOG.md](docs/BACKLOG.md).
+- **E1 — FinOps**: chat não grava `prompt_tokens`/`completion_tokens`/`execution_mode` em `router_history` (colunas e `getUsageSummary` já existem; ficam em 0)
+- **E2 — Multi-turno**: persistência de turnos, rotação de sessão por inatividade e injeção de histórico no prompt **já existem**; falta orçamento de tokens no histórico, checkpoint do LangGraph sobrevivendo a restart, cobertura em `events`/`agenda` e isolamento por cliente
+- **E3/E4 — ORCA**: Mission Runner sem interface exposta e com etapas placeholder (browser-*, guardian-audit); Terminal Sanitizer e cache em camadas (`cache.ts`) não consumidos por nenhum caminho de produção
+- **E5 — MCP**: `worktree_list` só em REST/CLI; `soul_create` não exposto (backend `createSoulFull`/`validateSoulSpec` pronto e testado)
+- **E6 — Observabilidade**: Sentry + Prometheus/Grafana (hoje só `/infra/status` sob demanda)
+- **E7 — F4**: service token do Cloudflare Access (bypass programático pro domínio público)
+- **E8 — Governança AI-3**: suíte cross-tenant, execution manifest por release, testes de kill-switch por budget/max-turns, inventário de IA com classificação de risco; RACI do ADR-AI-003 pendente (revisão 2027-02-16)
+- **E9 — LGPD**: ADR-PRIV-001 (domínio de famílias) com pendências datadas do §7 em aberto
+- **E10 — RAG**: sem estágio de reranking após a busca híbrida
+- Skills por soul (instruções declarativas)
+- App Android (proposta: Capacitor empacotando o frontend atual)
+- Decisões: mapear soul → provider Zen (adiada; só `iecsjc`/`sousa` identificadas); auth do `@azure-devops/mcp` (`az login`/PAT para o daemon)
 
 ## Docs
 
@@ -364,6 +365,6 @@ Backlog detalhado e histórico de decisões: [docs/BACKLOG.md](docs/BACKLOG.md).
 - [LangGraph](docs/LANGGRAPH.md)
 - [MCPs](docs/MCPS.md)
 - [Providers gratuitos](docs/FREE_PROVIDERS.md)
-- [Backlog](docs/BACKLOG.md)
+- [Roadmap de implementação](docs/ROADMAP.md)
 - [Quick Start](QUICKSTART.md)
 - [ADRs](docs/adr/)
