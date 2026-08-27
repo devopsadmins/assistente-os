@@ -36,6 +36,33 @@ test("buildExecutionManifest: determinístico (mesmo estado → mesmo hash)", as
   }
 });
 
+test("buildExecutionManifest: bloco rag no hash — RAG_RERANK muda o hash", async () => {
+  const db = await createTestSchema();
+  const home = tmpHome();
+  const prev = process.env.RAG_RERANK;
+  try {
+    delete process.env.RAG_RERANK;
+    const off = await buildExecutionManifest({ home, pool: db.pool });
+    assert.deepEqual(off.rag, {
+      embedModel: "nomic-embed-text",
+      embedDims: 768,
+      rerankMode: "off",
+      injectionMode: "aviso",
+      hnswEfSearch: 40,
+    });
+
+    process.env.RAG_RERANK = "cross-encoder";
+    const on = await buildExecutionManifest({ home, pool: db.pool });
+    assert.equal(on.rag.rerankMode, "cross-encoder");
+    assert.notEqual(off.hash, on.hash, "rerankMode entra no hash");
+  } finally {
+    if (prev === undefined) delete process.env.RAG_RERANK;
+    else process.env.RAG_RERANK = prev;
+    rmSync(home, { recursive: true, force: true });
+    await db.cleanup();
+  }
+});
+
 test("buildExecutionManifest: mudar o markdown da soul muda o systemPromptHash e o hash", async () => {
   const db = await createTestSchema();
   const home = tmpHome();

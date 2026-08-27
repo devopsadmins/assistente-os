@@ -40,6 +40,15 @@ export interface ExecutionManifest {
   };
   souls: ManifestSoul[];
   migrations: string[];
+  /** Config de RAG que altera as respostas (entra no hash — dois deploys com
+   * RAG_RERANK diferente têm hashes diferentes). */
+  rag: {
+    embedModel: string;
+    embedDims: number;
+    rerankMode: "off" | "cross-encoder" | "llm";
+    injectionMode: "aviso" | "recusar";
+    hnswEfSearch: number;
+  };
   hash: string;
 }
 
@@ -97,6 +106,15 @@ export async function buildExecutionManifest(opts: { home: string; pool: Pool })
     capabilityCatalog,
     souls,
     migrations,
+    rag: {
+      // embedder primário é Xenova/multilingual-e5-base (local, 768d); este é o
+      // fallback via Ollama — ambos 768d, então a coluna vector(768) é consistente.
+      embedModel: config.ollamaEmbedModel,
+      embedDims: 768,
+      rerankMode: config.ragRerankMode,
+      injectionMode: config.ragInjectionMode,
+      hnswEfSearch: config.ragHnswEfSearch,
+    },
   };
 
   const hash = createHash("sha256").update(canonicalJson(core)).digest("hex");

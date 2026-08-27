@@ -29,6 +29,14 @@ export interface AssistenteOsConfig {
   zenApiKeys: string[];
   zenBaseUrl: string;
   zenChatModel: string;
+  /** Modo do reranker de RAG (env RAG_RERANK): "off" | "cross-encoder" | "llm". */
+  ragRerankMode: "off" | "cross-encoder" | "llm";
+  /** Modo do screening de prompt injection em chunks de RAG (env RAG_INJECTION_MODO
+   * → PROMPT_INJECTION_MODO): "aviso" | "recusar". */
+  ragInjectionMode: "aviso" | "recusar";
+  /** hnsw.ef_search fixado na busca vetorial (env RAG_HNSW_EF_SEARCH, default 40) —
+   * reprodutibilidade da recuperação HNSW. */
+  ragHnswEfSearch: number;
   /** Ordem do roteador local-first: cada string é um degrau. */
   routerTiers: string[];
   /** Secret compartilhado para verificar webhooks assinados (HMAC-SHA256). */
@@ -76,6 +84,12 @@ export function loadDotEnv(dir: string): void {
   }
 }
 
+/** Normaliza RAG_RERANK — qualquer valor fora de cross-encoder/llm cai para "off". */
+function parseRagRerankMode(raw: string | undefined): "off" | "cross-encoder" | "llm" {
+  const v = (raw ?? "off").toLowerCase();
+  return v === "cross-encoder" || v === "llm" ? v : "off";
+}
+
 export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): AssistenteOsConfig {
   const home = overrides.home || resolveHome();
   loadDotEnv(home);
@@ -95,6 +109,13 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
     zenApiKey: overrides.zenApiKey ?? zenApiKeys[0],
     zenBaseUrl: overrides.zenBaseUrl || process.env.ZEN_BASE_URL || "https://opencode.ai/zen/v1",
     zenChatModel: overrides.zenChatModel || process.env.ZEN_CHAT_MODEL || "nemotron-3-ultra-free",
+    ragRerankMode: overrides.ragRerankMode ?? parseRagRerankMode(process.env.RAG_RERANK),
+    ragInjectionMode:
+      overrides.ragInjectionMode ??
+      ((process.env.RAG_INJECTION_MODO || process.env.PROMPT_INJECTION_MODO || "aviso").toLowerCase() === "recusar"
+        ? "recusar"
+        : "aviso"),
+    ragHnswEfSearch: overrides.ragHnswEfSearch ?? (Number(process.env.RAG_HNSW_EF_SEARCH) || 40),
     routerTiers: overrides.routerTiers || ["local", "zen", "soul"],
     webhookSecret: overrides.webhookSecret ?? process.env.ASSISTENTE_OS_WEBHOOK_SECRET,
     defaultMaxTurns: overrides.defaultMaxTurns ?? (Number(process.env.ASSISTENTE_OS_MAX_TURNS) || 10),
