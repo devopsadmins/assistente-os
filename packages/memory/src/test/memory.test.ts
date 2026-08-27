@@ -37,6 +37,22 @@ test("scanTextFiles só pega .md/.markdown/.txt", () => {
   }
 });
 
+test("scanTextFiles ignora diretórios ocultos (.git, .obsidian)", () => {
+  const dir = tempDir("scan-hidden");
+  try {
+    makeDocs(dir);
+    mkdirSync(join(dir, "docs", ".git", "hooks"), { recursive: true });
+    writeFileSync(join(dir, "docs", ".git", "COMMIT_EDITMSG"), "msg\n");
+    writeFileSync(join(dir, "docs", ".git", "hooks", "pre-commit.sample.txt"), "hook\n");
+    mkdirSync(join(dir, "docs", ".obsidian"), { recursive: true });
+    writeFileSync(join(dir, "docs", ".obsidian", "workspace.md"), "# cfg\n");
+    const files = scanTextFiles(join(dir, "docs"));
+    assert.deepEqual(files.map((f) => f.split(/[\\/]/).pop()), ["a.md", "b.md", "nota.txt"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("indexDirectory faz upsert idempotente + busca literal (degradação)", async () => {
   const dir = tempDir("index");
   const testDb = await createTestSchema();

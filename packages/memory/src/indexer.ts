@@ -35,13 +35,19 @@ export function chunkText(text: string, size = 512): string[] {
   return out;
 }
 
-/** Lê recursivamente arquivos de texto de uma pasta (fonte da verdade). */
+/** Lê recursivamente arquivos de texto de uma pasta (fonte da verdade).
+ *
+ * Ignora diretórios ocultos (`.git`, `.obsidian`, …) — souls carregam
+ * working copies git de bases de conhecimento de cliente, e o `.git` só
+ * traria ruído (COMMIT_EDITMSG, hooks .sample) pro índice. Symlinks também
+ * não são seguidos (readdir só marca isDirectory/isFile pra entradas reais). */
 export function scanTextFiles(dir: string): string[] {
   const files: string[] = [];
   const walk = (d: string) => {
     for (const entry of readdirSync(d, { withFileTypes: true })) {
       const p = join(d, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name.startsWith(".")) continue;
         walk(p);
       } else if (entry.isFile() && MD_EXT.has(extname(entry.name).toLowerCase())) {
         files.push(p);
