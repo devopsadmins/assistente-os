@@ -13,6 +13,7 @@ import {
   migrateAlmas,
   importSegundoCerebro,
   printMigrationSummary,
+  buildExecutionManifest,
   anotar,
   registrarLicao,
   decidir,
@@ -354,6 +355,13 @@ async function main(): Promise<void> {
       for (const c of await recentCalls(pool, "main", 5)) {
         console.log(`  ${c.ts} ${c.provider}/${c.model} ${c.inputTokens}+${c.outputTokens}t $${c.cost.toFixed(6)} ${c.status}`);
       }
+      return;
+    }
+
+    case "manifest": {
+      const pool = getPool(config.databaseUrl);
+      const manifest = await buildExecutionManifest({ home: config.home, pool });
+      console.log(JSON.stringify(manifest, null, 2));
       return;
     }
 

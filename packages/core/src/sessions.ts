@@ -188,6 +188,35 @@ export async function closeSession(pool: Pool, sessionId: number): Promise<void>
   await pool.query("UPDATE sessions SET ended_at = $1 WHERE id = $2 AND ended_at IS NULL", [nowIso(), sessionId]);
 }
 
+/**
+ * Remove trechos de conteúdo do verdict de RAG antes de persistir (E8.4 /
+ * gate AI-3: telemetria não vaza contexto). `execution_logs.verdict` é
+ * devolvido por `/infra/status` — mantém só `ok`/`motivo` e, por fonte,
+ * `path`/`method`/`score`; nunca `snippet`/`body`/`text`.
+ */
+export function sanitizeVerdictForLog(verdict: string | undefined): string | null {
+  if (!verdict) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(verdict);
+  } catch {
+    return null; // não-JSON: descarta em vez de arriscar vazar texto livre
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const v = parsed as Record<string, unknown>;
+  const sources = Array.isArray(v.sources)
+    ? v.sources.map((s) => {
+        const src = (s ?? {}) as Record<string, unknown>;
+        return { path: src.path ?? null, method: src.method ?? null, score: src.score ?? null };
+      })
+    : undefined;
+  return JSON.stringify({
+    ok: typeof v.ok === "boolean" ? v.ok : undefined,
+    motivo: typeof v.motivo === "string" ? v.motivo : undefined,
+    ...(sources ? { sources } : {}),
+  });
+}
+
 /** Registra UMA execução (contexto montado + turno disparado) de forma imutável. */
 export async function recordExecution(pool: Pool, input: ExecutionLogInput): Promise<void> {
   await pool.query(
@@ -205,7 +234,7 @@ export async function recordExecution(pool: Pool, input: ExecutionLogInput): Pro
       input.tokensIn ?? 0,
       input.tokensOut ?? 0,
       input.contextChars ?? 0,
-      input.verdict ?? null,
+      sanitizeVerdictForLog(input.verdict),
       input.status ?? "ok",
       input.note ?? null,
     ],

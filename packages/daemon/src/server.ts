@@ -31,6 +31,7 @@ import { handleLlmsTxt, handleCapabilities } from "./routes/llms-txt.js";
 import { handleWorktree } from "./routes/worktree.js";
 import { handleMissions } from "./routes/missions.js";
 import { handleMetrics } from "./routes/metrics.js";
+import { handleManifest } from "./routes/manifest.js";
 import { initSentry, captureError } from "./observability/sentry.js";
 import { handleCosts } from "./routes/costs.js";
 
@@ -442,6 +443,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleWorktree,
   handleMissions,
   handleMetrics,
+  handleManifest,
   handleCosts,
 ];
 

@@ -330,6 +330,23 @@ test("daemon: GET /metrics expõe exposição Prometheus (E6)", async () => {
   }
 });
 
+test("daemon: GET /api/manifest retorna o execution manifest (E8.2)", async () => {
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home });
+  try {
+    const res = await fetch(`http://127.0.0.1:${daemon.port}/api/manifest`);
+    assert.equal(res.status, 200);
+    const m = (await res.json()) as { schemaVersion: number; hash: string; souls: unknown[]; capabilityCatalog: { version: string } };
+    assert.equal(m.schemaVersion, 1);
+    assert.match(m.hash, /^[0-9a-f]{64}$/);
+    assert.ok(Array.isArray(m.souls) && m.souls.length === 1);
+    assert.ok(m.capabilityCatalog.version);
+  } finally {
+    await daemon.close();
+    await cleanup();
+  }
+});
+
 test("daemon: dailyLimit 0 bloqueia o chat com 429", async () => {
   const { home, cleanup } = await tempHome();
   createSoul(home, "pobre", { name: "pobre", dailyLimit: 0 });

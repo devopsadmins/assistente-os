@@ -198,6 +198,8 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 | GET | `/costs` | Resumo de custos por soul |
 | GET | `/api/costs/usage` | Uso/tokens agregado por soul/mode/model (`?soul=&from=&to=`) |
 | GET | `/api/capabilities` | Catálogo JSON estruturado (souls, tools MCP, endpoints, missões) |
+| GET | `/api/manifest` | Execution manifest reproduzível (git sha, catálogo L1/L2/L3, hash de prompt por soul, migrações) — gate AI-3 |
+| GET | `/metrics` | Exposição Prometheus (`aos_*`) — gate AI-3 / observabilidade |
 | GET \| POST | `/api/worktree` | Lista/cria worktree isolada por tarefa |
 | POST | `/api/worktree/:taskId/merge` | Build + testes + merge local (rollback automático) |
 | DELETE | `/api/worktree/:taskId` | Destrói worktree e limpa refs git |
@@ -375,5 +377,6 @@ Backlog acionável com spec por item: [docs/ROADMAP.md](docs/ROADMAP.md). Resumo
 - [MCPs](docs/MCPS.md)
 - [Providers gratuitos](docs/FREE_PROVIDERS.md)
 - [Roadmap de implementação](docs/ROADMAP.md)
+- [Inventário de sistemas de IA](docs/AI-INVENTORY.md) · [Cloudflare Access](docs/CLOUDFLARE-ACCESS.md)
 - [Quick Start](QUICKSTART.md)
 - [ADRs](docs/adr/)

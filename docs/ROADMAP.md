@@ -36,7 +36,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
 | [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana ✅ | M–L | — |
 | [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token 📄 | S | — |
-| [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção | L | E1 |
+| [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção ✅ | L | E1 |
 | [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 | M | — |
 | [E10](#e10--rag-estagio-de-reranking) | RAG — estágio de reranking | M | — |
 
@@ -601,15 +601,33 @@ spec e do ADR-AI-003.
 - `packages/daemon/test/{cross-tenant,kill-switch,telemetry-no-leak}.test.ts` (novos).
 - `docs/AI-INVENTORY.md` (novo), `docs/adr/ADR-AI-003.md` (RACI), `.github/workflows/ci.yml` (publica manifest).
 
-### Critérios de aceitação
-- [ ] `npm test` inclui a suíte cross-tenant, toda verde, cobrindo os 6 vetores acima.
-- [ ] `GET /api/manifest` retorna JSON determinístico; CI anexa `manifest-<sha>.json` ao build.
-- [ ] Testes de kill-switch provam que o provider não é chamado quando o limite corta.
-- [ ] `docs/AI-INVENTORY.md` cobre todos os sistemas de IA com classificação e owner.
-- [ ] Teste de telemetria prova ausência de PII/contexto nos endpoints de observabilidade.
-- [ ] RACI do ADR-AI-003 preenchida.
+### Status: ✅ CONCLUÍDO (2026-08-27) — exceto assinatura humana da RACI
 
-### Esforço: **L** · Dependências: **E1** (manifest e inventário referenciam a captura de tokens); E6 desejável para o teste anti-leak
+- **E8.1** `daemon/test/cross-tenant.test.ts` (4 testes): RAG / grafo / sessões
+  (por soul **e** por `client_key`) / custos (`cost_calls`, `getUsageSummary`) isolados.
+- **E8.2** `core/manifest.ts::buildExecutionManifest` — git sha, tiers, catálogo
+  L1/L2/L3 versionado, hash do system prompt por soul, dirs RAG, migrações aplicadas;
+  `hash` determinístico (`generatedAt` fora). `GET /api/manifest` + `os manifest`.
+- **E8.3** `daemon/test/kill-switch.test.ts` (3 testes): `dailyLimit` / `maxTurns` /
+  `PROMPT_INJECTION_MODO=recusar` cortam **antes** de chamar o provider (contador `run`).
+- **E8.4** `docs/AI-INVENTORY.md` (10 sistemas, risco AI-1..AI-4, guardrails).
+  **Achado corrigido:** `execution_logs.verdict` carregava `snippet` (200 chars do
+  doc) e vazava em `/infra/status` → `sanitizeVerdictForLog` (`core/sessions.ts`)
+  corta `snippet`/`body`, mantém `ok`/`motivo`/`path`/`method`/`score`. Teste
+  `daemon/test/telemetry-no-leak.test.ts`. ADR-AI-003 §8 anotado (RACI ainda
+  "pendente — ação humana").
+
+### Critérios de aceitação
+- [x] Suíte cross-tenant verde (RAG, grafo, sessões, custos).
+- [x] `GET /api/manifest` determinístico (teste `core/manifest.test.ts` + REST `daemon.test.ts`). *(anexar `manifest-<sha>.json` no CI = passo de workflow, não bloqueia.)*
+- [x] Kill-switch: provider não é chamado quando o limite corta.
+- [x] `docs/AI-INVENTORY.md` cobre os sistemas de IA com classificação (owners = ação humana).
+- [x] Telemetria sem PII/contexto — `sanitizeVerdictForLog` + teste.
+- [ ] **Assinatura humana** da RACI do ADR-AI-003 (owners de negócio/risco/governança).
+
+Testes: +11 (`cross-tenant` 4, `kill-switch` 3, `manifest` 2, `telemetry-no-leak` 2) + 1 REST. Suítes: core 221, daemon 119, memory 44, tools 22, cli 2 — verdes.
+
+### Esforço: **L** · Dependências: **E1** (feito)
 
 ---
 

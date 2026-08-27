@@ -70,9 +70,17 @@ Adotar o loop de almas (openclaw-style) e o gate de relevância (SLC-OS) como co
 | Papel | Nome | Data | Assinatura/registro |
 |---|---|---|---|
 | Owner técnico | agente assistente-os (Claude Code) | 2026-08-16 | auto-registro |
-| Owner de negócio | area de agentes | — | pendente |
-| Owner de risco | security-reviewer | — | pendente |
-| Aprovador da governança | — | — | pendente |
+| Owner de negócio | area de agentes | — | pendente (ação humana) |
+| Owner de risco | security-reviewer | — | pendente (ação humana) |
+| Aprovador da governança | — | — | pendente (ação humana) |
+
+> **E8 (2026-08-27):** os gates técnicos AI-3 foram fechados —
+> `docs/AI-INVENTORY.md` (inventário + classificação de risco), suíte cross-tenant
+> (`daemon/test/cross-tenant.test.ts`), testes de kill-switch
+> (`daemon/test/kill-switch.test.ts`), execution manifest (`GET /api/manifest`) e
+> anti-vazamento de telemetria (`sanitizeVerdictForLog` +
+> `daemon/test/telemetry-no-leak.test.ts`). Falta só a **assinatura humana** desta
+> RACI e a atribuição dos owners no inventário.
 
 ## Histórico
 
