@@ -7,7 +7,9 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync, mkdtempSync, writeFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import type { Soul } from "./souls.js";
+import { cache } from "./cache.js";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
 const MAX_DESCRIPTION = 280;
@@ -183,4 +185,152 @@ export function listSkills(home: string, soul: Soul): LoadedSkill[] {
     if (s) out.push(s);
   }
   return out;
+}
+
+// ── Matcher híbrido léxico + embedding ──────────────────────────────────
+
+export function skillMatchThreshold(): number {
+  const n = Number(process.env.SKILL_MATCH_THRESHOLD);
+  return Number.isFinite(n) && n >= 0 ? n : 0.35;
+}
+export function skillMaxActive(): number {
+  const n = Number(process.env.SKILL_MAX_ACTIVE);
+  return Number.isInteger(n) && n >= 0 ? n : 3;
+}
+export function skillsEnabled(): boolean {
+  return (process.env.SKILLS_ENABLED ?? "1") !== "0";
+}
+
+export interface SkillMatch {
+  skill: LoadedSkill;
+  score: number;
+  lexicalHits: string[];
+  usedEmbedding: boolean;
+}
+
+export interface SkillMatchOptions {
+  threshold?: number;
+  max?: number;
+  /** Injetável (teste / auto-skip). Recebe textos, devolve vetores. undefined = só-léxico. */
+  embed?: (texts: string[]) => Promise<number[][]>;
+}
+
+const STOPWORDS = new Set([
+  "que", "com", "para", "por", "uma", "dos", "das", "não", "nao", "seu", "sua",
+  "the", "and", "for", "you", "are", "com", "como", "isso", "aqui", "faz",
+]);
+
+function normTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 2 && !STOPWORDS.has(t));
+}
+function normText(text: string): string {
+  return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+function cosine(a: number[], b: number[]): number {
+  let dot = 0, na = 0, nb = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    dot += a[i]! * b[i]!;
+    na += a[i]! * a[i]!;
+    nb += b[i]! * b[i]!;
+  }
+  return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+}
+
+async function descEmbedding(
+  description: string,
+  embed: (texts: string[]) => Promise<number[][]>,
+): Promise<number[]> {
+  const key = createHash("sha1").update(description).digest("hex");
+  try {
+    const hit = await cache.getEmbedding(key);
+    if (hit) return JSON.parse(hit) as number[];
+  } catch {
+    /* cache opcional */
+  }
+  const [vec] = await embed([description]);
+  if (vec) {
+    try {
+      await cache.setEmbedding(key, JSON.stringify(vec));
+    } catch {
+      /* cache opcional */
+    }
+  }
+  return vec ?? [];
+}
+
+/**
+ * Casa `prompt` contra `skills` por relevância. Híbrido:
+ *  - léxico (overlap de tokens de description+keywords; boost 0.6 se uma keyword
+ *    frase inteira é substring do prompt normalizado);
+ *  - embedding (cosine da description; vetor da description cacheado por sha1);
+ *    qualquer falha do embedder → auto-skip para só-léxico naquela skill.
+ * `score = usedEmbedding ? 0.5*lex + 0.5*emb : lex`. Ordena desc, filtra >= threshold, corta em max.
+ */
+export async function matchSkills(
+  prompt: string,
+  skills: LoadedSkill[],
+  opts: SkillMatchOptions = {},
+): Promise<SkillMatch[]> {
+  if (skills.length === 0) return [];
+  const threshold = opts.threshold ?? skillMatchThreshold();
+  const max = opts.max ?? skillMaxActive();
+
+  const promptTokens = new Set(normTokens(prompt));
+  const promptNorm = normText(prompt);
+
+  let promptVec: number[] | null = null;
+  if (opts.embed) {
+    try {
+      const [v] = await opts.embed([prompt]);
+      promptVec = v ?? null;
+    } catch {
+      promptVec = null;
+    }
+  }
+
+  const scored: SkillMatch[] = [];
+  for (const skill of skills) {
+    const skillTokens = normTokens(`${skill.description} ${skill.keywords.join(" ")}`);
+    const uniq = new Set(skillTokens);
+    let hitCount = 0;
+    for (const t of uniq) if (promptTokens.has(t)) hitCount++;
+    let lex = uniq.size ? hitCount / uniq.size : 0;
+
+    const lexicalHits: string[] = [];
+    for (const kw of skill.keywords) {
+      if (normText(kw) && promptNorm.includes(normText(kw))) {
+        lexicalHits.push(kw);
+        lex = Math.max(lex, 0.6);
+      }
+    }
+    for (const t of uniq) if (promptTokens.has(t) && !lexicalHits.includes(t)) lexicalHits.push(t);
+
+    let usedEmbedding = false;
+    let score = lex;
+    if (opts.embed && promptVec) {
+      try {
+        const dv = await descEmbedding(skill.description, opts.embed);
+        if (dv.length) {
+          score = 0.5 * lex + 0.5 * cosine(promptVec, dv);
+          usedEmbedding = true;
+        }
+      } catch {
+        usedEmbedding = false;
+        score = lex;
+      }
+    }
+
+    scored.push({ skill, score, lexicalHits, usedEmbedding });
+  }
+
+  return scored
+    .filter((m) => m.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max);
 }

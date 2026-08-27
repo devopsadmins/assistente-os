@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSkillFrontmatter, resolveSkillPath, scanSkillDirs, listSkills } from "../skills.js";
+import { parseSkillFrontmatter, resolveSkillPath, scanSkillDirs, listSkills, matchSkills, skillMatchThreshold, type LoadedSkill } from "../skills.js";
 import { createSoulFull } from "../souls.js";
 import type { Soul } from "../souls.js";
 
@@ -123,4 +123,51 @@ test("listSkills: allowlist vazia → []", () => {
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+// ── Task 3: matcher ─────────────────────────────────────────────────────
+
+const mk = (name: string, description: string, keywords: string[] = []): LoadedSkill => ({
+  name, description, keywords, tools: [], scope: "global", path: `/x/${name}`, body: `corpo ${name}`, bytes: 10,
+});
+
+test("matchSkills léxico: keyword frase inteira dá boost e entra acima do threshold", async () => {
+  const skills = [
+    mk("followup", "redigir follow-up de reunião comercial", ["próximos passos", "recap"]),
+    mk("outra", "assunto totalmente diferente sobre jardinagem"),
+  ];
+  const res = await matchSkills("me faz um recap da call com próximos passos", skills, { max: 3 });
+  assert.equal(res[0]!.skill.name, "followup");
+  assert.ok(res[0]!.score >= skillMatchThreshold());
+  assert.ok(res.every((m) => m.skill.name !== "outra"));
+  assert.ok(res[0]!.lexicalHits.includes("recap") || res[0]!.lexicalHits.includes("próximos passos"));
+});
+
+test("matchSkills: nada casa → []", async () => {
+  const res = await matchSkills("xyz abc def", [mk("aa", "sobre contabilidade e impostos")], { max: 3 });
+  assert.deepEqual(res, []);
+});
+
+test("matchSkills: respeita max", async () => {
+  const skills = [mk("aa", "deploy pm2"), mk("bb", "deploy docker"), mk("cc", "deploy vps"), mk("dd", "deploy tunnel")];
+  const res = await matchSkills("como fazer deploy", skills, { threshold: 0.01, max: 2 });
+  assert.equal(res.length, 2);
+});
+
+test("matchSkills: embed que lança → auto-skip para só-léxico (não quebra)", async () => {
+  const skills = [mk("aa", "deploy pm2 na vps")];
+  const res = await matchSkills("deploy pm2", skills, {
+    threshold: 0.01, max: 3,
+    embed: async () => { throw new Error("embedder off"); },
+  });
+  assert.equal(res.length, 1);
+  assert.equal(res[0]!.usedEmbedding, false);
+});
+
+test("matchSkills: embed ok → usedEmbedding true e score combina léxico+embedding", async () => {
+  const skills = [mk("aa", "deploy pm2 na vps")];
+  const fakeEmbed = async (texts: string[]) => texts.map(() => [1, 0, 0]);
+  const res = await matchSkills("qualquer coisa", skills, { threshold: 0.01, max: 3, embed: fakeEmbed });
+  assert.equal(res[0]!.usedEmbedding, true);
+  assert.ok(res[0]!.score >= 0.5);
 });
