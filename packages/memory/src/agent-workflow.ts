@@ -15,7 +15,7 @@ import { RunnableSequence } from "@langchain/core/runnables";
 import type { StructuredTool } from "@langchain/core/tools";
 import { runRagChain } from "./rag-chain.js";
 import { AgentState, type AgentStateType } from "./agent-state.js";
-import { loadConfig, type Pool } from "@assistente-os/core";
+import { loadConfig, nextZenApiKey, type Pool } from "@assistente-os/core";
 
 export type { AgentStateType };
 
@@ -39,7 +39,8 @@ function createLLM(tools?: StructuredTool[]) {
   const useZen = Boolean(config.zenApiKey);
   const baseUrl = useZen ? config.zenBaseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
   const modelName = useZen ? config.zenChatModel : config.ollamaChatModel;
-  const apiKey = useZen ? config.zenApiKey! : process.env.OPENAI_API_KEY || "ollama";
+  // Rodízio entre as chaves Zen registradas (round-robin por chamada).
+  const apiKey = useZen ? nextZenApiKey(config)! : process.env.OPENAI_API_KEY || "ollama";
   const llm = new ChatOpenAI({
     modelName,
     apiKey,

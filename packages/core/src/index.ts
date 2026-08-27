@@ -29,3 +29,4 @@ export * from "./soul-spec.js";
 export * from "./cache.js";
 export * from "./manifest.js";
 export * from "./skills.js";
+export * from "./zen-keys.js";

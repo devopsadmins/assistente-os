@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { GlobalGuardrails } from "./types/agent.js";
+import { parseZenApiKeys } from "./zen-keys.js";
 
 export interface AssistenteOsConfig {
   /** Raiz de tudo: souls/, config.local.json (padrão: ~/.assistant-os) */
@@ -20,8 +21,12 @@ export interface AssistenteOsConfig {
    * usado como alternativa ao Ollama local quando tool-calling nativo real é
    * necessário (Ollama+modelos pequenos locais não suportam de forma
    * confiável). Sem ZEN_API_KEY configurada, fica undefined e quem consome
-   * cai de volta pro Ollama. */
+   * cai de volta pro Ollama. Alias de `zenApiKeys[0]`. */
   zenApiKey?: string;
+  /** Todas as chaves Zen registradas (env ZEN_API_KEYS / ZEN_API_KEY_1..7 /
+   * ZEN_API_KEY). Consumidas em round-robin por chamada via `nextZenApiKey()`
+   * para espalhar o consumo entre até 7 chaves gratuitas. `[]` quando nenhuma. */
+  zenApiKeys: string[];
   zenBaseUrl: string;
   zenChatModel: string;
   /** Ordem do roteador local-first: cada string é um degrau. */
@@ -74,6 +79,7 @@ export function loadDotEnv(dir: string): void {
 export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): AssistenteOsConfig {
   const home = overrides.home || resolveHome();
   loadDotEnv(home);
+  const zenApiKeys = overrides.zenApiKeys ?? parseZenApiKeys(process.env);
   return {
     home,
     soulsDir: overrides.soulsDir || join(home, "souls"),
@@ -85,7 +91,8 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
     ollamaUrl: overrides.ollamaUrl || process.env.OLLAMA_URL || "http://localhost:11434",
     ollamaChatModel: overrides.ollamaChatModel || process.env.OLLAMA_CHAT_MODEL || "qwen2.5-coder:3b",
     ollamaEmbedModel: overrides.ollamaEmbedModel || process.env.OLLAMA_EMBED_MODEL || "nomic-embed-text",
-    zenApiKey: overrides.zenApiKey ?? process.env.ZEN_API_KEY,
+    zenApiKeys,
+    zenApiKey: overrides.zenApiKey ?? zenApiKeys[0],
     zenBaseUrl: overrides.zenBaseUrl || process.env.ZEN_BASE_URL || "https://opencode.ai/zen/v1",
     zenChatModel: overrides.zenChatModel || process.env.ZEN_CHAT_MODEL || "nemotron-3-ultra-free",
     routerTiers: overrides.routerTiers || ["local", "zen", "soul"],

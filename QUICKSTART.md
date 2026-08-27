@@ -57,9 +57,15 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 # ADO_ORG=sousalimaconsultoria
 # ADO_PAT=<seu-pat>
 
-# --- Provedores Zen (opcional — free-tier via opencode.ai) ---
-# ZEN_SOUSA_API_KEY=...
-# ZEN_DEVOCIONAL_API_KEY=...
+# --- OpenCode Zen (opcional — free-tier via opencode.ai) ---
+# ZEN_BASE_URL=https://opencode.ai/zen/v1
+# ZEN_CHAT_MODEL=nemotron-3-ultra-free
+# Uma chave só:
+# ZEN_API_KEY=<chave>
+# Ou várias, usadas em rodízio (round-robin) por chamada em chat/RAG/LangGraph —
+# espalha o consumo entre até 7 chaves gratuitas. Lista separada por vírgula:
+# ZEN_API_KEYS=<chave1>,<chave2>,<chave3>
+# (alternativa: ZEN_API_KEY_1 .. ZEN_API_KEY_7, uma por variável)
 ```
 
 ### Variáveis de ambiente importantes
@@ -73,6 +79,8 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Modelo de embeddings |
 | `AOS_HOST` | `127.0.0.1` | Bind address do daemon |
 | `AOS_PORT` | `4310` | Porta do daemon |
+| `ZEN_API_KEYS` | — | Chaves OpenCode Zen em rodízio (round-robin por chamada); vírgula-separadas. Alternativas: `ZEN_API_KEY_1..7` ou `ZEN_API_KEY` (uma só) |
+| `ZEN_CHAT_MODEL` | `nemotron-3-ultra-free` | Modelo usado no tier `zen` |
 
 ## 4. PostgreSQL (opcional mas recomendado)
 

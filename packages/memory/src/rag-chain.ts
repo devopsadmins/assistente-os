@@ -22,7 +22,7 @@ import {
   type RagInjectionFinding,
 } from "./rag-injection.js";
 import { createHash } from "node:crypto";
-import { loadConfig, cache, logger, type Pool } from "@assistente-os/core";
+import { loadConfig, cache, logger, nextZenApiKey, type Pool } from "@assistente-os/core";
 
 export interface RagChunk {
   doc: string;
@@ -67,7 +67,8 @@ function createLLM() {
   const useZen = Boolean(config.zenApiKey);
   const baseUrl = useZen ? config.zenBaseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
   const modelName = useZen ? config.zenChatModel : config.ollamaChatModel;
-  const apiKey = useZen ? config.zenApiKey! : process.env.OPENAI_API_KEY || "ollama";
+  // Rodízio entre as chaves Zen registradas (round-robin por chamada).
+  const apiKey = useZen ? nextZenApiKey(config)! : process.env.OPENAI_API_KEY || "ollama";
   return new ChatOpenAI({
     modelName,
     apiKey,

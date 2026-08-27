@@ -30,7 +30,7 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 ┌──────────────────────────────────────────────────────────────┐
 │ opencode                                                     │
 │   ├─ MCP assistente-os ─── packages/tools (stdio, 56 tools) │
-│   └─ providers zen-* ──── 7 chaves OpenCode Zen (grátis)    │
+│   └─ provider zen ──────── chaves OpenCode Zen em rodízio    │
 └─────────────────────┬────────────────────────────────────────┘
                       │
 ┌─────────────────────▼────────────────────────────────────────┐
@@ -116,7 +116,7 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **Degraus configuráveis** (`routerTiers`, padrão `local → zen → soul`); `langgraph` é um degrau à parte, só acionado por pedido explícito do cliente
 - **Modo fast** (padrão, prompts curtos): sonda barata (`GET /api/tags` no Ollama, timeout 3s) e cai pro próximo degrau se o local não responder
 - **Modo pro** (prompts longos/complexos): mesma sonda, mais iterações e RAG híbrido
-- **7 providers Zen**: zen-sousa, zen-devocional, zen-iecsjc, zen-evertongame, zen-escritor, zen-iso, zen-avancei
+- **Chaves Zen em rodízio**: `ZEN_API_KEYS` (vírgula-separada; ou `ZEN_API_KEY_1..7`, ou `ZEN_API_KEY` única) — consumidas em round-robin por chamada em chat/RAG/LangGraph via `nextZenApiKey()`, espalhando o consumo entre até 7 chaves gratuitas em vez de amarrar chave a soul
 - **Histórico imutável**: cada tentativa de roteamento fica registrada em `router_history` (kernel.db)
 
 ### ORCA — Orquestração
@@ -379,9 +379,11 @@ Feito (2026-08-27):
   `docs/AI-INVENTORY.md`, aceitação do ADR-PRIV-001, prazo P1/CFP, ADR dedicado
   do perfil AI-4 de famílias) — registrado como owner-accepted em 2026-08-27.
 
-Resta:
+- **Chaves Zen**: rodízio round-robin (`ZEN_API_KEYS` / `ZEN_API_KEY_1..7`) por
+  chamada em chat/RAG/LangGraph (`nextZenApiKey()`) — substituiu o mapa soul→chave,
+  que era decisão de posse e ficou adiado.
 
-- **Decisão adiada**: mapear soul → provider Zen (só `iecsjc`/`sousa` identificadas).
+Backlog do roadmap: **zerado** (E7 é ação no dashboard Cloudflare, fora do repo).
 
 ## Docs
 

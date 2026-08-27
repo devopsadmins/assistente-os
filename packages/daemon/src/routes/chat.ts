@@ -22,6 +22,7 @@ import {
   recordRouterSelection,
   logFullAuditEntry,
   estimateTokens,
+  nextZenApiKey,
 } from "@assistente-os/core";
 import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
 import { maxFindingSeverity } from "@assistente-os/memory";
@@ -434,6 +435,11 @@ export async function handleChat(
       } else {
         emitStep("opencode", `executando via opencode (${model})`);
         const env = { ...(process.env as Record<string, string>) };
+        // Tiers zen/soul rodam via `opencode run`, que lê a chave do provider
+        // Zen de {env:ZEN_API_KEY}. Injeta a próxima chave do rodízio para
+        // espalhar o consumo entre as chaves registradas (round-robin).
+        const rotatedZenKey = nextZenApiKey(config);
+        if (rotatedZenKey) env.ZEN_API_KEY = rotatedZenKey;
         result = await run!(built.fullPrompt, {
           cwd: soul.dir,
           model,
