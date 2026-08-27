@@ -4,6 +4,7 @@ import { nowIso } from "./costs.js";
 export interface SessionRecord {
   id: number;
   soul: string;
+  clientKey: string;
   startedAt: string;
   endedAt: string | null;
   promptCount: number;
@@ -27,6 +28,25 @@ export function sessionIdleTimeoutMinutes(): number {
 export function sessionHistoryTurns(): number {
   const n = Number(process.env.ASSISTENTE_OS_SESSION_HISTORY_TURNS);
   return Number.isFinite(n) && n >= 0 ? n : 6;
+}
+
+/**
+ * Teto de caracteres do histórico injetado no prompt (env
+ * ASSISTENTE_OS_SESSION_HISTORY_MAX_CHARS, default 6000 ≈ 1500 tokens).
+ * O contexto default do Ollama é 2048 tokens — sem teto, um histórico
+ * longo empurra o system prompt / RAG / a pergunta atual para fora da
+ * janela e o modelo "esquece" o que importa. 0 desliga o corte.
+ */
+export function sessionHistoryMaxChars(): number {
+  const n = Number(process.env.ASSISTENTE_OS_SESSION_HISTORY_MAX_CHARS);
+  return Number.isFinite(n) && n >= 0 ? n : 6000;
+}
+
+export interface HistoryBudget {
+  /** Máximo de turnos (usuário+assistente contam como 1 turno cada par). */
+  maxTurns: number;
+  /** Teto de caracteres somados do conteúdo; corta os turnos mais antigos primeiro. 0/undefined = sem corte. */
+  maxChars?: number;
 }
 
 export interface ExecutionLog {
@@ -76,22 +96,28 @@ export interface ExecutionLogInput {
  * aberta está inativa há mais que sessionIdleTimeoutMinutes(), fecha e abre
  * uma nova (zera prompt_count e o histórico de mensagens visível).
  */
-export async function openSession(pool: Pool, soul: string, maxTurns: number, budgetCap?: number): Promise<SessionRecord> {
+export async function openSession(
+  pool: Pool,
+  soul: string,
+  maxTurns: number,
+  budgetCap?: number,
+  clientKey = "default",
+): Promise<SessionRecord> {
   // Até 3 tentativas: se a sessão concorrente "vencedora" for fechada entre o
   // INSERT (que perde o ON CONFLICT) e o SELECT de fallback, nenhuma sessão
   // aberta existe mais — uma nova tentativa de INSERT deve então ter sucesso.
   for (let attempt = 0; attempt < 3; attempt++) {
     const inserted = await pool.query(
-      `INSERT INTO sessions (soul, started_at, ended_at, prompt_count, max_turns, budget_cap, last_activity_at)
-       VALUES ($1, $2, NULL, 0, $3, $4, $2)
-       ON CONFLICT (soul) WHERE ended_at IS NULL DO NOTHING
+      `INSERT INTO sessions (soul, client_key, started_at, ended_at, prompt_count, max_turns, budget_cap, last_activity_at)
+       VALUES ($1, $5, $2, NULL, 0, $3, $4, $2)
+       ON CONFLICT (soul, client_key) WHERE ended_at IS NULL DO NOTHING
        RETURNING *`,
-      [soul, nowIso(), maxTurns, budgetCap ?? null],
+      [soul, nowIso(), maxTurns, budgetCap ?? null, clientKey],
     );
     if (inserted.rows[0]) return rowToSession(inserted.rows[0]);
     const { rows } = await pool.query(
-      "SELECT * FROM sessions WHERE soul = $1 AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
-      [soul],
+      "SELECT * FROM sessions WHERE soul = $1 AND client_key = $2 AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
+      [soul, clientKey],
     );
     const existing = rows[0];
     if (existing) {
@@ -129,14 +155,33 @@ export async function recordSessionMessage(
   );
 }
 
-/** Últimos `turns` turnos (até turns*2 mensagens) da sessão, em ordem cronológica. */
-export async function getRecentSessionMessages(pool: Pool, sessionId: number, turns: number): Promise<SessionMessage[]> {
-  if (turns <= 0) return [];
+/**
+ * Últimos turnos da sessão em ordem cronológica, respeitando um orçamento.
+ *
+ * Aceita um número (só teto de turnos, compat) ou um `HistoryBudget`
+ * (`{ maxTurns, maxChars }`). Com `maxChars`, descarta as mensagens mais
+ * antigas até o conteúdo somado caber no teto — nunca corta pela metade
+ * uma mensagem, e sempre devolve pelo menos a última se ela couber.
+ */
+export async function getRecentSessionMessages(
+  pool: Pool,
+  sessionId: number,
+  budget: number | HistoryBudget,
+): Promise<SessionMessage[]> {
+  const { maxTurns, maxChars } = typeof budget === "number" ? { maxTurns: budget, maxChars: undefined } : budget;
+  if (maxTurns <= 0) return [];
   const { rows } = await pool.query<{ role: string; content: string }>(
     "SELECT role, content FROM session_messages WHERE session_id = $1 ORDER BY id DESC LIMIT $2",
-    [sessionId, turns * 2],
+    [sessionId, maxTurns * 2],
   );
-  return rows.reverse().map((r) => ({ role: r.role as SessionMessage["role"], content: r.content }));
+  const msgs = rows.reverse().map((r) => ({ role: r.role as SessionMessage["role"], content: r.content }));
+  if (!maxChars || maxChars <= 0) return msgs;
+  let total = msgs.reduce((sum, m) => sum + m.content.length, 0);
+  while (msgs.length > 1 && total > maxChars) {
+    total -= msgs[0]!.content.length;
+    msgs.shift();
+  }
+  return msgs;
 }
 
 export async function closeSession(pool: Pool, sessionId: number): Promise<void> {
@@ -183,6 +228,7 @@ function rowToSession(row: Record<string, unknown>): SessionRecord {
   return {
     id: Number(row.id),
     soul: String(row.soul),
+    clientKey: row.client_key == null ? "default" : String(row.client_key),
     startedAt: String(row.started_at),
     endedAt: row.ended_at == null ? null : String(row.ended_at),
     promptCount: Number(row.prompt_count),

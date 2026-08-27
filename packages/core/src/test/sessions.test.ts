@@ -98,6 +98,63 @@ test("recordSessionMessage + getRecentSessionMessages: ordem cronológica e limi
   }
 });
 
+test("getRecentSessionMessages: maxChars corta os turnos mais antigos primeiro, preserva o mais recente", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const s1 = await openSession(testDb.pool, "main", 10);
+    // 6 mensagens de 100 chars cada = 600 chars no total.
+    for (let i = 1; i <= 6; i++) {
+      await recordSessionMessage(testDb.pool, s1.id, "main", i % 2 ? "user" : "assistant", `${i}`.repeat(100));
+    }
+
+    // Sem teto: todas as 6.
+    assert.equal((await getRecentSessionMessages(testDb.pool, s1.id, { maxTurns: 10 })).length, 6);
+
+    // Teto de 250 chars: cabem só as 2 últimas (200 chars); a 3ª estouraria.
+    const budgeted = await getRecentSessionMessages(testDb.pool, s1.id, { maxTurns: 10, maxChars: 250 });
+    assert.equal(budgeted.length, 2);
+    assert.equal(budgeted[0]!.content, "5".repeat(100));
+    assert.equal(budgeted[1]!.content, "6".repeat(100));
+
+    // Teto menor que uma única mensagem: mantém pelo menos a última (nunca vazio se maxTurns>0).
+    const one = await getRecentSessionMessages(testDb.pool, s1.id, { maxTurns: 10, maxChars: 10 });
+    assert.equal(one.length, 1);
+    assert.equal(one[0]!.content, "6".repeat(100));
+
+    // maxChars 0 = sem corte.
+    assert.equal((await getRecentSessionMessages(testDb.pool, s1.id, { maxTurns: 10, maxChars: 0 })).length, 6);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("openSession: client_key separa sessões da mesma soul (E2)", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const web = await openSession(testDb.pool, "main", 10, undefined, "web");
+    const mobile = await openSession(testDb.pool, "main", 10, undefined, "mobile");
+    assert.notEqual(web.id, mobile.id, "clientes diferentes → sessões diferentes");
+    assert.equal(web.clientKey, "web");
+    assert.equal(mobile.clientKey, "mobile");
+
+    // Reabrir com o mesmo client_key reaproveita.
+    const web2 = await openSession(testDb.pool, "main", 10, undefined, "web");
+    assert.equal(web2.id, web.id);
+
+    // Histórico não vaza entre clientes.
+    await recordSessionMessage(testDb.pool, web.id, "main", "user", "segredo do web");
+    const mobileHist = await getRecentSessionMessages(testDb.pool, mobile.id, 10);
+    assert.equal(mobileHist.length, 0);
+
+    // Sem client_key = 'default', comportamento single-user preservado.
+    const def = await openSession(testDb.pool, "main", 10);
+    assert.equal(def.clientKey, "default");
+    assert.notEqual(def.id, web.id);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
 test("getRecentSessionMessages: isolamento entre sessões diferentes", async () => {
   const testDb = await createTestSchema();
   try {

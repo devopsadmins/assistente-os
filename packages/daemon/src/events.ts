@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   loadConfig, getPool, recordCostCall, selectRoute, getSoul,
-  claimPendingEvents, finishEvent, openSession, bumpSessionPrompt, recordExecution,
+  claimPendingEvents, finishEvent, openSession, bumpSessionPrompt, recordExecution, recordSessionMessage,
   buscarFamiliaPorTelefone, criarFamilia, contarFamiliasAtivas,
 } from "@assistente-os/core";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
@@ -101,6 +101,16 @@ export async function processPendingEvents(options: EventConsumerOptions): Promi
         status: result.code === 0 && !result.timedOut ? "ok" : "failed",
         note: `latency_ms=${Date.now() - startedAt}`,
       });
+      // Memória multi-turno: eventos também acumulam histórico na sessão da soul
+      // (mesmo padrão do chat) — sem isso um follow-up por evento não "lembra" o anterior.
+      if (result.code === 0 && !result.timedOut) {
+        try {
+          await recordSessionMessage(pool, session.id, soul.id, "user", prompt);
+          await recordSessionMessage(pool, session.id, soul.id, "assistant", result.stdout ?? "");
+        } catch {
+          /* non-fatal */
+        }
+      }
       const status = result.code === 0 && !result.timedOut ? "completed" : "failed";
       await finishEvent(pool, ev.id, status);
       onDone?.({ id: ev.id, type: ev.type, soul: ev.soul, status });

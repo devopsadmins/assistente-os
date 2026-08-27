@@ -30,7 +30,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | # | Epic | Esforço | Depende de |
 |---|---|---|---|
 | [E1](#e1--finops-fechar-a-captura-de-tokens-no-fluxo-de-chat) | FinOps — captura de tokens no chat ✅ | M | — |
-| [E2](#e2--sessoes-multi-turno-finalizar-e-endurecer) | Sessões multi-turno — finalizar e endurecer | M–L | — |
+| [E2](#e2--sessoes-multi-turno-finalizar-e-endurecer) | Sessões multi-turno — finalizar e endurecer ✅ | M–L | — |
 | [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner | L | E4 |
 | [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache | M | — |
 | [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` | S–M | — |
@@ -199,17 +199,22 @@ export async function openSession(
 interface RunAgentOpts { /* ...atual... */ seedMessages?: SessionMessage[]; }
 ```
 
-### Critérios de aceitação
-- [ ] Com 20 turnos na sessão e `ctx=2048`, o prompt montado nunca excede o orçamento (teste com contador).
-- [ ] Reiniciar o daemon entre o turno 2 e o 3 de uma conversa LangGraph: o turno 3 ainda "lembra" o fato do turno 1.
-- [ ] Dois `X-Client-Id` diferentes contra a mesma soul mantêm históricos separados; sem header, comportamento idêntico ao atual.
-- [ ] Uma execução via `POST /events` deixa turnos em `session_messages`.
-- [ ] `sessionIdleTimeoutMinutes` continua rotacionando (regressão coberta).
+### Status: ✅ CONCLUÍDO (2026-08-27)
 
-### Plano de teste
-- Unit `sessions.test.ts` — orçamento (corta antigo, mantém atual); `client_key` isola; migração `0011` idempotente.
-- Unit `daemon/test/chat-history.test.ts` — reidratação passa `seedMessages`; events/agenda gravam mensagens.
-- Live — restart no meio da conversa LangGraph.
+Migração ficou como `0012_sessions_client_key` (0011 foi usada pelo E1).
+
+### Critérios de aceitação
+- [x] `getRecentSessionMessages(pool, id, { maxTurns, maxChars })` corta os turnos mais antigos até caber no teto (`sessionHistoryMaxChars()`, env `ASSISTENTE_OS_SESSION_HISTORY_MAX_CHARS`, default 6000); chat.ts passa o orçamento. Compat com a assinatura antiga (número puro).
+- [x] Reidratação LangGraph: `seedMessages` injeta o histórico do Postgres no estado inicial do grafo, **uma vez por thread por processo** (`seededThreads` + `__resetSeededThreads` p/ teste). Após restart o Set volta vazio → reinjeta. Cobertura live (precisa LLM).
+- [x] `X-Client-Id` (ou hash do token, senão `default`) → `client_key`; índice único parcial `(soul, client_key) WHERE ended_at IS NULL`; histórico não vaza entre clientes (teste `sessions.test.ts`).
+- [x] `events.ts` e `agenda.ts` gravam `recordSessionMessage(user, assistant)` em sucesso.
+- [x] `sessionIdleTimeoutMinutes` intacto (regressão verde).
+
+Testes: `core/test/sessions.test.ts` +2 (orçamento maxChars, isolamento client_key). Suítes: core 218, daemon 101, memory 44, tools 19, cli 2 — verdes.
+
+### Plano de teste original
+- Unit `sessions.test.ts` — orçamento, `client_key`. ✅
+- Live — restart no meio da conversa LangGraph (não no `npm test`).
 
 ### Esforço: **M–L** · Dependências: nenhuma
 

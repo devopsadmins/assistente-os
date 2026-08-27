@@ -307,4 +307,17 @@ export const MIGRATIONS: Migration[] = [
         WHERE status = 'executed';
     `,
   },
+  {
+    // E2 (multi-turno): sessão passa a ser por (soul, client_key) — sem isso dois
+    // clientes/dispositivos conversando com a mesma soul compartilham histórico e
+    // contador de turnos. client_key default 'default' preserva o comportamento
+    // de instalação single-user.
+    id: "0012_sessions_client_key",
+    sql: `
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS client_key TEXT NOT NULL DEFAULT 'default';
+      DROP INDEX IF EXISTS idx_sessions_soul_open;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_soul_client_open
+        ON sessions (soul, client_key) WHERE ended_at IS NULL;
+    `,
+  },
 ];

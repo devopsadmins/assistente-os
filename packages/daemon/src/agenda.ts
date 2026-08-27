@@ -10,6 +10,7 @@ import {
   openSession,
   bumpSessionPrompt,
   recordExecution,
+  recordSessionMessage,
 } from "@assistente-os/core";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
 import { buildPrompt } from "./context.js";
@@ -74,6 +75,14 @@ export async function processDueAgenda(options: AgendaConsumerOptions): Promise<
         status: result.code === 0 && !result.timedOut ? "ok" : "failed",
         note: `latency_ms=${Date.now() - startedAt}`,
       });
+      if (result.code === 0 && !result.timedOut) {
+        try {
+          await recordSessionMessage(pool, session.id, soul.id, "user", prompt);
+          await recordSessionMessage(pool, session.id, soul.id, "assistant", result.stdout ?? "");
+        } catch {
+          /* non-fatal */
+        }
+      }
       const status = result.code === 0 && !result.timedOut ? "completed" : "failed";
       await finishAgendaItem(pool, item.id, status, status === "failed" ? "opencode retornou código != 0 ou expirou" : undefined);
       onDone?.({ id: item.id, title: item.title, soul: item.soul, status });

@@ -244,6 +244,7 @@ export async function runAgent(
   userMessage: string,
   threadId?: string,
   tools?: StructuredTool[],
+  seedMessages?: AgentStateType["messages"],
 ): Promise<AgentStateType> {
   const graph = tools && tools.length > 0
     ? buildGraphWithTools(pool, tools)
@@ -258,6 +259,7 @@ export async function runAgent(
           "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
           "Você tem acesso a um grafo de memória com entidades, relações e observações.",
       },
+      ...(seedMessages ?? []),
       { role: "user", content: userMessage },
     ],
     context: "",
@@ -285,6 +287,7 @@ export async function* runAgentStream(
   userMessage: string,
   threadId?: string,
   tools?: StructuredTool[],
+  seedMessages?: AgentStateType["messages"],
 ): AsyncGenerator<LangGraphStepEvent> {
   const graph = tools && tools.length > 0
     ? buildGraphWithTools(pool, tools)
@@ -299,6 +302,7 @@ export async function* runAgentStream(
           "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
           "Você tem acesso a um grafo de memória com entidades, relações e observações.",
       },
+      ...(seedMessages ?? []),
       { role: "user", content: userMessage },
     ],
     context: "",

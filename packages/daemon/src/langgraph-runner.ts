@@ -36,6 +36,13 @@ export interface LangGraphRunnerOptions {
   threadId?: string;
   timeoutSeconds?: number;
   useTools?: boolean;
+  /**
+   * Histórico da sessão (Postgres) para reidratar o thread. O MemorySaver do
+   * LangGraph é in-memory e não sobrevive a restart do daemon — sem reidratação,
+   * o primeiro turno pós-restart perde todo o contexto. Estas mensagens são
+   * injetadas no estado inicial UMA vez por thread por processo (ver seededThreads).
+   */
+  seedMessages?: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
 /**
@@ -145,16 +152,33 @@ export interface LangGraphStreamOptions extends LangGraphRunnerOptions {
   onStep?: (step: LangGraphStreamStep) => void | Promise<void>;
 }
 
+/**
+ * Threads já reidratados neste processo. Como o MemorySaver acumula mensagens
+ * por thread_id dentro do processo, injetar o histórico do Postgres a cada
+ * chamada duplicaria os turnos. Injetamos só na primeira vez que vemos o
+ * thread — depois de um restart o Set volta vazio e o histórico é reinjetado.
+ */
+const seededThreads = new Set<string>();
+
+/** Só para testes: esquece os threads reidratados (simula restart do daemon). */
+export function __resetSeededThreads(): void {
+  seededThreads.clear();
+}
+
 export async function runLangGraphAgentStream(
   pool: Pool,
   options: LangGraphStreamOptions,
 ): Promise<LangGraphRunnerResult> {
-  const { soul, prompt, threadId, timeoutSeconds = 300, useTools = true, onStep } = options;
+  const { soul, prompt, threadId, timeoutSeconds = 300, useTools = true, onStep, seedMessages } = options;
   const startedAt = Date.now();
   const steps: LangGraphStreamStep[] = [];
 
   try {
     const finalThreadId = threadId ?? `soul-${soul}-${Date.now()}`;
+    const seed = seedMessages && seedMessages.length > 0 && !seededThreads.has(finalThreadId)
+      ? seedMessages
+      : undefined;
+    if (seed) seededThreads.add(finalThreadId);
 
     let tools = undefined;
     if (useTools) {
@@ -168,7 +192,7 @@ export async function runLangGraphAgentStream(
 
     let finalState: AgentStateType | undefined;
 
-    for await (const event of runAgentStream(pool, soul, prompt, finalThreadId, tools)) {
+    for await (const event of runAgentStream(pool, soul, prompt, finalThreadId, tools, seed)) {
       const step: LangGraphStreamStep = {
         node: event.node,
         ts: event.ts,

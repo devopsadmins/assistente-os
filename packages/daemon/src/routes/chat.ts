@@ -13,6 +13,7 @@ import {
   recordSessionMessage,
   getRecentSessionMessages,
   sessionHistoryTurns,
+  sessionHistoryMaxChars,
   recordExecution,
   logger,
   sanitizeUserPrompt,
@@ -189,7 +190,16 @@ export async function handleChat(
         sendJson(res, 429, { error: "teto diário de gastos atingido", limit: dailyLimit, spent: spentToday });
         return true;
       }
-      const session = await openSession(pool, soul.id, maxTurns, dailyLimit);
+      // Isolamento de sessão por cliente: header X-Client-Id se enviado, senão
+      // hash do token (separa instalações), senão 'default' (single-user).
+      const clientHeader = req.headers["x-client-id"];
+      const authHeader = req.headers["authorization"];
+      const clientKey =
+        (typeof clientHeader === "string" && clientHeader.trim().slice(0, 64)) ||
+        (typeof authHeader === "string" && authHeader
+          ? "tok-" + createHash("sha256").update(authHeader).digest("hex").slice(0, 12)
+          : "default");
+      const session = await openSession(pool, soul.id, maxTurns, dailyLimit, clientKey);
       if (session.promptCount >= session.maxTurns) {
         sendJson(res, 429, { error: "limite de turnos da sessão atingido", maxTurns: session.maxTurns, prompts: session.promptCount });
         return true;
@@ -236,7 +246,10 @@ export async function handleChat(
       );
 
       // ---- Histórico da conversa (mesma sessão) — memória multi-turno ----
-      const history = await getRecentSessionMessages(pool, session.id, sessionHistoryTurns());
+      const history = await getRecentSessionMessages(pool, session.id, {
+        maxTurns: sessionHistoryTurns(),
+        maxChars: sessionHistoryMaxChars(),
+      });
 
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
       const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
@@ -334,6 +347,10 @@ export async function handleChat(
           // MemorySaver nunca reencontra o turno anterior, mesmo dentro da
           // mesma sessão. Continua in-memory (não sobrevive restart do daemon).
           threadId: `session-${session.id}`,
+          // Reidrata o thread a partir do Postgres (session_messages) — o MemorySaver
+          // é in-memory e não sobrevive a restart do daemon. seededThreads garante
+          // injeção única por processo.
+          seedMessages: history,
           useTools: langgraphMode !== "generate",
           onStep: (step: { node: string; iterationCount: number; messageCount: number; lastContent?: string; toolCalls?: any[] }) => {
             try {
