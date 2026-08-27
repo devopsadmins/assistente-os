@@ -256,6 +256,19 @@ export async function handleChat(
 
       // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
       const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
+
+      // ---- Skills por soul: registra quais foram ativadas neste turno ----
+      if (built.skills && built.skills.active.length > 0) {
+        logFullAuditEntry({
+          ts: new Date().toISOString(),
+          sessionId: String(session.id),
+          soulId: soul.id,
+          intention: "skills: ativadas",
+          toolsCalled: [],
+          params: { active: built.skills.active, available: built.skills.available },
+        });
+        emitStep("skills", `skill(s) ativada(s): ${built.skills.active.map((s) => s.name).join(", ")}`);
+      }
       {
         const verdict = built.verdict as
           | { ok: boolean; sources?: RagChunk[]; motivo?: string; injection?: RagInjectionFinding[] }

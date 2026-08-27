@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSoul, loadConfig, getSoul } from "@assistente-os/core";
 import { buildPrompt } from "../context.js";
+import { startDaemon } from "../server.js";
 import { tempDaemonHome } from "./pgTestHelper.js";
 
 async function homeWithSkill(): Promise<{ home: string; cleanup: () => Promise<void> }> {
@@ -81,6 +82,40 @@ test("buildPrompt: skill fora da allowlist não é injetada", async () => {
     assert.doesNotMatch(out.fullPrompt, /NAO-DEVE-APARECER/);
     assert.doesNotMatch(out.fullPrompt, /- nao-listada —/);
   } finally {
+    await cleanup();
+  }
+});
+
+
+test("chat: skills ativadas viram entrada no audit trail (skills: ativadas)", async () => {
+  const { home, cleanup } = await homeWithSkill();
+  const prevOllama = process.env.OLLAMA_URL;
+  const prevHome = process.env.ASSISTENTE_OS_HOME;
+  process.env.OLLAMA_URL = "http://127.0.0.1:1";
+  process.env.ASSISTENTE_OS_HOME = home; // logFullAuditEntry resolve o home por env
+  const daemon = await startDaemon({
+    port: 0,
+    home,
+    run: async () => ({ code: 0, stdout: "ok", stderr: "", timedOut: false }),
+  });
+  try {
+    const res = await fetch(`http://127.0.0.1:${daemon.port}/souls/main/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "me ajuda com a palavra-magica" }),
+    });
+    assert.equal(res.status, 200);
+
+    const dir = join(home, "souls", "main", "sessoes");
+    const audit = readdirSync(dir).map((f) => readFileSync(join(dir, f), "utf8")).join("\n");
+    assert.match(audit, /skills: ativadas/);
+    assert.match(audit, /gatilho/);
+  } finally {
+    if (prevOllama === undefined) delete process.env.OLLAMA_URL;
+    else process.env.OLLAMA_URL = prevOllama;
+    if (prevHome === undefined) delete process.env.ASSISTENTE_OS_HOME;
+    else process.env.ASSISTENTE_OS_HOME = prevHome;
+    await daemon.close();
     await cleanup();
   }
 });

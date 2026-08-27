@@ -238,6 +238,10 @@ function buildGraphWithoutTools(pool: Pool) {
  *
  * @param tools Tools LangChain disponíveis para o agente (opcional)
  */
+const AGENT_SYSTEM_BASE =
+  "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
+  "Você tem acesso a um grafo de memória com entidades, relações e observações.";
+
 export async function runAgent(
   pool: Pool,
   soul: string,
@@ -245,6 +249,7 @@ export async function runAgent(
   threadId?: string,
   tools?: StructuredTool[],
   seedMessages?: AgentStateType["messages"],
+  systemExtra?: string,
 ): Promise<AgentStateType> {
   const graph = tools && tools.length > 0
     ? buildGraphWithTools(pool, tools)
@@ -255,9 +260,7 @@ export async function runAgent(
     messages: [
       {
         role: "system",
-        content:
-          "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
-          "Você tem acesso a um grafo de memória com entidades, relações e observações.",
+        content: systemExtra ? `${AGENT_SYSTEM_BASE}\n\n${systemExtra}` : AGENT_SYSTEM_BASE,
       },
       ...(seedMessages ?? []),
       { role: "user", content: userMessage },
@@ -288,6 +291,7 @@ export async function* runAgentStream(
   threadId?: string,
   tools?: StructuredTool[],
   seedMessages?: AgentStateType["messages"],
+  systemExtra?: string,
 ): AsyncGenerator<LangGraphStepEvent> {
   const graph = tools && tools.length > 0
     ? buildGraphWithTools(pool, tools)
@@ -298,9 +302,7 @@ export async function* runAgentStream(
     messages: [
       {
         role: "system",
-        content:
-          "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
-          "Você tem acesso a um grafo de memória com entidades, relações e observações.",
+        content: systemExtra ? `${AGENT_SYSTEM_BASE}\n\n${systemExtra}` : AGENT_SYSTEM_BASE,
       },
       ...(seedMessages ?? []),
       { role: "user", content: userMessage },

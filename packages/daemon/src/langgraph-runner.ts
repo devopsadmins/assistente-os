@@ -8,9 +8,9 @@
  * Suporta tool-calling via tools LangChain.
  */
 import type { Pool } from "@assistente-os/core";
-import { runAgent, runAgentStream, type AgentStateType, type LangGraphStepEvent } from "@assistente-os/memory";
+import { runAgent, runAgentStream, getEmbedder, type AgentStateType, type LangGraphStepEvent } from "@assistente-os/memory";
 import { createAgentTools } from "./langgraph-tools.js";
-import { loadConfig } from "@assistente-os/core";
+import { loadConfig, getSoul, listSkills, matchSkills, renderSkillsPrompt, skillsEnabled, resolveAllowedTools, isToolAllowed } from "@assistente-os/core";
 import { join } from "node:path";
 
 export interface LangGraphToolCallSummary {
@@ -180,19 +180,38 @@ export async function runLangGraphAgentStream(
       : undefined;
     if (seed) seededThreads.add(finalThreadId);
 
+    const runnerConfig = loadConfig({});
     let tools = undefined;
     if (useTools) {
-      const config = loadConfig({});
       tools = createAgentTools({
-        home: config.home,
+        home: runnerConfig.home,
         pool,
         soulId: soul,
       });
     }
 
+    // Skills por soul: mesmo matcher do buildPrompt, injetado no system message do agente.
+    let systemExtra: string | undefined;
+    if (skillsEnabled()) {
+      const soulObj = getSoul(runnerConfig.home, soul);
+      if (soulObj) {
+        const all = listSkills(runnerConfig.home, soulObj);
+        if (all.length > 0) {
+          const embedder = getEmbedder();
+          const embed = async (texts: string[]): Promise<number[][]> => {
+            const vs = await Promise.all(texts.map((t) => embedder.embed(t)));
+            return vs.map((v) => v ?? []);
+          };
+          const active = await matchSkills(prompt, all, { embed }).catch(() => []);
+          const allowed = resolveAllowedTools(soulObj.config.agent);
+          systemExtra = renderSkillsPrompt(all, active, (t) => isToolAllowed(allowed, t)) || undefined;
+        }
+      }
+    }
+
     let finalState: AgentStateType | undefined;
 
-    for await (const event of runAgentStream(pool, soul, prompt, finalThreadId, tools, seed)) {
+    for await (const event of runAgentStream(pool, soul, prompt, finalThreadId, tools, seed, systemExtra)) {
       const step: LangGraphStreamStep = {
         node: event.node,
         ts: event.ts,
