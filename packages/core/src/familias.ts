@@ -16,6 +16,8 @@ export interface Familia {
   baseLegal: string;
   baseLegalSensivel: string;
   finalidade: string;
+  /** Referência à evidência de consentimento dos responsáveis (fora do banco). Obrigatória para status='ativo'. */
+  consentEvidenceRef: string | null;
   encerradoEm: string | null;
   retencaoAte: string | null;
   createdAt: string;
@@ -102,11 +104,36 @@ export async function atualizarAnamnese(
   }
 }
 
-/** Marca família como ativa. */
-export async function ativarFamilia(pool: Pool, id: number): Promise<void> {
+export class ConsentEvidenceRequiredError extends Error {
+  code = "E_CONSENT_MISSING" as const;
+  constructor() {
+    super("evidência de consentimento dos responsáveis é obrigatória para ativar a família (ADR-PRIV-001 §7)");
+    this.name = "ConsentEvidenceRequiredError";
+  }
+}
+
+/**
+ * Marca a família como ativa. Exige `consentEvidenceRef` — referência à evidência
+ * de consentimento dos responsáveis capturada fora do banco (ex.: id da mensagem
+ * WhatsApp + timestamp + responsável). Sem ela, lança `ConsentEvidenceRequiredError`
+ * e o status **não** avança (gate LGPD, ADR-PRIV-001 §7).
+ */
+export async function ativarFamilia(pool: Pool, id: number, consentEvidenceRef: string): Promise<void> {
+  const ref = (consentEvidenceRef ?? "").trim();
+  if (!ref) throw new ConsentEvidenceRequiredError();
   await pool.query(
-    `UPDATE familias SET status = 'ativo', updated_at = $1 WHERE id = $2`,
-    [nowIso(), id],
+    `UPDATE familias SET status = 'ativo', consent_evidence_ref = $1, updated_at = $2 WHERE id = $3`,
+    [ref, nowIso(), id],
+  );
+}
+
+/** Registra/atualiza a referência de consentimento sem alterar o status. */
+export async function registrarConsentimento(pool: Pool, id: number, consentEvidenceRef: string): Promise<void> {
+  const ref = (consentEvidenceRef ?? "").trim();
+  if (!ref) throw new ConsentEvidenceRequiredError();
+  await pool.query(
+    `UPDATE familias SET consent_evidence_ref = $1, updated_at = $2 WHERE id = $3`,
+    [ref, nowIso(), id],
   );
 }
 
@@ -254,6 +281,7 @@ interface FamiliaRow {
   base_legal: string;
   base_legal_sensivel: string;
   finalidade: string;
+  consent_evidence_ref: string | null;
   encerrado_em: string | null;
   retencao_ate: string | null;
   created_at: string;
@@ -283,6 +311,7 @@ function rowToFamilia(row: FamiliaRow): Familia {
     baseLegal: String(row.base_legal),
     baseLegalSensivel: String(row.base_legal_sensivel),
     finalidade: String(row.finalidade),
+    consentEvidenceRef: row.consent_evidence_ref ? String(row.consent_evidence_ref) : null,
     encerradoEm: row.encerrado_em ? String(row.encerrado_em) : null,
     retencaoAte: row.retencao_ate ? String(row.retencao_ate) : null,
     createdAt: String(row.created_at),

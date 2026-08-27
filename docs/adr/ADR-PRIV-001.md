@@ -81,3 +81,18 @@ Adotar **dupla pista de base legal**, finalidade única e retenção configuráv
 | P3 | Política de backups coerente com pedidos de eliminação (rotação/repurga) | owner técnico | 30 dias |
 | P4 | Substituir derivação `soul_id ← telefone` por identificador opaco (minimização) | owner técnico | roadmap — próxima janela de refactor |
 | P5 | ADR formal de classificação de perfil (AI-4 sinalizada por processamento de voz em runtime — `packages/voice/src/pipeline.ts`) | owner técnico + owner de risco | próximo passo do fluxo de adoção |
+
+## 8. Progresso de implementação (E9 — 2026-08-27)
+
+Trabalho técnico das pendências do §7 (a **assinatura/aceitação** do ADR e os
+itens organizacionais seguem com os owners):
+
+| Item | Estado | Evidência |
+|---|---|---|
+| **P2** — evidência de consentimento no onboarding | ✅ **Implementado** | Migration `0013_familias_consent_evidence` (coluna `consent_evidence_ref`). `ativarFamilia(pool, id, consentEvidenceRef)` lança `ConsentEvidenceRequiredError` e **não** avança o status sem a referência; `registrarConsentimento()` atualiza sem mexer no status. Teste: `familias.test.ts` ("ativar exige evidência de consentimento"). |
+| **P3** — backups coerentes com eliminação | ✅ **Documentado + limitado** | `pruneOldBackups(dir, BACKUP_RETENTION_DAYS=7)` já roda no `os backup`. **Invariante:** um registro eliminado pelo sweep sobrevive em dumps por no máximo `BACKUP_RETENTION_DAYS` — janela limitada e conhecida. Procedimento para pedido de eliminação explícito (art. 18): (1) rodar o sweep/`excluirFamilia`; (2) rodar `os backup` (que faz o prune) ou apagar manualmente os dumps anteriores ao pedido; (3) qualquer restauração de dump anterior **exige re-rodar o sweep de retenção** antes de voltar ao ar. `BACKUP_RETENTION_DAYS` deve permanecer ≤ SLA de eliminação acordado com o DPO. |
+| P1 — prazo de prontuário (CFP) | ⏳ organizacional | Responsável clínico; ajustar `FAMILIAS_RETENCAO_DIAS` se necessário. |
+| P4 — `soul_id` opaco | ⏳ roadmap | Próxima janela de refactor. |
+| P5 — ADR formal do perfil AI-4 | ⏳ pendente | Não coberto por ADR-AI-004 (que é sobre LangGraph). Precisa de ADR dedicado (AIIA/RIPD/ROPA/retention schedule) — `docs/AI-INVENTORY.md` sistema #6 registra a classificação AI-4 provisória. |
+
+Status do ADR permanece **Proposta** até a assinatura do owner de risco/responsável clínico.

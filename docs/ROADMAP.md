@@ -37,7 +37,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana ✅ | M–L | — |
 | [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token 📄 | S | — |
 | [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção ✅ | L | E1 |
-| [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 | M | — |
+| [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 ✅ | M | — |
 | [E10](#e10--rag-estagio-de-reranking) | RAG — estágio de reranking | M | — |
 
 ---
@@ -671,12 +671,27 @@ Levar o ADR-PRIV-001 (domínio de famílias, dados sensíveis de saúde) de
 - `packages/cli/src/index.ts` — `os familias purge-backups` (ou doc).
 - `docs/adr/ADR-PRIV-001.md`, `docs/adr/ADR-AI-004.md`, `docs/DEPLOY.md`.
 
+### Status: ✅ TÉCNICO CONCLUÍDO (2026-08-27) — assinatura do ADR e itens org. seguem com os owners
+
+- Migration `0013_familias_consent_evidence` + `ativarFamilia(pool, id, consentEvidenceRef)`
+  que lança `ConsentEvidenceRequiredError` e **não** avança o status sem a referência;
+  `registrarConsentimento()`. `Familia.consentEvidenceRef`.
+- Rotação de backup vs. eliminação: `pruneOldBackups` já existe; **invariante documentada**
+  em ADR-PRIV-001 §8 (registro eliminado sobrevive ≤ `BACKUP_RETENTION_DAYS=7` em dumps;
+  procedimento de 3 passos para pedido de eliminação explícito; restauração de dump antigo
+  exige re-rodar o sweep).
+- ADR-PRIV-001 §8 (progresso de implementação) adicionado; P2 ✅, P3 ✅, P1/P4/P5 ⏳ (org/roadmap).
+- **P5** (ADR AI-4 de famílias): ADR-AI-004 é sobre LangGraph, **não** cobre — segue pendente
+  (ADR dedicado com AIIA/RIPD/ROPA); classificação AI-4 provisória registrada em `docs/AI-INVENTORY.md` #6.
+
 ### Critérios de aceitação
-- [ ] Onboarding sem `consent_evidence_ref` não ativa a família (teste).
-- [ ] Sweep de eliminação + rotação de backup documentado e com comando/rotina; teste de que o manifesto de backup registra a data.
-- [ ] ADR-AI-004 cobre explicitamente o perfil AI-4 de famílias (AIIA/RIPD/ROPA/retention).
-- [ ] P1 registrado como issue com owner e prazo.
-- [ ] `docs/adr/ADR-PRIV-001.md` com Status atualizado e riscos §6 endereçados.
+- [x] Onboarding sem `consent_evidence_ref` não ativa a família (teste `familias.test.ts`).
+- [x] Rotação de backup vs. eliminação documentada com procedimento (ADR §8); `pruneOldBackups` existente.
+- [ ] ADR AI-4 dedicado de famílias — **pendente** (ADR-AI-004 não cobre; ação org.).
+- [ ] P1 (prazo CFP) — organizacional, registrado no ADR §8 com owner.
+- [x] `docs/adr/ADR-PRIV-001.md` §8 com progresso; riscos §5/§6 endereçados no texto.
+
+Testes: `familias.test.ts` +1. Suítes: core 222, daemon 119 — verdes.
 
 ### Esforço: **M** · Dependências: nenhuma técnica (parte é organizacional/assinatura)
 

@@ -39,6 +39,7 @@ const MOCK_FAMILIA: Familia = {
   baseLegal: "consentimento",
   baseLegalSensivel: "consentimento explícito (dados de criança)",
   finalidade: "acompanhamento pedagógico",
+  consentEvidenceRef: "wa-msg-abc123 / 2026-08-27 / responsável: mãe",
   encerradoEm: null,
   retencaoAte: null,
   createdAt: "2026-01-01T00:00:00.000Z",

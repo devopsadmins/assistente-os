@@ -6,6 +6,10 @@ import { join } from "node:path";
 import {
   criarFamilia,
   buscarFamiliaPorSoulId,
+  buscarFamiliaPorId,
+  ativarFamilia,
+  registrarConsentimento,
+  ConsentEvidenceRequiredError,
   encerrarFamilia,
   excluirFamilia,
   listarFamiliasVencidas,
@@ -46,6 +50,31 @@ test("familias: criação aplica defaults de privacidade (base legal, finalidade
     assert.equal(f.encerradoEm, null);
     assert.equal(f.retencaoAte, null);
     assert.equal(f.status, "pendente");
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("familias: ativar exige evidência de consentimento (E9 / ADR-PRIV-001 §7)", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const f = await criarFamilia(testDb.pool, "5511777777777", "Família Consent");
+    assert.equal(f.consentEvidenceRef, null);
+
+    await assert.rejects(() => ativarFamilia(testDb.pool, f.id, "  "), ConsentEvidenceRequiredError);
+    const aindaPendente = await buscarFamiliaPorId(testDb.pool, f.id);
+    assert.equal(aindaPendente!.status, "pendente", "sem evidência o status NÃO avança");
+
+    await ativarFamilia(testDb.pool, f.id, "wa-msg-9f2a / 2026-08-27T12:00Z / responsável: pai");
+    const ativa = await buscarFamiliaPorId(testDb.pool, f.id);
+    assert.equal(ativa!.status, "ativo");
+    assert.match(ativa!.consentEvidenceRef ?? "", /wa-msg-9f2a/);
+
+    // registrarConsentimento atualiza a referência sem mexer no status
+    await registrarConsentimento(testDb.pool, f.id, "wa-msg-NOVA");
+    const atualizada = await buscarFamiliaPorId(testDb.pool, f.id);
+    assert.equal(atualizada!.consentEvidenceRef, "wa-msg-NOVA");
+    assert.equal(atualizada!.status, "ativo");
   } finally {
     await testDb.cleanup();
   }

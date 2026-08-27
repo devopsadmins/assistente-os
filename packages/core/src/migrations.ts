@@ -320,4 +320,14 @@ export const MIGRATIONS: Migration[] = [
         ON sessions (soul, client_key) WHERE ended_at IS NULL;
     `,
   },
+  {
+    // E9 (LGPD / ADR-PRIV-001 §7): evidência de consentimento dos responsáveis
+    // (capturada fora do banco — canal WhatsApp) referenciada aqui. Uma família
+    // não avança para 'ativo' sem essa referência (ver ativarFamilia).
+    id: "0013_familias_consent_evidence",
+    sql: `
+      ALTER TABLE familias ADD COLUMN IF NOT EXISTS consent_evidence_ref TEXT;
+      COMMENT ON COLUMN familias.consent_evidence_ref IS 'Referência à evidência de consentimento dos responsáveis (id/timestamp da mensagem ou mídia WhatsApp, responsável). Obrigatória para status = ativo — ADR-PRIV-001 §7.';
+    `,
+  },
 ];
