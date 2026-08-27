@@ -317,7 +317,10 @@ export async function matchSkills(
       try {
         const dv = await descEmbedding(skill.description, opts.embed);
         if (dv.length) {
-          score = 0.5 * lex + 0.5 * cosine(promptVec, dv);
+          // Modelos estilo e5 dão cosine alto (~0.5+) mesmo para textos sem
+          // relação — subtrai a baseline: cos 0.5 → 0, cos 1.0 → 1.
+          const embAdj = Math.max(0, (cosine(promptVec, dv) - 0.5) / 0.5);
+          score = 0.5 * lex + 0.5 * embAdj;
           usedEmbedding = true;
         }
       } catch {

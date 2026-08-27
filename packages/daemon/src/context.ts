@@ -1,7 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { todayISODate, getPool, listActiveGoldenRules, CONCISE_OUTPUT_DIRECTIVE, type AssistenteOsConfig, type Soul } from "@assistente-os/core";
-import { retrieveContext } from "@assistente-os/memory";
+import {
+  todayISODate,
+  getPool,
+  listActiveGoldenRules,
+  CONCISE_OUTPUT_DIRECTIVE,
+  listSkills,
+  matchSkills,
+  renderSkillsPrompt,
+  skillsEnabled,
+  resolveAllowedTools,
+  isToolAllowed,
+  type AssistenteOsConfig,
+  type Soul,
+} from "@assistente-os/core";
+import { retrieveContext, getEmbedder } from "@assistente-os/memory";
 
 export interface BuiltPromptFile {
   path: string;
@@ -15,6 +28,8 @@ export interface BuiltPrompt {
   files: BuiltPromptFile[];
   verdict: unknown;
   contextChars: number;
+  /** Skills da allowlist e as que casaram o prompt (undefined quando SKILLS_ENABLED=0 ou allowlist vazia). */
+  skills?: { available: string[]; active: Array<{ name: string; score: number; usedEmbedding: boolean }> };
 }
 
 /**
@@ -54,6 +69,27 @@ ${licoes ? `--- Lições aprendidas ---\n${licoes}\n` : ""}
 ${sessao ? `--- Sessão atual (${today}) ---\n${sessao}\n` : ""}`.trim();
   }
 
+  // ── Skills por soul: índice sempre + corpo das relevantes ──
+  let skillsCtx = "";
+  let skillsMeta: BuiltPrompt["skills"];
+  if (skillsEnabled()) {
+    const all = listSkills(home, soul);
+    if (all.length > 0) {
+      const embedder = getEmbedder();
+      const embed = async (texts: string[]): Promise<number[][]> => {
+        const vs = await Promise.all(texts.map((t) => embedder.embed(t)));
+        return vs.map((v) => v ?? []);
+      };
+      const active = await matchSkills(prompt, all, { embed }).catch(() => []);
+      const allowed = resolveAllowedTools(soul.config.agent);
+      skillsCtx = renderSkillsPrompt(all, active, (t) => isToolAllowed(allowed, t));
+      skillsMeta = {
+        available: all.map((s) => s.name),
+        active: active.map((m) => ({ name: m.skill.name, score: m.score, usedEmbedding: m.usedEmbedding })),
+      };
+    }
+  }
+
   let ragCtx = "";
   let verdict: unknown = null;
   if (withRag && prompt.trim()) {
@@ -90,10 +126,10 @@ ${activeRules.map((r) => `- **${r.topic}:** ${r.ruleText}`).join("\n")}`;
 
   // Diretriz FinOps (output conciso) sempre presente, incondicional, como
   // primeiro item — sem flag de configuração, vale pra todas as souls.
-  const prefixParts = [CONCISE_OUTPUT_DIRECTIVE, rulesCtx, almaCtx, ragCtx, historyCtx].filter(Boolean);
+  const prefixParts = [CONCISE_OUTPUT_DIRECTIVE, rulesCtx, almaCtx, skillsCtx, ragCtx, historyCtx].filter(Boolean);
   const fullPrompt = prefixParts.length > 1
     ? `${prefixParts.join("\n\n")}\n\n--- Instrução do usuário ---\n${prompt}`
     : `${prefixParts.join("\n\n")}\n\n${prompt}`;
 
-  return { almaCtx, ragCtx, fullPrompt, files, verdict, contextChars: fullPrompt.length };
+  return { almaCtx, ragCtx, fullPrompt, files, verdict, contextChars: fullPrompt.length, skills: skillsMeta };
 }
