@@ -103,6 +103,15 @@ function buildGenerateNode(tools?: StructuredTool[]) {
       ? response.content
       : JSON.stringify(response.content);
 
+    // E1/FinOps: uso real desta chamada ao LLM, quando o provider devolve
+    // usage_metadata (ChatOpenAI-compatible). O reducer de `usage` no
+    // AgentState soma os deltas de todas as passagens pelo nó generate.
+    const um = (response as { usage_metadata?: { input_tokens?: number; output_tokens?: number } }).usage_metadata;
+    const usage = {
+      inputTokens: typeof um?.input_tokens === "number" ? um.input_tokens : 0,
+      outputTokens: typeof um?.output_tokens === "number" ? um.output_tokens : 0,
+    };
+
     if (toolCalls.length > 0) {
       const assistantMessage = {
         role: "assistant" as const,
@@ -116,12 +125,14 @@ function buildGenerateNode(tools?: StructuredTool[]) {
       return {
         messages: [assistantMessage],
         iterationCount: state.iterationCount + 1,
+        usage,
       };
     }
 
     return {
       messages: [{ role: "assistant", content }],
       iterationCount: state.iterationCount + 1,
+      usage,
     };
   };
 }
@@ -254,6 +265,7 @@ export async function runAgent(
     entities: undefined,
     relations: undefined,
     iterationCount: 0,
+    usage: { inputTokens: 0, outputTokens: 0 },
     maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
   };
 
@@ -294,6 +306,7 @@ export async function* runAgentStream(
     entities: undefined,
     relations: undefined,
     iterationCount: 0,
+    usage: { inputTokens: 0, outputTokens: 0 },
     maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
   };
 

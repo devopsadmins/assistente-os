@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { startDaemon } from "../server.js";
 import { encodeTextFrame } from "../server.js";
 import { runOpenCode } from "../runner.js";
-import { createSoul, recentCalls, signRequest, loadConfig, getPool, CONCISE_OUTPUT_DIRECTIVE } from "@assistente-os/core";
+import { createSoul, recentCalls, signRequest, loadConfig, getPool, getUsageSummary, CONCISE_OUTPUT_DIRECTIVE } from "@assistente-os/core";
 import { tempDaemonHome } from "./pgTestHelper.js";
 
 async function tempHome(): Promise<{ home: string; cleanup: () => Promise<void> }> {
@@ -264,6 +264,47 @@ test("daemon: chat cai para o próximo degrau quando o Ollama local não respond
     assert.equal(body.ok, true);
     assert.equal(body.stdout, "resposta via fallback");
     assert.equal(body.tier, "zen");
+  } finally {
+    if (prevUrl === undefined) delete process.env.OLLAMA_URL;
+    else process.env.OLLAMA_URL = prevUrl;
+    await daemon.close();
+    await cleanup();
+  }
+});
+
+test("daemon: chat registra tokens em router_history (E1/FinOps) e getUsageSummary reflete", async () => {
+  const { home, cleanup } = await tempHome();
+  const prevUrl = process.env.OLLAMA_URL;
+  process.env.OLLAMA_URL = "http://127.0.0.1:1"; // força fallback pro tier 'zen' (opencode) — caminho de estimativa
+  const daemon = await startDaemon({
+    port: 0,
+    home,
+    run: async () => ({ code: 0, stdout: "resposta com algumas palavras para estimar tokens", stderr: "", timedOut: false }),
+  });
+  try {
+    const res = await fetch(`http://127.0.0.1:${daemon.port}/souls/main/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "explique o projeto em detalhes" }),
+    });
+    assert.equal(res.status, 200);
+
+    const config = await loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+
+    const executed = await pool.query(
+      "SELECT prompt_tokens, completion_tokens, total_tokens, execution_mode, model_used FROM router_history WHERE soul = 'main' AND status = 'executed'",
+    );
+    assert.equal(executed.rowCount, 1, "exatamente uma linha 'executed' por turno de chat");
+    const row = executed.rows[0];
+    assert.ok(Number(row.total_tokens) > 0, "total_tokens > 0");
+    assert.equal(Number(row.total_tokens), Number(row.prompt_tokens) + Number(row.completion_tokens));
+    assert.ok(row.execution_mode, "execution_mode preenchido");
+    assert.ok(row.model_used, "model_used preenchido");
+
+    const [summary] = await getUsageSummary(pool, { soul: "main" });
+    assert.ok(summary, "getUsageSummary retorna linha para 'main'");
+    assert.ok(Number(summary.total_tokens) > 0, "getUsageSummary.total_tokens > 0");
   } finally {
     if (prevUrl === undefined) delete process.env.OLLAMA_URL;
     else process.env.OLLAMA_URL = prevUrl;

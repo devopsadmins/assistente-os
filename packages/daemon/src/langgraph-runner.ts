@@ -26,6 +26,8 @@ export interface LangGraphRunnerResult {
   timedOut: boolean;
   state?: AgentStateType;
   toolCalls?: LangGraphToolCallSummary[];
+  /** E1/FinOps: soma dos tokens de todas as chamadas ao LLM no grafo (0 se o provider não expôs usage_metadata). */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface LangGraphRunnerOptions {
@@ -92,6 +94,7 @@ export async function runLangGraphAgent(
       timedOut: false,
       state,
       toolCalls: toolCalls.length ? toolCalls : undefined,
+      usage: state.usage,
     };
   } catch (err) {
     const elapsed = Date.now() - startedAt;
@@ -211,6 +214,7 @@ export async function runLangGraphAgentStream(
       timedOut: false,
       state: finalState,
       toolCalls: toolCalls.length ? toolCalls : undefined,
+      usage: finalState.usage,
     };
   } catch (err) {
     const elapsed = Date.now() - startedAt;

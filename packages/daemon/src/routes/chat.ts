@@ -20,6 +20,7 @@ import {
   resolveTarget,
   recordRouterSelection,
   logFullAuditEntry,
+  estimateTokens,
 } from "@assistente-os/core";
 import type { RagChunk } from "@assistente-os/memory";
 import { buildPrompt } from "../context.js";
@@ -33,11 +34,17 @@ import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from 
  * modelo local em CPU pode exceder só no prompt eval. Aqui o único limite é o
  * timeoutMs do chamador (o timeoutSeconds da requisição de chat).
  */
+interface ExecUsage {
+  promptTokens: number;
+  completionTokens: number;
+  source: "provider" | "estimate";
+}
+
 function ollamaChat(
   baseUrl: string,
   payload: unknown,
   timeoutMs: number,
-): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean }> {
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }> {
   return new Promise((resolvePromise) => {
     let url: URL;
     try {
@@ -66,8 +73,20 @@ function ollamaChat(
             return;
           }
           try {
-            const parsed = JSON.parse(data) as { message?: { content?: string } };
-            resolvePromise({ code: 0, stdout: parsed.message?.content || "(sem resposta)", stderr: "", timedOut: false });
+            const parsed = JSON.parse(data) as {
+              message?: { content?: string };
+              prompt_eval_count?: number;
+              eval_count?: number;
+            };
+            const usage: ExecUsage | undefined =
+              typeof parsed.prompt_eval_count === "number" || typeof parsed.eval_count === "number"
+                ? {
+                    promptTokens: parsed.prompt_eval_count ?? 0,
+                    completionTokens: parsed.eval_count ?? 0,
+                    source: "provider",
+                  }
+                : undefined;
+            resolvePromise({ code: 0, stdout: parsed.message?.content || "(sem resposta)", stderr: "", timedOut: false, usage });
           } catch {
             resolvePromise({ code: 1, stdout: "", stderr: `resposta inválida do Ollama: ${data.slice(0, 200)}`, timedOut: false });
           }
@@ -274,6 +293,9 @@ export async function handleChat(
       );
       const startedAt = Date.now();
       let result: { code: number; stdout: string; stderr: string; timedOut: boolean; toolCalls?: Array<{ name: string; args: Record<string, unknown>; result: string }> };
+      // E1/FinOps: uso de tokens da execução vencedora. Preenchido por cada branch
+      // quando o provider expõe a contagem; senão fica undefined e cai no estimate.
+      let execUsage: ExecUsage | undefined;
       if (decision.target.provider === "ollama") {
         let baseUrl = config.ollamaUrl;
         if (baseUrl.includes("host.docker.internal")) {
@@ -287,7 +309,7 @@ export async function handleChat(
         // não entende esse prefixo (nem "openai/"), só o nome puro do model.
         const ollamaModel = (requestedModel ?? decision.target.model).replace(/^(ollama|openai)\//, "");
         emitStep("ollama", `chamando Ollama (${ollamaModel}), timeout ${timeoutSeconds}s`);
-        result = await ollamaChat(
+        const oll = await ollamaChat(
           baseUrl,
           {
             model: ollamaModel,
@@ -299,9 +321,11 @@ export async function handleChat(
           },
           timeoutSeconds * 1000,
         );
+        result = oll;
+        execUsage = oll.usage;
       } else if (decision.target.provider === "langgraph") {
         emitStep("langgraph", `iniciando execução LangGraph (modo ${langgraphMode ?? "tools"})`);
-        result = await runLangGraphAgentStream(pool, {
+        const lg = await runLangGraphAgentStream(pool, {
           soul: soul.id,
           prompt: promptSanitized.sanitized,
           timeoutSeconds,
@@ -327,6 +351,11 @@ export async function handleChat(
             }
           },
         });
+        result = lg;
+        // usage_metadata só vem quando o provider LLM devolve — senão fica p/ estimate.
+        if (lg.usage && (lg.usage.inputTokens > 0 || lg.usage.outputTokens > 0)) {
+          execUsage = { promptTokens: lg.usage.inputTokens, completionTokens: lg.usage.outputTokens, source: "provider" };
+        }
       } else {
         emitStep("opencode", `executando via opencode (${model})`);
         const env = { ...(process.env as Record<string, string>) };
@@ -339,24 +368,35 @@ export async function handleChat(
           env,
         });
       }
+      const succeeded = result.code === 0 && !result.timedOut;
       emitStep(
         decision.target.provider,
-        result.code === 0 && !result.timedOut
+        succeeded
           ? `execução concluída em ${Date.now() - startedAt}ms`
           : result.timedOut
             ? `timeout após ${Date.now() - startedAt}ms`
             : `erro na execução (código ${result.code})`,
-        result.code === 0 && !result.timedOut ? undefined : "err",
+        succeeded ? undefined : "err",
       );
+
+      // E1/FinOps: uso real do provider quando disponível; senão heurística chars/4
+      // sobre o prompt montado + a resposta, marcada como estimativa.
+      const finalUsage: ExecUsage = execUsage ?? {
+        promptTokens: estimateTokens(built.fullPrompt),
+        completionTokens: estimateTokens(result.stdout),
+        source: "estimate",
+      };
+      const totalTokens = finalUsage.promptTokens + finalUsage.completionTokens;
+
       await recordCostCall(pool, {
         soul: soul.id,
         provider: decision.target.provider,
         model,
-        inputTokens: 0,
-        outputTokens: 0,
+        inputTokens: succeeded ? finalUsage.promptTokens : 0,
+        outputTokens: succeeded ? finalUsage.completionTokens : 0,
         cost: 0,
-        status: result.code === 0 && !result.timedOut ? "ok" : "failed",
-        note: `tier=${tier}; latency_ms=${Date.now() - startedAt}`,
+        status: succeeded ? "ok" : "failed",
+        note: `tier=${tier}; latency_ms=${Date.now() - startedAt}; tokens=${finalUsage.source}`,
       });
       await recordExecution(pool, {
         sessionId: session.id,
@@ -366,12 +406,30 @@ export async function handleChat(
         model,
         tier: tier,
         filesLoaded: built.files.filter((f) => f.chars > 0).length,
+        tokensIn: succeeded ? finalUsage.promptTokens : 0,
+        tokensOut: succeeded ? finalUsage.completionTokens : 0,
         contextChars: built.contextChars,
         verdict: built.verdict == null ? undefined : JSON.stringify(built.verdict),
-        status: result.code === 0 && !result.timedOut ? "ok" : "failed",
+        status: succeeded ? "ok" : "failed",
         note: `latency_ms=${Date.now() - startedAt}`,
       });
-      emitStep("persistencia", "custo e execução registrados");
+      // Linha canônica de execução real no router_history (a que getUsageSummary conta).
+      // Só em sucesso — falha/timeout deixa apenas as linhas de sonda de route().
+      if (succeeded) {
+        await recordRouterSelection(pool, {
+          soul,
+          target: decision.target,
+          reason: `chat ${tier} (modo ${orchDecision.mode})`,
+          status: "executed",
+          promptTokens: finalUsage.promptTokens,
+          completionTokens: finalUsage.completionTokens,
+          totalTokens,
+          modelUsed: model,
+          executionMode: orchDecision.mode,
+          tokenSource: finalUsage.source,
+        });
+      }
+      emitStep("persistencia", `custo e execução registrados (${totalTokens} tokens, ${finalUsage.source})`);
       // evento WS de conclusão (fire-and-forget; não bloqueia a resposta)
       try {
         hub.broadcast({ type: "chat.done", soul: soul.id, code: result.code, timedOut: result.timedOut, tier: tier });

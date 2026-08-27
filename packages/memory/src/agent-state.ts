@@ -55,6 +55,19 @@ export const AgentState = Annotation.Root({
     default: () => 0,
   }),
 
+  /**
+   * Uso de tokens acumulado ao longo do grafo (E1/FinOps). Reducer soma os
+   * deltas de cada passagem pelo nó `generate`, para o runner reportar o
+   * total real da execução (não só da última chamada ao LLM).
+   */
+  usage: Annotation<{ inputTokens: number; outputTokens: number }>({
+    reducer: (prev, next) => ({
+      inputTokens: prev.inputTokens + next.inputTokens,
+      outputTokens: prev.outputTokens + next.outputTokens,
+    }),
+    default: () => ({ inputTokens: 0, outputTokens: 0 }),
+  }),
+
   maxIterations: Annotation<number>({
     reducer: (_prev, next) => next,
     default: () => Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
@@ -79,6 +92,7 @@ export function createInitialState(soul: string): AgentStateType {
     entities: undefined,
     relations: undefined,
     iterationCount: 0,
+    usage: { inputTokens: 0, outputTokens: 0 },
     maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
   };
 }

@@ -29,7 +29,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 
 | # | Epic | Esforço | Depende de |
 |---|---|---|---|
-| [E1](#e1--finops-fechar-a-captura-de-tokens-no-fluxo-de-chat) | FinOps — captura de tokens no chat | M | — |
+| [E1](#e1--finops-fechar-a-captura-de-tokens-no-fluxo-de-chat) | FinOps — captura de tokens no chat ✅ | M | — |
 | [E2](#e2--sessoes-multi-turno-finalizar-e-endurecer) | Sessões multi-turno — finalizar e endurecer | M–L | — |
 | [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner | L | E4 |
 | [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache | M | — |
@@ -109,14 +109,25 @@ export async function finalizeRouterSelection(pool: Pool, selectionId: number, p
 export function estimateTokens(text: string): number; // Math.ceil(text.length / 4)
 ```
 
+### Status: ✅ CONCLUÍDO (2026-08-27)
+
+Implementação divergiu do design em um ponto: em vez de `finalizeRouterSelection`
+(UPDATE da linha de sonda), grava-se uma linha nova `status='executed'` pós-inferência
+e `getUsageSummary` passou a filtrar `status='executed'` — as linhas de sonda de
+`route()`/`selectRoute()` (`status ok/fail`) ficam só para diagnóstico. Mais simples e
+não mexe na assinatura de `route()` (vários callers: agenda, events, orchestrator).
+
 ### Critérios de aceitação
-- [ ] Um chat no tier `local` grava `prompt_tokens`/`completion_tokens` > 0 em `router_history` (valores do Ollama).
-- [ ] Um chat no tier `langgraph` grava a soma dos tokens das chamadas do grafo.
-- [ ] Um chat no tier `soul` (opencode) grava tokens (reais se disponíveis, senão estimados) e marca `token_source='estimate'` no `note`/coluna.
-- [ ] `GET /api/costs/usage?soul=<id>` retorna `total_tokens` > 0 após um chat.
-- [ ] `execution_mode` preenchido (`fast`/`pro`) em toda linha nova.
-- [ ] Exatamente **uma** linha em `router_history` por turno de chat bem-sucedido (UPDATE, não INSERT extra).
-- [ ] Falha/timeout **não** grava tokens (mantém comportamento atual de `status='failed'`).
+- [x] Chat no tier `local` grava `prompt_tokens`/`completion_tokens` > 0 do Ollama (`prompt_eval_count`/`eval_count`), `tokenSource=provider`.
+- [x] Chat no tier `langgraph` acumula `usage_metadata` de cada nó `generate` (reducer `usage` no `AgentState`); cai para estimativa se o provider não expõe metadata.
+- [x] Chat no tier `soul` (opencode) grava tokens estimados (`estimateTokens(prompt)+estimateTokens(stdout)`), `tokenSource=estimate` no `note`.
+- [x] `GET /api/costs/usage?soul=<id>` retorna `total_tokens` > 0 após um chat (teste `daemon.test.ts`).
+- [x] `execution_mode` (`fast`/`pro`) preenchido em toda linha `executed`.
+- [x] Exatamente **uma** linha `status='executed'` em `router_history` por turno bem-sucedido.
+- [x] Falha/timeout **não** grava tokens nem linha `executed`.
+
+Testes: `core/test/tokens.test.ts` (3), `core/test/usage-summary.test.ts` (2),
+`daemon.test.ts::E1/FinOps` (1). Suítes: core 216, daemon 101, memory 44, tools 19 — verdes.
 
 ### Plano de teste
 - Unit `packages/core/test/router.test.ts` — `finalizeRouterSelection` atualiza a linha certa; `getUsageSummary` soma corretamente por `mode`/`model`.
