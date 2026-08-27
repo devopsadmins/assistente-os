@@ -282,7 +282,12 @@ export async function handleChat(
             intention: "RAG: retrieval debug",
             toolsCalled: [],
             params: {
-              sources: verdict.sources.map((s) => ({ path: s.path, method: s.method, score: s.score })),
+              sources: verdict.sources.map((s) => ({
+                path: s.path,
+                method: s.reranked ? "reranked" : s.method,
+                score: s.score,
+                ...(s.reranked ? { baseMethod: s.method } : {}),
+              })),
             },
           });
         }

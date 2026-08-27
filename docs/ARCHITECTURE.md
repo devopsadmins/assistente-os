@@ -74,7 +74,7 @@ O `opencode.json` global registra 7 providers customizados de OpenCode Zen (`zen
 
 ### Stitch MCP (hosted, credencial pendente)
 
-O hosted MCP oficial (`https://stitch.googleapis.com/mcp`) está registrado no `opencode.json` global como remoto. **Correção (2026-08-18):** ao contrário do que este doc afirmava, a entrada ainda não usa OAuth de verdade — usa um bearer token estático (`headers.authorization: "bearer {env:stitch_access_token}"`). O token antigo (expirado) foi removido de `~/.config/opencode/.env` na limpeza de credenciais; a entrada fica sem credencial até o fluxo OAuth (`GOOGLE_MCP_CLIENT_ID`/`GOOGLE_MCP_CLIENT_SECRET`, mesmo client de gmail/drive/docs) ser de fato configurado — ver `docs/MCPS.md` e a pendência "Completar OAuth dos MCPs Google" em `docs/BACKLOG.md`.
+O hosted MCP oficial (`https://stitch.googleapis.com/mcp`) está registrado no `opencode.json` global como remoto. **Correção (2026-08-18):** ao contrário do que este doc afirmava, a entrada ainda não usa OAuth de verdade — usa um bearer token estático (`headers.authorization: "bearer {env:stitch_access_token}"`). O token antigo (expirado) foi removido de `~/.config/opencode/.env` na limpeza de credenciais; a entrada fica sem credencial até o fluxo OAuth (`GOOGLE_MCP_CLIENT_ID`/`GOOGLE_MCP_CLIENT_SECRET`, mesmo client de gmail/drive/docs) ser de fato configurado — ver `docs/MCPS.md`.
 
 > **Histórico:** o setup anterior usava o wrapper `scripts/stitch-mcp.mjs` (removido nesta limpeza) sobre o `StitchProxy` do `@google/stitch-sdk` (o pacote `@google/stitch-mcp` não existe no npm público), autenticando com o mesmo access token OAuth2 (`STITCH_ACCESS_TOKEN`) que hoje foi removido de `~/.config/opencode/.env`. O token expirava sem renovação → `401`.
 

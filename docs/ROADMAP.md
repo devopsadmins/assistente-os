@@ -755,7 +755,7 @@ mantém ordem original). Chave de cache RAG inclui o modo.
 - [x] `RAG_RERANK=off`: `fetchN == limit`, ordena só por score — idêntico ao atual (suítes memory/daemon verdes).
 - [x] Modelo ausente → auto-skip + log, não quebra (fallback `byOriginal`).
 - [x] Scorer que devolve `-1` preserva a ordem por score original.
-- [ ] `method: "reranked"` no audit trail — **não feito** (a fonte reordenada mantém `method` original `semantic`/`literal`; anotar o rerank exigiria um campo novo em `RagChunk`). Fica como melhoria menor.
+- [x] `method: "reranked"` no audit trail — **feito (2026-08-27)**: `RagChunk` ganhou `reranked?: boolean` (setado em `retrieveContext` quando `RAG_RERANK != off`); o bloco "RAG: retrieval debug" do `chat.ts` grava `method: "reranked"` para essas fontes, com `baseMethod` preservando `semantic`/`literal`. Teste em `rag-faithfulness.test.ts`.
 
 Testes: `memory/test/rerank.test.ts` (4). Suítes: memory 48, daemon 119 — verdes.
 

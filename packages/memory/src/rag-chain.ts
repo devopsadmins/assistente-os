@@ -30,6 +30,8 @@ export interface RagChunk {
   score: number;
   method: "semantic" | "literal" | "hybrid";
   snippet: string;
+  /** true quando o chunk passou pelo estágio de reranking (E10 / RAG_RERANK != off). */
+  reranked?: boolean;
 }
 
 export interface RagResult {
@@ -76,7 +78,7 @@ function createLLM() {
 }
 
 /** Monta os `ScreenableChunk` (chunk + body bruto) a partir do resultado do indexer. */
-function toScreenable(results: Awaited<ReturnType<typeof search>>): ScreenableChunk[] {
+function toScreenable(results: Awaited<ReturnType<typeof search>>, opts?: { reranked?: boolean }): ScreenableChunk[] {
   return results.map((r) => ({
     chunk: {
       doc: r.docKey,
@@ -84,6 +86,7 @@ function toScreenable(results: Awaited<ReturnType<typeof search>>): ScreenableCh
       score: r.score,
       method: r.method === "vector" ? "semantic" : "literal",
       snippet: r.body.slice(0, 200),
+      ...(opts?.reranked ? { reranked: true } : {}),
     } satisfies RagChunk,
     body: r.body,
   }));
@@ -171,12 +174,14 @@ export async function retrieveContext(
   const rcfg = rerankConfig(limit);
   const fetchN = rcfg.mode === "off" ? limit : Math.max(rcfg.topN, limit);
   let results = await search(pool, soul, query, embedder, fetchN);
+  let didRerank = false;
   if (rcfg.mode !== "off" && results.length > 0) {
     results = await rerank(query, results, { ...rcfg, topK: limit });
+    didRerank = true;
   }
 
   const screenable: ScreenableChunk[] =
-    results.length > 0 ? toScreenable(results) : await literalSearchFallback(pool, soul, query, limit);
+    results.length > 0 ? toScreenable(results, { reranked: didRerank }) : await literalSearchFallback(pool, soul, query, limit);
 
   // Screening de indirect prompt injection sobre o body bruto de cada chunk,
   // antes do assembly do prompt. Em modo `recusar`, chunks de severidade alta

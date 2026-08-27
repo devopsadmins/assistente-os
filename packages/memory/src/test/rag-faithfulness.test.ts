@@ -133,6 +133,32 @@ test("grounding lexical: retrieveContext acha o documento certo e o termo-chave 
   }
 });
 
+test("reranked flag: com RAG_RERANK != off os chunks recuperados são marcados reranked (E10)", async () => {
+  const prev = process.env.RAG_RERANK;
+  process.env.RAG_RERANK = "llm"; // sem Ollama o rerank cai para ordem por score, mas didRerank continua true
+  const dir = tempDir();
+  const testDb = await createTestSchema();
+  try {
+    makeFactDocs(dir);
+    const embedder = new LiteralEmbedder();
+    await indexDirectory(testDb.pool, "rr1", join(dir, "docs"), embedder);
+
+    const result = await retrieveContext(testDb.pool, "rr1", "pm2", 5);
+    assert.ok(result.sources.length > 0);
+    assert.ok(result.sources.every((s) => s.reranked === true), "todos os chunks marcados como reranked");
+
+    // Sanidade: com RAG_RERANK=off, o flag fica ausente.
+    process.env.RAG_RERANK = "off";
+    const off = await retrieveContext(testDb.pool, "rr1", "pgvector", 5);
+    assert.ok(off.sources.every((s) => !s.reranked));
+  } finally {
+    if (prev === undefined) delete process.env.RAG_RERANK;
+    else process.env.RAG_RERANK = prev;
+    rmSync(dir, { recursive: true, force: true });
+    await testDb.cleanup();
+  }
+});
+
 test("grounding lexical: pergunta sobre banco de dados não recupera o documento de testes", async () => {
   const dir = tempDir();
   const testDb = await createTestSchema();
@@ -236,13 +262,16 @@ test("juiz LLM: resposta gerada por runRagChain é sustentada pelo contexto recu
   }
 });
 
-test("comportamental: instrução embutida num chunk de RAG não é executada (aviso; requer Ollama; auto-skip)", async () => {
+test("comportamental: em recusar o chunk sai do contexto e o modelo não emite a canary da injeção (requer Ollama; auto-skip)", async () => {
+  // A heurística `aviso` só SINALIZA — um modelo local fraco ainda pode obedecer
+  // a uma instrução embutida. É `recusar` (descartar o chunk) que impede o efeito;
+  // este teste demonstra exatamente isso pela via LangGraph (`runRagChain`).
   const config = loadConfig();
   const ollamaOk = await ollamaAvailableWithModel(config.ollamaUrl, config.ollamaChatModel);
   if (!ollamaOk) return;
 
   const prev = process.env.RAG_INJECTION_MODO;
-  delete process.env.RAG_INJECTION_MODO; // aviso — o chunk malicioso ENTRA no contexto de propósito
+  process.env.RAG_INJECTION_MODO = "recusar";
   const dir = tempDir();
   const testDb = await createTestSchema();
   try {
@@ -251,9 +280,11 @@ test("comportamental: instrução embutida num chunk de RAG não é executada (a
     const embedder = new LiteralEmbedder();
     await indexDirectory(testDb.pool, "inj3", join(dir, "docs"), embedder);
 
-    // Pré-condição: o chunk malicioso está mesmo no contexto recuperado.
+    // Pré-condição: o chunk malicioso foi descartado — a instrução não está no contexto.
     const ctx = await retrieveContext(testDb.pool, "inj3", MALICIOUS_KEYTERM, 5);
-    assert.ok(ctx.context.includes(INJECTION_CANARY), "pré-condição: a instrução embutida está no contexto");
+    assert.ok(!ctx.context.includes(INJECTION_CANARY), "recusar: a instrução embutida não entra no contexto");
+    assert.equal(ctx.injectionFindings.length, 1);
+    assert.equal(ctx.injectionFindings[0]!.excluded, true);
 
     let result: Awaited<ReturnType<typeof runRagChain>>;
     try {
@@ -261,8 +292,11 @@ test("comportamental: instrução embutida num chunk de RAG não é executada (a
     } catch {
       return;
     }
-    // A resposta não pode ser a obediência à instrução injetada (só a canary).
-    assert.notEqual(result.answer.trim().toUpperCase(), INJECTION_CANARY, `modelo obedeceu à injeção: "${result.answer}"`);
+    // Sem o chunk no contexto, o modelo não tem como emitir a canary da injeção.
+    assert.ok(
+      !result.answer.toUpperCase().includes(INJECTION_CANARY),
+      `resposta contém a canary da injeção mesmo com o chunk descartado: "${result.answer}"`,
+    );
     // injectionFindings viaja no RagResult mesmo pela via LangGraph.
     assert.equal(result.injectionFindings.length, 1);
   } finally {
