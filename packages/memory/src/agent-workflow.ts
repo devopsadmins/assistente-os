@@ -9,9 +9,7 @@
  */
 import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
-import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
-import { RunnableSequence } from "@langchain/core/runnables";
+import { HumanMessage, AIMessage, SystemMessage, ToolMessage, type AIMessageChunk, type BaseMessage } from "@langchain/core/messages";
 import type { StructuredTool } from "@langchain/core/tools";
 import { runRagChain } from "./rag-chain.js";
 import { AgentState, type AgentStateType } from "./agent-state.js";
@@ -49,22 +47,74 @@ function createLLM(tools?: StructuredTool[]) {
     maxTokens: 1024,
   });
 
-  if (tools && tools.length > 0) {
+  // Só bindamos tools quando o provider faz tool-calling estruturado real
+  // (Zen cloud). Com Ollama local + modelos pequenos, o campo `tool_calls`
+  // nunca vem preenchido (ver doc comment acima) — bindar tools só produz
+  // loops `generate → tools → generate` que crescem o histórico até o
+  // provider devolver um corpo inválido e o parser da lib quebrar.
+  if (tools && tools.length > 0 && useZen) {
     return llm.bindTools(tools);
   }
   return llm;
 }
 
-function toLangChainMessages(msgs: AgentStateType["messages"]) {
-  return msgs.map((m) => {
+/**
+ * Converte o histórico do AgentState (mensagens em `AgentMessage`) para
+ * `BaseMessage[]` do LangChain, mantendo a conversa BEM-FORMADA no formato
+ * OpenAI:
+ *
+ * - turnos `assistant` que pediram tools reanexam `tool_calls` (antes eram
+ *   achatados em texto, deixando os `ToolMessage` seguintes órfãos);
+ * - `ToolMessage` só entra se tiver `tool_call_id` não-vazio que casa com um
+ *   `tool_calls` do `AIMessage` imediatamente anterior — órfãos são
+ *   descartados (senão o provider recebe `role:"tool"` sem `tool_calls`
+ *   correspondente e devolve 400 / corpo inválido).
+ */
+export function toLangChainMessages(msgs: AgentStateType["messages"]): BaseMessage[] {
+  const out: BaseMessage[] = [];
+  let pendingToolCallIds = new Set<string>();
+
+  for (const m of msgs) {
     switch (m.role) {
-      case "system": return new SystemMessage(m.content);
-      case "user": return new HumanMessage(m.content);
-      case "assistant": return new AIMessage(m.content);
-      case "tool": return new ToolMessage(m.content, m.toolCallId ?? "");
-      default: return new HumanMessage(m.content);
+      case "system":
+        out.push(new SystemMessage(m.content));
+        break;
+      case "user":
+        out.push(new HumanMessage(m.content));
+        pendingToolCallIds = new Set();
+        break;
+      case "assistant": {
+        const calls = (m.toolCalls ?? []).filter((tc) => tc.id);
+        if (calls.length > 0) {
+          out.push(new AIMessage({
+            content: m.content ?? "",
+            tool_calls: calls.map((tc) => ({
+              id: tc.id,
+              name: tc.name,
+              args: tc.args,
+              type: "tool_call" as const,
+            })),
+          }));
+          pendingToolCallIds = new Set(calls.map((tc) => tc.id));
+        } else {
+          out.push(new AIMessage(m.content));
+          pendingToolCallIds = new Set();
+        }
+        break;
+      }
+      case "tool":
+        if (m.toolCallId && pendingToolCallIds.has(m.toolCallId)) {
+          out.push(new ToolMessage(m.content, m.toolCallId));
+        }
+        // órfão (sem id ou sem AIMessage correspondente) → descartado
+        break;
+      default:
+        out.push(new HumanMessage(m.content));
+        pendingToolCallIds = new Set();
     }
-  });
+  }
+
+  return out;
 }
 
 function buildRetrieveNode(pool: Pool) {
@@ -81,23 +131,34 @@ function buildGenerateNode(tools?: StructuredTool[]) {
   return async (state: AgentStateType): Promise<Partial<AgentStateType>> => {
     const llm = createLLM(tools);
 
-    const prompt = ChatPromptTemplate.fromMessages([
-      ["system", "Você é o assistente do Assistente OS. Use o contexto fornecido e as ferramentas disponíveis para responder. Se não tiver informação suficiente, diga que não sabe. Você pode usar ferramentas para buscar informações, registrar lições, e executar ações."],
-      new MessagesPlaceholder("history"),
-      ["human", "Contexto do grafo de memória:\n{context}\n\nPergunta: {question}"],
-    ]);
+    // O histórico já traz o system message base (AGENT_SYSTEM_BASE + skills,
+    // sempre unshiftado em runAgent/runAgentStream) e o turno `user` original.
+    // Injetamos o contexto do RAG UMA vez, como SystemMessage logo após o
+    // system base — antes o nó recriava um turno system + human a cada loop,
+    // duplicando o prompt e a pergunta e inchando o payload sem limite.
+    const lc = toLangChainMessages(state.messages);
+    const ctx = state.context?.trim();
+    const messages = ctx && lc.length > 0
+      ? [lc[0]!, new SystemMessage(`Contexto do grafo de memória:\n${ctx}`), ...lc.slice(1)]
+      : lc;
 
-    const lastUser = [...state.messages].reverse().find((m) => m.role === "user");
-    const question = lastUser?.content ?? "";
-    const history = toLangChainMessages(state.messages);
-
-    const chain = RunnableSequence.from([
-      async () => ({ context: state.context || "Sem contexto disponível.", question, history }),
-      prompt,
-      llm,
-    ]);
-
-    const response = await chain.invoke({});
+    let response: AIMessageChunk;
+    try {
+      response = await llm.invoke(messages);
+    } catch (err) {
+      // Falha do provider LLM (ex.: modelo local devolve corpo inválido e o
+      // parser da lib quebra em undefined.message). Degrada para uma resposta
+      // e encerra o grafo em vez de derrubar a execução inteira (code: 1).
+      console.error("[langgraph] generate falhou:", err);
+      return {
+        messages: [{
+          role: "assistant" as const,
+          content: "Não consegui completar a resposta (falha ao processar a resposta do provider LLM). Tente de novo ou use o tier pro/zen.",
+        }],
+        iterationCount: state.maxIterations,
+        usage: { inputTokens: 0, outputTokens: 0 },
+      };
+    }
 
     const toolCalls = response.tool_calls ?? [];
     const content = typeof response.content === "string"

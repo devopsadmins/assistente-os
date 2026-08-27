@@ -8,7 +8,9 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { AIMessage, SystemMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
 import { createInitialState, type AgentStateType, type AgentMessage } from "../agent-state.js";
+import { toLangChainMessages } from "../agent-workflow.js";
 
 // ── createInitialState ──────────────────────────────────────────────
 
@@ -108,6 +110,70 @@ describe("shouldContinue (logic)", () => {
       toolCalls: [{ id: "tc-2", name: "soul_anotar", args: { texto: "nota" } }],
     });
     assert.equal(shouldContinue(state), "tools");
+  });
+});
+
+// ── toLangChainMessages ────────────────────────────────────────────
+
+describe("toLangChainMessages", () => {
+  it("mapeia system/user/assistant 1:1 sem duplicar system", () => {
+    const msgs: AgentMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "oi" },
+      { role: "assistant", content: "olá" },
+      { role: "user", content: "e o repo?" },
+    ];
+    const out = toLangChainMessages(msgs);
+    assert.equal(out.length, 4);
+    assert.ok(out[0] instanceof SystemMessage);
+    assert.ok(out[1] instanceof HumanMessage);
+    assert.ok(out[2] instanceof AIMessage);
+    assert.ok(out[3] instanceof HumanMessage);
+    assert.equal(out.filter((m) => m instanceof SystemMessage).length, 1);
+  });
+
+  it("reanexa tool_calls no AIMessage do turno assistant", () => {
+    const msgs: AgentMessage[] = [
+      { role: "user", content: "busca X" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "tc-1", name: "memory_search", args: { query: "X" } }],
+      },
+      { role: "tool", content: "achei", toolCallId: "tc-1" },
+    ];
+    const out = toLangChainMessages(msgs);
+    assert.equal(out.length, 3);
+    const ai = out[1] as AIMessage;
+    assert.ok(ai instanceof AIMessage);
+    assert.equal(ai.tool_calls?.length, 1);
+    assert.equal(ai.tool_calls?.[0]?.id, "tc-1");
+    assert.equal(ai.tool_calls?.[0]?.name, "memory_search");
+    assert.deepEqual(ai.tool_calls?.[0]?.args, { query: "X" });
+    const tm = out[2] as ToolMessage;
+    assert.ok(tm instanceof ToolMessage);
+    assert.equal(tm.tool_call_id, "tc-1");
+  });
+
+  it("descarta ToolMessage órfã (id vazio ou sem AIMessage correspondente)", () => {
+    const msgs: AgentMessage[] = [
+      { role: "user", content: "oi" },
+      { role: "assistant", content: "resposta direta" },
+      { role: "tool", content: "resultado solto", toolCallId: "" },
+      { role: "tool", content: "outro solto", toolCallId: "tc-inexistente" },
+    ];
+    const out = toLangChainMessages(msgs);
+    assert.equal(out.length, 2);
+    assert.ok(out[0] instanceof HumanMessage);
+    assert.ok(out[1] instanceof AIMessage);
+    assert.equal(out.filter((m) => m instanceof ToolMessage).length, 0);
+  });
+
+  it("assistant sem toolCalls não deixa tool_calls no AIMessage", () => {
+    const out = toLangChainMessages([{ role: "assistant", content: "só texto" }]);
+    const ai = out[0] as AIMessage;
+    assert.ok(ai instanceof AIMessage);
+    assert.ok(!ai.tool_calls || ai.tool_calls.length === 0);
   });
 });
 
