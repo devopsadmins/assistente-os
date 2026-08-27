@@ -50,6 +50,10 @@ export interface RagContext {
   hasRelevantDocs: boolean;
   /** Chunks recuperados que casaram a heurística de prompt injection (E: RAG injection screening). */
   injectionFindings: RagInjectionFinding[];
+  /** Modo do reranker que rodou nesta recuperação ("off" quando não rodou). */
+  rerankMode: "off" | "cross-encoder" | "llm";
+  /** Latência do estágio de rerank em ms (undefined quando rerankMode === "off"). */
+  rerankMs?: number;
 }
 
 /**
@@ -79,7 +83,7 @@ function createLLM() {
 }
 
 /** Monta os `ScreenableChunk` (chunk + body bruto) a partir do resultado do indexer. */
-function toScreenable(results: Awaited<ReturnType<typeof search>>, opts?: { reranked?: boolean }): ScreenableChunk[] {
+function toScreenable(results: Awaited<ReturnType<typeof search>>): ScreenableChunk[] {
   return results.map((r) => ({
     chunk: {
       doc: r.docKey,
@@ -87,7 +91,6 @@ function toScreenable(results: Awaited<ReturnType<typeof search>>, opts?: { rera
       score: r.score,
       method: r.method === "vector" ? "semantic" : "literal",
       snippet: r.body.slice(0, 200),
-      ...(opts?.reranked ? { reranked: true } : {}),
     } satisfies RagChunk,
     body: r.body,
   }));
@@ -174,20 +177,30 @@ export async function retrieveContext(
   // antes de cortar no `limit`. Com RAG_RERANK=off (default), fetchN == limit.
   const rcfg = rerankConfig(limit);
   const fetchN = rcfg.mode === "off" ? limit : Math.max(rcfg.topN, limit);
-  let results = await search(pool, soul, query, embedder, fetchN);
-  let didRerank = false;
-  if (rcfg.mode !== "off" && results.length > 0) {
-    results = await rerank(query, results, { ...rcfg, topK: limit });
-    didRerank = true;
-  }
+  const results = await search(pool, soul, query, embedder, fetchN);
 
+  // Epic F: screening de indirect prompt injection ANTES do rerank. No modo
+  // rerank=llm o body dos chunks é enviado ao Ollama para pontuar — rodar a
+  // triagem depois deixaria conteúdo não-triado chegar a um modelo. Em modo
+  // `recusar`, chunks de severidade alta já saem aqui.
   const screenable: ScreenableChunk[] =
-    results.length > 0 ? toScreenable(results, { reranked: didRerank }) : await literalSearchFallback(pool, soul, query, limit);
+    results.length > 0 ? toScreenable(results) : await literalSearchFallback(pool, soul, query, limit);
+  const { chunks: screened, findings: injectionFindings } = screenRetrievedChunks(screenable, ragInjectionMode());
 
-  // Screening de indirect prompt injection sobre o body bruto de cada chunk,
-  // antes do assembly do prompt. Em modo `recusar`, chunks de severidade alta
-  // são descartados aqui (não abortam a chamada).
-  const { chunks, findings: injectionFindings } = screenRetrievedChunks(screenable, ragInjectionMode());
+  // Rerank sobre o que passou na triagem. `rerank` precisa do body — re-anexa
+  // via doc_key a partir do `screenable`.
+  const bodyByDoc = new Map(screenable.map((s) => [s.chunk.doc, s.body]));
+  let chunks: RagChunk[];
+  let rerankMs: number | undefined;
+  if (rcfg.mode !== "off" && results.length > 0 && screened.length > 0) {
+    const withBody = screened.map((c) => ({ ...c, body: bodyByDoc.get(c.doc) ?? c.snippet }));
+    const r0 = Date.now();
+    const out = await rerank(query, withBody, { ...rcfg, topK: limit });
+    rerankMs = Date.now() - r0;
+    chunks = out.map(({ body: _body, ...c }) => ({ ...c, reranked: true }));
+  } else {
+    chunks = screened.slice(0, limit);
+  }
 
   const context = formatContext(chunks);
   const result: RagContext = {
@@ -197,6 +210,8 @@ export async function retrieveContext(
     // (o mesmo valor do gate) — com > estrito, o fallback literal nunca passava.
     hasRelevantDocs: chunks.length > 0 && chunks[0].score >= 0.5,
     injectionFindings,
+    rerankMode: rcfg.mode,
+    ...(rerankMs !== undefined ? { rerankMs } : {}),
   };
   try {
     await cache.set(cacheKey, JSON.stringify(result), 60);

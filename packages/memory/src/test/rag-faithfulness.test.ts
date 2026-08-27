@@ -107,6 +107,51 @@ test("RAG injection (recusar): chunk malicioso de severidade alta é descartado 
   }
 });
 
+test("Epic F: screening roda ANTES do rerank llm — body malicioso nunca chega ao scorer", async () => {
+  const prevRerank = process.env.RAG_RERANK;
+  const prevMode = process.env.RAG_INJECTION_MODO;
+  process.env.RAG_RERANK = "llm";
+  process.env.RAG_INJECTION_MODO = "recusar";
+  const dir = tempDir();
+  const testDb = await createTestSchema();
+  const realFetch = globalThis.fetch;
+  const scoredBodies: string[] = [];
+  // Stub do /api/chat que o getLlmScorer do rerank chama: registra o que recebeu
+  // e devolve uma nota qualquer.
+  globalThis.fetch = (async (_url: string, init?: { body?: string }) => {
+    if (typeof init?.body === "string") scoredBodies.push(init.body);
+    return new Response(JSON.stringify({ message: { content: "2" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    makeFactDocs(dir);
+    writeMaliciousDoc(dir);
+    const embedder = new LiteralEmbedder();
+    await indexDirectory(testDb.pool, "injF", join(dir, "docs"), embedder);
+
+    // Query casa o doc malicioso por ILIKE; em `recusar` ele é descartado no
+    // screening, que agora roda ANTES do rerank.
+    const result = await retrieveContext(testDb.pool, "injF", MALICIOUS_KEYTERM, 5);
+
+    assert.equal(result.injectionFindings[0]?.excluded, true, "chunk malicioso descartado");
+    assert.ok(!result.sources.some((s) => s.snippet.includes(INJECTION_CANARY)));
+    assert.ok(
+      !scoredBodies.some((b) => b.includes(INJECTION_CANARY) || b.includes(MALICIOUS_KEYTERM)),
+      "o rerank llm nunca recebeu o body do chunk malicioso",
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevRerank === undefined) delete process.env.RAG_RERANK;
+    else process.env.RAG_RERANK = prevRerank;
+    if (prevMode === undefined) delete process.env.RAG_INJECTION_MODO;
+    else process.env.RAG_INJECTION_MODO = prevMode;
+    rmSync(dir, { recursive: true, force: true });
+    await testDb.cleanup();
+  }
+});
+
 test("grounding lexical: retrieveContext acha o documento certo e o termo-chave esperado (determinístico, sem rede)", async () => {
   const dir = tempDir();
   const testDb = await createTestSchema();
