@@ -311,6 +311,12 @@ docker compose up -d tunnel
 
 `.github/workflows/ci.yml` roda em todo push/PR pro `main`: `npm ci` → build → typecheck → test, com Postgres+pgvector como service container. Sem secrets (Ollama/WhatsApp/Telegram ficam desligados por padrão nos testes).
 
+### Observabilidade
+
+- **Métricas Prometheus**: `GET /metrics` (Bearer, prefixo `aos_`): `aos_chat_requests_total{soul,tier,mode,status}`, `aos_chat_latency_seconds` (histograma), `aos_tokens_total{soul,tier,kind,source}` (alimentado pelo FinOps do chat), `aos_agenda_queue_depth`, `aos_events_pending`, `aos_prompt_injection_alerts_total{severity}` + default metrics (event-loop lag, heap, GC).
+- **Sentry**: erros não tratados do handler HTTP vão pro Sentry quando `SENTRY_DSN` está setado (no-op sem DSN); `beforeSend` roda o content-filter para não vazar segredo. `SENTRY_TRACES_SAMPLE_RATE` (default 0.1).
+- **Stack local** (opcional): `docker compose --profile observability up -d` sobe Prometheus (`:9090`) + Grafana (`:3001`, dashboard "Assistente OS — visão geral" já provisionado). Configs em `ops/` (`prometheus.yml`, `rules.yml` com alertas de daemon-down / backlog de agenda / pico de prompt-injection / taxa de erro de chat).
+
 ## Testes
 
 ```bash

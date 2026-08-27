@@ -30,6 +30,8 @@ import { handlePipelines } from "./routes/pipelines.js";
 import { handleLlmsTxt, handleCapabilities } from "./routes/llms-txt.js";
 import { handleWorktree } from "./routes/worktree.js";
 import { handleMissions } from "./routes/missions.js";
+import { handleMetrics } from "./routes/metrics.js";
+import { initSentry, captureError } from "./observability/sentry.js";
 import { handleCosts } from "./routes/costs.js";
 
 /**
@@ -160,6 +162,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     );
   }
   const startupConfig = loadConfig({ home });
+  initSentry(); // no-op sem SENTRY_DSN
 
   // Run migrations with retry logic (non-blocking for web server startup)
   const runMigrationsWithRetry = async (): Promise<void> => {
@@ -187,6 +190,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     try {
       await handle(req, res, { home, token, run: options.run ?? runOpenCode, hub, webDir, onEventDone, onAgendaDone, voiceHandler, whatsappChannel, telegramChannel });
     } catch (err) {
+      captureError(err, { method: req.method, url: req.url });
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
   });
@@ -437,6 +441,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleCapabilities,
   handleWorktree,
   handleMissions,
+  handleMetrics,
   handleCosts,
 ];
 

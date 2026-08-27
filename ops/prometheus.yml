@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+scrape_configs:
+  - job_name: assistente-os-daemon
+    metrics_path: /metrics
+    # O daemon nativo escuta em 4310 no host. Quando ASSISTENTE_OS_DAEMON_TOKEN
+    # está setado, /metrics exige Bearer — descomente e ajuste:
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/daemon_token
+    static_configs:
+      - targets: ["host.docker.internal:4310"]

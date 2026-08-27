@@ -1,0 +1,51 @@
+{
+  "title": "Assistente OS — visão geral",
+  "uid": "assistente-os-overview",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Chat — requisições/s por tier",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum by (tier) (rate(aos_chat_requests_total[5m]))", "legendFormat": "{{tier}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Chat — latência p95 (s) por tier",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le, tier) (rate(aos_chat_latency_seconds_bucket[5m])))", "legendFormat": "{{tier}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tokens/s por soul",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum by (soul) (rate(aos_tokens_total[5m]))", "legendFormat": "{{soul}}" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Filas (agenda / eventos)",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "aos_agenda_queue_depth", "legendFormat": "agenda" },
+        { "expr": "aos_events_pending", "legendFormat": "eventos" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Alertas de prompt injection (10m)",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        { "expr": "sum by (severity) (increase(aos_prompt_injection_alerts_total[10m]))", "legendFormat": "{{severity}}" }
+      ]
+    }
+  ]
+}

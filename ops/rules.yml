@@ -1,0 +1,33 @@
+groups:
+  - name: assistente-os
+    rules:
+      - alert: DaemonDown
+        expr: up{job="assistente-os-daemon"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Daemon assistente-os inacessível há 2min"
+
+      - alert: AgendaQueueBacklog
+        expr: aos_agenda_queue_depth > 20 and delta(aos_agenda_queue_depth[15m]) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Fila da agenda alta e crescendo ({{ $value }} itens)"
+
+      - alert: PromptInjectionSpike
+        expr: increase(aos_prompt_injection_alerts_total[10m]) > 5
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Pico de alertas de prompt injection ({{ $value }} em 10min)"
+
+      - alert: ChatErrorRateHigh
+        expr: >
+          sum(rate(aos_chat_requests_total{status="failed"}[10m]))
+          /
+          clamp_min(sum(rate(aos_chat_requests_total[10m])), 0.001) > 0.25
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Taxa de falha de chat > 25% (10min)"

@@ -44,6 +44,36 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # Observabilidade (E6) — opcional. Sobe com:  docker compose --profile observability up -d
+  # Prometheus faz scrape de host.docker.internal:4310/metrics (daemon nativo);
+  # precisa do Bearer token quando ASSISTENTE_OS_DAEMON_TOKEN está setado — ver ops/prometheus.yml.
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["observability"]
+    restart: unless-stopped
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
   tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
@@ -62,3 +92,5 @@ services:
 
 volumes:
   assistente_os_pgdata:
+  prometheus_data:
+  grafana_data:

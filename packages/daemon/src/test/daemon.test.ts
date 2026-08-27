@@ -313,6 +313,23 @@ test("daemon: chat registra tokens em router_history (E1/FinOps) e getUsageSumma
   }
 });
 
+test("daemon: GET /metrics expõe exposição Prometheus (E6)", async () => {
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home });
+  try {
+    const res = await fetch(`http://127.0.0.1:${daemon.port}/metrics`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type") ?? "", /text\/plain/);
+    const body = await res.text();
+    assert.match(body, /# HELP aos_chat_requests_total/);
+    assert.match(body, /# TYPE aos_agenda_queue_depth gauge/);
+    assert.match(body, /aos_process_cpu_user_seconds_total|aos_nodejs_/); // default metrics com prefixo aos_
+  } finally {
+    await daemon.close();
+    await cleanup();
+  }
+});
+
 test("daemon: dailyLimit 0 bloqueia o chat com 429", async () => {
   const { home, cleanup } = await tempHome();
   createSoul(home, "pobre", { name: "pobre", dailyLimit: 0 });

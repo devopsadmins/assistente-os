@@ -28,6 +28,7 @@ import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
+import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts } from "../observability/metrics.js";
 
 /**
  * Chama o /api/chat do Ollama via node:http. O fetch() do Node (undici) aborta
@@ -231,6 +232,7 @@ export async function handleChat(
           toolsCalled: [],
           params: { patterns: injection.matches.map((m) => m.name) },
         });
+        promptInjectionAlerts.inc({ severity: injection.maxSeverity });
         const modo = process.env.PROMPT_INJECTION_MODO || "aviso";
         if (modo === "recusar" && injection.maxSeverity === "high") {
           sendJson(res, 400, {
@@ -447,6 +449,14 @@ export async function handleChat(
         });
       }
       emitStep("persistencia", `custo e execução registrados (${totalTokens} tokens, ${finalUsage.source})`);
+
+      // Métricas Prometheus (E6)
+      chatRequests.inc({ soul: soul.id, tier, mode: orchDecision.mode, status: succeeded ? "ok" : "failed" });
+      chatLatency.observe({ tier }, (Date.now() - startedAt) / 1000);
+      if (succeeded) {
+        tokensTotal.inc({ soul: soul.id, tier, kind: "prompt", source: finalUsage.source }, finalUsage.promptTokens);
+        tokensTotal.inc({ soul: soul.id, tier, kind: "completion", source: finalUsage.source }, finalUsage.completionTokens);
+      }
       // evento WS de conclusão (fire-and-forget; não bloqueia a resposta)
       try {
         hub.broadcast({ type: "chat.done", soul: soul.id, code: result.code, timedOut: result.timedOut, tier: tier });

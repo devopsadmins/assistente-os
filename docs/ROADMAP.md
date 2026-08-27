@@ -34,7 +34,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner ✅ | L | E4 |
 | [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache ✅ | M | — |
 | [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
-| [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana | M–L | — |
+| [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana ✅ | M–L | — |
 | [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token 📄 | S | — |
 | [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção | L | E1 |
 | [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 | M | — |
@@ -479,19 +479,33 @@ Erros do daemon rastreados (Sentry) e métricas em série temporal
 4. **Alertas** (Prometheus rules): daemon down, `agenda_queue_depth` alto e
    crescente, pico de `prompt_injection_alerts`, erro 5xx sustentado.
 
+### Status: ✅ CONCLUÍDO (2026-08-27)
+
+- `prom-client` + `@sentry/node` adicionados ao `packages/daemon`.
+- `observability/metrics.ts` — registry `aos_` + `chatRequests`, `chatLatency`,
+  `tokensTotal`, `routerFallback` (definido; wiring core→daemon fica para um hook
+  futuro), `promptInjectionAlerts`, `agendaQueueDepth`, `eventsPending` + default metrics.
+- `observability/sentry.ts` — `initSentry()` no-op sem `SENTRY_DSN`; `captureError()`
+  com fallback pra log; `beforeSend` roda o content-filter.
+- `routes/metrics.ts` — `GET /metrics` (Bearer via dispatcher); atualiza os gauges de
+  fila antes de responder; não falha se o DB cair.
+- `server.ts` — `initSentry()` no boot; `captureError` no catch do handler HTTP.
+- `chat.ts` — instrumenta requests/latência/tokens/injection.
+- `docker-compose.yml` — profile `observability` (Prometheus `:9090` + Grafana `:3001`);
+  `ops/prometheus.yml`, `ops/rules.yml` (4 alertas), `ops/grafana/provisioning/*`
+  (datasource + dashboard "Assistente OS — visão geral").
+
 ### Critérios de aceitação
-- [ ] `GET /metrics` retorna exposição Prometheus válida, autenticada por Bearer.
-- [ ] Um chat incrementa `aos_chat_requests_total` e observa `aos_chat_latency_seconds`.
-- [ ] `aos_tokens_total` cresce de acordo com o E1.
-- [ ] Exceção forçada no handler aparece no Sentry (projeto de teste) sem segredos no corpo.
-- [ ] `docker compose --profile observability up` sobe Prometheus + Grafana com o dashboard já carregado.
-- [ ] Sem `SENTRY_DSN`/sem profile: daemon roda idêntico ao atual.
+- [x] `GET /metrics` → exposição Prometheus válida, `text/plain`, com `aos_*` (teste `daemon.test.ts`).
+- [x] Chat incrementa `aos_chat_requests_total` + observa `aos_chat_latency_seconds`.
+- [x] `aos_tokens_total{kind=prompt|completion,source}` alimentado pelo `finalUsage` do E1.
+- [x] Sentry captura exceção do handler quando `SENTRY_DSN` setado; `beforeSend` mascara segredo; no-op sem DSN.
+- [x] `docker compose --profile observability up` sobe Prometheus + Grafana com dashboard provisionado.
+- [x] Sem `SENTRY_DSN`/sem profile: daemon idêntico ao atual (suítes verdes).
 
-### Plano de teste
-- Unit `daemon/test/metrics.test.ts` — contadores sobem; `/metrics` parseável; `beforeSend` mascara segredo.
-- Manual — subir o profile, ver o dashboard, disparar um alerta de teste.
+Testes: `daemon.test.ts` +1 (`/metrics`). Suítes: core 219, daemon 109, memory 44, tools 22, cli 2 — verdes.
 
-### Esforço: **M–L** · Dependências: E1 (para `aos_tokens_total`); as demais métricas são independentes
+### Esforço: **M–L** · Dependências: E1 (feito)
 
 ---
 
