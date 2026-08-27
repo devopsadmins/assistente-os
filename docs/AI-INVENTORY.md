@@ -55,4 +55,4 @@ soul, dirs de contexto RAG e migrações aplicadas. `hash` determinístico
 - Atribuir os **owners** de cada sistema acima (negócio / risco).
 - Preencher a RACI de aprovação do **ADR-AI-003 §8** (owner de negócio, owner de
   risco, aprovador de governança) — hoje "pendente".
-- Formalizar o perfil **AI-4** do domínio de famílias em ADR próprio (ver E9 / ADR-PRIV-001).
+- Formalizar o perfil **AI-4** do domínio de famílias em ADR dedicado (AIIA / RIPD-DPIA / ROPA / retention schedule + RACI). **Verificado (2026-08-27):** `ADR-AI-004` é sobre a integração LangGraph (perfil AI-3) e **não** cobre — ver ADR-PRIV-001 §7 P5 / §8.

@@ -17,7 +17,7 @@
 | Perfil de conformidade | AI-4 (sinalizado em avaliação; formalização própria pendente de ADR dedicado) |
 | Módulos normativos aplicáveis | privacy-data-protection, ai-governance, security-operations |
 | Blocos do questionário de origem | Bloco G (gate G3) |
-| Relacionados | ADR-AI-003, ADR-AI-004; migration `0008_familias_privacidade`; `packages/core/src/familias.ts` |
+| Relacionados | ADR-AI-003 (loop de almas + gate de relevância); ADR-AI-004 (integração LangGraph — cross-link entre ADRs de IA; **não** formaliza o perfil AI-4 deste domínio, ver §7 P5 e §8); migration `0008_familias_privacidade`; `packages/core/src/familias.ts` |
 | Rastreabilidade norma externa | LGPD art. 6º, 7º I, 11 II f, 14, 15, 16, 18 VI · ISO/IEC 27001:2022 (A.5.34, A.8.10) · ISO/IEC 42001:2023 |
 
 ## 2. Contexto
@@ -93,6 +93,6 @@ itens organizacionais seguem com os owners):
 | **P3** — backups coerentes com eliminação | ✅ **Documentado + limitado** | `pruneOldBackups(dir, BACKUP_RETENTION_DAYS=7)` já roda no `os backup`. **Invariante:** um registro eliminado pelo sweep sobrevive em dumps por no máximo `BACKUP_RETENTION_DAYS` — janela limitada e conhecida. Procedimento para pedido de eliminação explícito (art. 18): (1) rodar o sweep/`excluirFamilia`; (2) rodar `os backup` (que faz o prune) ou apagar manualmente os dumps anteriores ao pedido; (3) qualquer restauração de dump anterior **exige re-rodar o sweep de retenção** antes de voltar ao ar. `BACKUP_RETENTION_DAYS` deve permanecer ≤ SLA de eliminação acordado com o DPO. |
 | P1 — prazo de prontuário (CFP) | ⏳ organizacional | Responsável clínico; ajustar `FAMILIAS_RETENCAO_DIAS` se necessário. |
 | P4 — `soul_id` opaco | ⏳ roadmap | Próxima janela de refactor. |
-| P5 — ADR formal do perfil AI-4 | ⏳ pendente | Não coberto por ADR-AI-004 (que é sobre LangGraph). Precisa de ADR dedicado (AIIA/RIPD/ROPA/retention schedule) — `docs/AI-INVENTORY.md` sistema #6 registra a classificação AI-4 provisória. |
+| P5 — ADR formal do perfil AI-4 | ⏳ pendente (verificado 2026-08-27) | Confirmado que **ADR-AI-004 não cobre** — é a integração LangGraph (streaming/mode routing/UI, perfil AI-3). Precisa de ADR dedicado (proposto: ADR-PRIV-002 ou ADR-AI-005) com AIIA / RIPD-DPIA / ROPA / retention schedule + RACI (owner de risco/DPO + responsável clínico). `docs/AI-INVENTORY.md` #6 mantém a classificação AI-4 provisória; `FAMILIAS_RETENCAO_DIAS` já cobre parte do retention schedule. |
 
 Status do ADR permanece **Proposta** até a assinatura do owner de risco/responsável clínico.

@@ -43,7 +43,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache ✅ | M | — |
 | [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
 | [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana ✅ | M–L | — |
-| [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token 📄 | S | — |
+| [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token — doc pronto; ação no dashboard fora do escopo do repo (decisão do usuário 2026-08-27) | S | — |
 | [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção ✅ | L | E1 |
 | [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 ✅ | M | — |
 | [E10](#e10--rag-estagio-de-reranking) | RAG — estágio de reranking ✅ | M | — |
@@ -665,9 +665,15 @@ Levar o ADR-PRIV-001 (domínio de famílias, dados sensíveis de saúde) de
   procedimento (`os familias purge-backups` ou nota operacional) garante que
   dumps mais antigos que o ciclo sejam descartados após um sweep de eliminação,
   para não reter linhas eliminadas além do previsto.
-- [ ] **ADR AI-4** — `docs/adr/ADR-AI-004.md` já existe; confirmar se cobre o
-  perfil AI-4 do domínio de famílias ou criar/estender para formalizar
-  (classificação, AIIA, RIPD/DPIA, ROPA, retention schedule).
+- [x] **ADR AI-4 — verificado (2026-08-27):** `docs/adr/ADR-AI-004.md` é
+  exclusivamente sobre a **integração LangGraph** (streaming, mode routing, UI web),
+  perfil de conformidade **AI-3**. **Não cobre** o domínio de famílias, o perfil
+  AI-4, nem AIIA/RIPD/ROPA/retention. A referência "Relacionados: ADR-AI-004" em
+  ADR-PRIV-001 §1 é só um cross-link entre ADRs de IA, não uma formalização.
+  → Continua pendente **um ADR dedicado** (ADR-PRIV-002 / ADR-AI-005) para o
+  perfil AI-4 de famílias: classificação (dado sensível de saúde de criança),
+  AIIA, RIPD/DPIA, ROPA, retention schedule (parte já em `FAMILIAS_RETENCAO_DIAS`),
+  guardrails vigentes e RACI. Requer owner de risco/DPO + responsável clínico.
 - [ ] **P1 (prazo de prontuário)** — item organizacional: registrar owner
   (responsável clínico) e transformar em issue com prazo "antes do go-live";
   ajustar `FAMILIAS_RETENCAO_DIAS` se necessário.
@@ -689,13 +695,15 @@ Levar o ADR-PRIV-001 (domínio de famílias, dados sensíveis de saúde) de
   procedimento de 3 passos para pedido de eliminação explícito; restauração de dump antigo
   exige re-rodar o sweep).
 - ADR-PRIV-001 §8 (progresso de implementação) adicionado; P2 ✅, P3 ✅, P1/P4/P5 ⏳ (org/roadmap).
-- **P5** (ADR AI-4 de famílias): ADR-AI-004 é sobre LangGraph, **não** cobre — segue pendente
-  (ADR dedicado com AIIA/RIPD/ROPA); classificação AI-4 provisória registrada em `docs/AI-INVENTORY.md` #6.
+- **P5** (ADR AI-4 de famílias): **verificado** — ADR-AI-004 é sobre a integração
+  LangGraph (perfil AI-3), **não** cobre. Segue pendente um ADR dedicado
+  (ADR-PRIV-002 / ADR-AI-005) com AIIA/RIPD/ROPA/retention + RACI; classificação
+  AI-4 provisória registrada em `docs/AI-INVENTORY.md` #6.
 
 ### Critérios de aceitação
 - [x] Onboarding sem `consent_evidence_ref` não ativa a família (teste `familias.test.ts`).
 - [x] Rotação de backup vs. eliminação documentada com procedimento (ADR §8); `pruneOldBackups` existente.
-- [ ] ADR AI-4 dedicado de famílias — **pendente** (ADR-AI-004 não cobre; ação org.).
+- [ ] ADR AI-4 dedicado de famílias — **pendente**; verificado que ADR-AI-004 (LangGraph, AI-3) não cobre. Ação org. (owner de risco/DPO + responsável clínico).
 - [ ] P1 (prazo CFP) — organizacional, registrado no ADR §8 com owner.
 - [x] `docs/adr/ADR-PRIV-001.md` §8 com progresso; riscos §5/§6 endereçados no texto.
 

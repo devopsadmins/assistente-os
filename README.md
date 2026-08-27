@@ -350,7 +350,7 @@ npm run typecheck     # tsc em todos os workspaces (0 erros)
 | **F1** | Núcleo, memória, migração, daemon, CLI, MCP | ✅ Concluída |
 | **F2** | Agendador (tabela `agenda` + dispatch) | ✅ Concluída |
 | **F3** | Ferramentas do agente (busca/memória/ação) | ✅ Concluída |
-| **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | Quase concluída — falta o service token do Cloudflare Access |
+| **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | ✅ Concluída (service token do Cloudflare Access: procedimento em `docs/CLOUDFLARE-ACCESS.md`, ação no dashboard fora do escopo do repo) |
 | **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram | Tool-calling e canais em produção; multi-turno endurecido (orçamento de tokens, reidratação LangGraph, `client_key`, cobertura events/agenda — E2); skills por soul ainda não implementadas |
 | **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
 | **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
@@ -370,11 +370,11 @@ reranking de RAG opcional.
 
 Resta:
 
-- **E7 — Cloudflare Access service token**: procedimento pronto em [docs/CLOUDFLARE-ACCESS.md](docs/CLOUDFLARE-ACCESS.md); falta a ação no dashboard Cloudflare + as 2 variáveis.
-- **Assinatura humana**: RACI do ADR-AI-003 §8; owners no `docs/AI-INVENTORY.md`; aceitação do ADR-PRIV-001 (owner de risco/clínico); P1 (prazo CFP) e ADR AI-4 dedicado de famílias.
+- **Skills por soul** (instruções/ferramentas declarativas, versionadas na pasta da soul) — feature não iniciada.
 - **CI**: anexar `manifest-<sha>.json` ao build (passo de workflow).
-- Skills por soul (instruções declarativas); App Android (proposta Capacitor).
-- Decisões adiadas: mapear soul → provider Zen (só `iecsjc`/`sousa` identificadas); auth do `@azure-devops/mcp` (`az login`/PAT para o daemon).
+- **App Android** (proposta: Capacitor empacotando o frontend).
+- **Assinatura humana**: RACI do ADR-AI-003 §8; owners no `docs/AI-INVENTORY.md`; aceitação do ADR-PRIV-001 (owner de risco/clínico); P1 (prazo CFP) e ADR dedicado do perfil AI-4 de famílias.
+- **Decisão adiada**: mapear soul → provider Zen (só `iecsjc`/`sousa` identificadas).
 
 ## Docs
 
