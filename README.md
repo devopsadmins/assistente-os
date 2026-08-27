@@ -305,7 +305,7 @@ docker compose up -d tunnel
 
 - Tunnel registrado: `assistente-os.coderstudio.club`
 - `TUNNEL_TOKEN` nunca fica no `docker-compose.yml` — vem de `~/.assistant-os/.env` via symlink, cada instalação com o seu
-- Cloudflare Access ativo (302 → login); service token pra bypass programático ainda pendente
+- Cloudflare Access ativo (302 → login). Bypass programático (agentes/CI) via **service token** — procedimento completo (criar, autorizar na policy, guardar, usar, rotacionar) em [docs/CLOUDFLARE-ACCESS.md](docs/CLOUDFLARE-ACCESS.md). Não exige mudança de código no daemon; falta só a ação no dashboard Cloudflare + preencher `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET`
 
 ### CI (GitHub Actions)
 

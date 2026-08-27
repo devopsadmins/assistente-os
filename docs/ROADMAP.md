@@ -35,7 +35,7 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 | [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache ✅ | M | — |
 | [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
 | [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana | M–L | — |
-| [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token | S | — |
+| [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token 📄 | S | — |
 | [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção | L | E1 |
 | [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 | M | — |
 | [E10](#e10--rag-estagio-de-reranking) | RAG — estágio de reranking | M | — |
@@ -507,8 +507,17 @@ Bypass programático do Cloudflare Access no domínio público
 - Daemon já autentica por Bearer próprio (`ASSISTENTE_OS_DAEMON_TOKEN`) — o Access
   fica **na frente** disso.
 
+### Status: 📄 DOC PRONTO — aguardando ação no dashboard Cloudflare (2026-08-27)
+
+Procedimento completo em **[docs/CLOUDFLARE-ACCESS.md](CLOUDFLARE-ACCESS.md)**
+(criar token, autorizar na policy, guardar em `~/.assistant-os/.env` + secrets do
+GitHub, usar, rotacionar, snippet do CI). README (Deploy) aponta para lá.
+**Nenhum código de daemon muda** — os headers `CF-Access-*` são consumidos na
+borda da Cloudflare. Resta ação do usuário no dashboard + preencher 2 variáveis.
+
 ### Passos
-- [ ] Criar um **Service Token** no Cloudflare Zero Trust (Access → Service Auth).
+- [x] Procedimento documentado (criar / autorizar / guardar / usar / rotacionar / CI).
+- [ ] **Usuário**: criar o **Service Token** no Cloudflare Zero Trust (Access → Service Auth).
 - [ ] Adicionar uma policy `Include: Service Token` à aplicação Access do hostname.
 - [ ] Guardar `CF-Access-Client-Id` / `CF-Access-Client-Secret` em `~/.assistant-os/.env` (nunca no repo).
 - [ ] Documentar em `docs/DEPLOY.md`/README: como o cliente envia os 2 headers + o `Authorization: Bearer` do daemon.
