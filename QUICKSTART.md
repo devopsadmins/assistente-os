@@ -69,13 +69,28 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 
 # --- RAG (opcional) ---
 # Reranker: reordena os chunks recuperados por relevância par (query, trecho)
-# antes de cortar no limite. "cross-encoder" = modelo local sem custo
-# (Xenova/ms-marco-MiniLM-L-6-v2); "llm" = pergunta 0-3 ao Ollama por trecho.
+# antes de cortar no limite. "cross-encoder" = modelo local sem custo; "llm" =
+# pergunta 0-3 ao Ollama por trecho. NOTA (ADR-RAG-001 §6): o modelo default
+# (Xenova/ms-marco-MiniLM-L-6-v2) é só-inglês e PIORA corpora PT-BR — aponte
+# RAG_RERANK_CE_MODEL para um cross-encoder multilíngue antes de ligar.
 # RAG_RERANK=cross-encoder
 # RAG_RERANK_TOPN=20          # quantos candidatos buscar antes de reordenar
 # RAG_RERANK_TOPK=5           # quantos manter após o rerank
+# RAG_RERANK_CE_MODEL=Xenova/ms-marco-MiniLM-L-6-v2   # modelo do cross-encoder
 # RAG_INJECTION_MODO=aviso    # aviso | recusar (descarta chunk de severidade alta)
 # RAG_HNSW_EF_SEARCH=40       # ef_search fixo na busca vetorial (reprodutibilidade)
+#
+# Cache semântico do RAG (docs/RAG-CACHE.md) — acima do cache exato; acerta em
+# paráfrase (cosseno do embedding >= threshold). Desligado por default.
+# RAG_SEMANTIC_CACHE=on
+# RAG_SEMANTIC_CACHE_THRESHOLD=0.85   # cosseno mínimo p/ hit (0.5–0.999)
+# RAG_SEMANTIC_CACHE_TTL=60           # TTL das entradas em s (1–3600)
+#
+# Escalonamento por confiança do roteador (docs/ROUTER-ESCALATION.md) — após a
+# resposta do tier local, sobe um degrau se ela for fraca. Desligado por default.
+# ROUTER_ESCALATION=on
+# ROUTER_ESCALATION_MIN_SCORE=0.55    # score do 1º chunk RAG abaixo do qual é "fraco"
+# ROUTER_ESCALATION_MIN_CHARS=40      # resposta menor que isto (trim) é "fraca"
 ```
 
 ### Variáveis de ambiente importantes
@@ -91,9 +106,12 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `AOS_PORT` | `4310` | Porta do daemon |
 | `ZEN_API_KEYS` | — | Chaves OpenCode Zen em rodízio (round-robin por chamada); vírgula-separadas. Alternativas: `ZEN_API_KEY_1..7` ou `ZEN_API_KEY` (uma só) |
 | `ZEN_CHAT_MODEL` | `nemotron-3-ultra-free` | Modelo usado no tier `zen` |
-| `RAG_RERANK` | `off` | Reranker do RAG: `off` \| `cross-encoder` (local) \| `llm`. Latência em `aos_rag_rerank_seconds`. Ver [docs/adr/ADR-RAG-001.md](docs/adr/ADR-RAG-001.md) |
+| `RAG_RERANK` | `off` | Reranker do RAG: `off` \| `cross-encoder` (local) \| `llm`. **Modelo default só-inglês piora PT-BR** — ver [ADR-RAG-001 §6](docs/adr/ADR-RAG-001.md). Latência em `aos_rag_rerank_seconds` |
+| `RAG_RERANK_CE_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` | Modelo do cross-encoder (aponte para um multilíngue antes de ligar) |
 | `RAG_INJECTION_MODO` | `aviso` | Screening de prompt injection em chunks de RAG: `aviso` \| `recusar` |
 | `RAG_HNSW_EF_SEARCH` | `40` | `ef_search` fixado na busca vetorial HNSW (reprodutibilidade) |
+| `RAG_SEMANTIC_CACHE` | `off` | Cache semântico do RAG (`on` liga). `_THRESHOLD` `0.85`, `_TTL` `60`. Ver [docs/RAG-CACHE.md](docs/RAG-CACHE.md) |
+| `ROUTER_ESCALATION` | `off` | Escalonamento por confiança do roteador (`on` liga). `_MIN_SCORE` `0.55`, `_MIN_CHARS` `40`. Ver [docs/ROUTER-ESCALATION.md](docs/ROUTER-ESCALATION.md) |
 
 ## 4. PostgreSQL (opcional mas recomendado)
 

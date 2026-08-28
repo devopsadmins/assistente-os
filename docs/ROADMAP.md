@@ -763,8 +763,16 @@ cacheado; falha de modelo → `crossEncoderFailed` + log + fallback para ordem p
 score. `llm` pontua 0–3 via Ollama por trecho; timeout/erro → `-1` (não pontuado,
 mantém ordem original). Chave de cache RAG inclui o modo.
 
+> **Correção (2026-08-28, T1.4):** o caminho `cross-encoder` real era um **no-op
+> silencioso** de E10 até aqui — `getCrossEncoderScorer` chamava o pipeline
+> `text-classification` do `@xenova/transformers` com assinatura de par não
+> suportada (`text.split is not a function`), erro engolido pelo `try/catch`. Só o
+> teste com scorer injetado passava. Reescrito para tokenizer + model diretos +
+> env `RAG_RERANK_CE_MODEL`. Medição em `ADR-RAG-001 §6`: o modelo default
+> (só-inglês) **piora** o corpus PT-BR → `RAG_RERANK` segue `off`.
+
 ### Critérios de aceitação
-- [x] `cross-encoder` (scorer injetado no teste): a isca lexical sai do top-K (teste `rerank.test.ts`).
+- [x] `cross-encoder` (scorer injetado no teste): a isca lexical sai do top-K (teste `rerank.test.ts`). ⚠️ o caminho de modelo real só passou a funcionar em T1.4 (2026-08-28) — ver correção acima.
 - [x] `RAG_RERANK=off`: `fetchN == limit`, ordena só por score — idêntico ao atual (suítes memory/daemon verdes).
 - [x] Modelo ausente → auto-skip + log, não quebra (fallback `byOriginal`).
 - [x] Scorer que devolve `-1` preserva a ordem por score original.

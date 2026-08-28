@@ -56,13 +56,13 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Princípios**: local-first (Ollama fallback), zero Docker obrigatório (só Postgres usa Docker), markdown como storage primário, PostgreSQL advisory locks para concorrência. Credenciais de cada instalação (tokens, chaves de API, tunnel token) ficam só em `~/.assistant-os/.env` — nunca no repositório — para o mesmo código rodar em várias máquinas com credenciais próprias. Toda resposta de toda soul carrega uma diretriz FinOps fixa no system prompt (sem preâmbulo, sem repetir o pedido do usuário) — reduz tokens de saída sem flag de configuração.
+**Princípios**: local-first (Ollama fallback), zero Docker obrigatório (só Postgres usa Docker), markdown como storage primário, PostgreSQL advisory locks para concorrência. Credenciais de cada instalação (tokens, chaves de API, tunnel token) ficam só em `~/.assistant-os/.env` — nunca no repositório — para o mesmo código rodar em várias máquinas com credenciais próprias. Toda resposta de toda soul carrega uma diretriz FinOps fixa no system prompt (sem preâmbulo, sem repetir o pedido do usuário) — reduz tokens de saída sem flag de configuração. O montador de prompt (`buildPrompt`) ordena os blocos do mais estático para o mais volátil (diretriz → regras de ouro → persona → skills → sessão → RAG → histórico) para maximizar o prefixo de bytes idêntico entre turnos (reuso de KV cache do Ollama).
 
 ## Pacotes
 
 | Pacote | Papel | Capacidades |
 |---|---|---|
-| `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), agregação de uso/tokens por soul/mode/model (`getUsageSummary`), cache em camadas (Redis + fallback em memória, `cache.ts`), migração, content filter (12 padrões de segredo + detector de prompt injection: entrada + chunks de RAG), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
+| `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), agregação de uso/tokens por soul/mode/model (`getUsageSummary`), cache em camadas (Redis + fallback em memória, `cache.ts`), migração, content filter (12 padrões de segredo + detector de prompt injection: entrada + chunks de RAG), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, [Prompt Garden](docs/PROMPT-GARDEN.md) (prompts de pipeline versionados, hash no manifesto), [canvas de arquitetura por soul](docs/ARCHITECTURE-CANVAS-TEMPLATE.md) (`os soul <id> canvas`), catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
 | `memory` | RAG + Grafo | Chunks + embeddings (Ollama ou fallback Xenova/ILIKE), LangChain LCEL RAG, LangGraph agent workflow com tool-calling, grafo de entidades/relações/observações, gate de relevância |
 | `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, orquestrador ORCA (modo fast/pro dinâmico + mission runner), worktree manager (git worktree isolado por tarefa, merge local L3-gated), terminal sanitizer, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection, log de debug de retrieval RAG (method/score por fonte) no audit trail |
 | `tools` | MCP server | 56 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
@@ -93,8 +93,10 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **LangChain LCEL RAG**: `retrieveContext()` → `ChatPromptTemplate` → LLM
 - **Grafo de conhecimento**: entidades, relações, observações em Postgres
 - **Gate de relevância**: threshold configurável com modos (recusar/aviso/livre)
-- **Busca híbrida**: vetorial + literal com scores
-- **Reranking** (opcional, `RAG_RERANK=cross-encoder|llm`, default `off`): busca um top-N amplo e reordena por relevância par (query, trecho) antes de cortar no top-K. Cross-encoder local (`Xenova/ms-marco-MiniLM-L-6-v2`) ou juiz LLM via Ollama; auto-skip para ordem por score se o modelo não carregar
+- **Busca**: vetorial (pgvector 768, HNSW) → fallback literal ILIKE, com scores
+- **Reranking** (opcional, `RAG_RERANK=cross-encoder|llm`, default `off`): busca um top-N amplo e reordena por relevância par (query, trecho) antes de cortar no top-K. Cross-encoder local ou juiz LLM via Ollama; auto-skip para ordem por score se o modelo não carregar. **O modelo default (`Xenova/ms-marco-MiniLM-L-6-v2`) é só-inglês e degrada corpora PT-BR** (medido em [ADR-RAG-001 §6](docs/adr/ADR-RAG-001.md)): aponte `RAG_RERANK_CE_MODEL` para um cross-encoder multilíngue antes de ativar
+- **Cache do RAG**: exato (chave sha1, TTL 60s) + semântico opcional por cosseno de embedding (`RAG_SEMANTIC_CACHE=on`, default off) — ver [docs/RAG-CACHE.md](docs/RAG-CACHE.md)
+- **Qualidade de recuperação medível**: `os rag eval` (hit@k / MRR / recall@5) contra golden set — ver [docs/RAG-EVAL.md](docs/RAG-EVAL.md)
 - **Debug controlado de retrieval**: cada fonte recuperada carrega `method` (`semantic`/`literal`/`hybrid`) e `score`; o daemon grava isso no audit trail existente a cada chat com RAG — dá visibilidade sobre degradação silenciosa pra busca literal (ex.: embedder de indexação incompatível com o de consulta) sem precisar de infraestrutura de observabilidade nova
 - **Testes de fidelidade RAG**: grounding lexical determinístico (sempre roda no CI) + juiz LLM opcional via Ollama (pergunta binária se a resposta é sustentada só pelo contexto recuperado; auto-skip quando Ollama não está disponível)
 
@@ -390,6 +392,13 @@ Feito (2026-08-27):
   trail + aviso de índice defasado + `hnsw.ef_search` fixo.
 
 Backlog do roadmap: **zerado** (E7 é ação no dashboard Cloudflare, fora do repo).
+
+**Revisão de arquitetura (2026-08-28)** — [docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md),
+backlog concluído: gate de compliance no CI, golden set de RAG + baseline,
+conserto do reranker cross-encoder, Prompt Garden, cache semântico, canvas por
+soul, escalonamento por confiança, reordenação do montador de prompt.
+`RAG_RERANK` / `RAG_SEMANTIC_CACHE` / `ROUTER_ESCALATION` shipam **desligados**,
+aguardando medição.
 
 ## Docs
 

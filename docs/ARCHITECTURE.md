@@ -46,6 +46,7 @@ Copiloto residente em Node/TS, API-first, local-first. Monorepo npm workspaces, 
 - **embedders.ts** — `OllamaEmbedder` (cosseno em JS, timeout 4s), `LiteralEmbedder` (fallback ILIKE), `cosine`.
 - **indexer.ts** — chunking de markdown/texto, indexação idempotente (UNIQUE soul+doc_key), busca vetorial→literal.
 - **graph.ts** — upsert de entidades/relações, observações com timestamp.
+- **rag-chain.ts / rag-semantic-cache.ts** — `retrieveContext` com cache exato (TTL 60s) + cache semântico opcional (`RAG_SEMANTIC_CACHE`, default off); `rerank.ts` (reranker, `RAG_RERANK`, default off); `rag-eval.ts` (`os rag eval` — hit@k/MRR/recall).
 
 ### packages/daemon — API-first
 
@@ -60,7 +61,7 @@ Servidor MCP mínimo (JSON-RPC 2.0 sobre stdio): `initialize`, `tools/list`, `to
 
 ### packages/cli — comando `os`
 
-`status`, `souls`, `soul <id> [ativa]`, `chat <soul> <prompt>`, `migrate <src>`, `memory <soul> index|search|status`, `graph <soul> list`, `costs`, `agenda add|list`, `daemon [port]`, `voice`, `backup`, `help`.
+`status`, `souls`, `soul <id> [ativa | canvas [--write] | anota | licao | decide]`, `chat <soul> <prompt>`, `migrate <src>`, `memory <soul> index|search|status`, `rag eval [<soul>]`, `graph <soul> list`, `costs`, `agenda add|list`, `manifest`, `daemon [port]`, `voice`, `backup`, `help`.
 
 ## Roteamento local-first
 
@@ -68,11 +69,13 @@ Degraus: **local** (Ollama) → **zen** (provedor customizado) → **soul** (ope
 
 O chat interativo (`POST /souls/:id/chat` e o `onChat` da voz) usa `route()` com uma sonda barata e segura de repetir (`GET /api/tags` no Ollama, sem rodar inferência) para escolher o degrau: se `local` não responder, cai para `zen` automaticamente. `zen`/`soul` não têm sonda equivalente pelo daemon (dependem do provider configurado no opencode.json) e são assumidos disponíveis; falhas neles só aparecem na execução real, que acontece uma única vez, no degrau vencedor.
 
+**Escalonamento por confiança** (`ROUTER_ESCALATION`, default off — `docs/ROUTER-ESCALATION.md`): depois da execução no tier `local`, sinais de baixa confiança (falha · resposta vazia/curta · recusa "não sei" + RAG fraco) disparam **uma** re-tentativa no próximo degrau. Wired só no `POST /souls/:id/chat`.
+
 ### Multi-Zen (7 chaves)
 
 O `opencode.json` global registra 7 providers customizados de OpenCode Zen (`zen-sousa`, `zen-devocional`, `zen-iecsjc`, `zen-evertongame`, `zen-escritor`, `zen-iso`, `zen-avancei`), um por chave do SLC-OS, via `@ai-sdk/openai-compatible` com `baseURL: https://opencode.ai/zen/v1`. As chaves ficam em `~/.config/opencode/.env` (config global do opencode, não `~/.assistant-os/.env`) como `ZEN_*_API_KEY` e são injetadas por `{env:...}`. Modelo padrão: `nemotron-3-ultra-free`. O provider nativo `opencode` (auth.json, chave iecsjc) continua servindo o degrau `zen`. O mapeamento soul→provider (o "a quem pertence") está pendente.
 
-### Stitch MCP (hosted, credencial pendente)
+### Stitch MCP (descontinuado)
 
 O Stitch MCP (`https://stitch.googleapis.com/mcp`) foi **descontinuado** — a entrada foi removida de todos os `opencode.json`/`opencode.jsonc` em 2026-08-18 e não é usada desde então (T1.2 de `docs/ARCHITECTURE-REVIEW.md`). Histórico do 401 por token estático e receita de religamento via OAuth nativo do opencode: `docs/MCPS.md`.
 
