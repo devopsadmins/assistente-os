@@ -48,11 +48,10 @@ if (!pr) {
 const baseSha = pr.base?.sha;
 const headSha = pr.head?.sha;
 const files = baseSha && headSha ? changedFiles(baseSha, headSha) : [];
-const labels = Array.isArray(pr.labels) ? pr.labels.map((l) => l.name) : [];
 
-const violations = evaluateCompliance({ body: pr.body ?? "", changedFiles: files, labels });
+const violations = evaluateCompliance({ body: pr.body ?? "", changedFiles: files });
 
-console.log(`PR #${pr.number} — ${files.length} arquivo(s) alterado(s), label(s): ${labels.join(", ") || "(nenhum)"}`);
+console.log(`PR #${pr.number} — ${files.length} arquivo(s) alterado(s)`);
 
 if (violations.length === 0) {
   console.log("\n✓ Gate de compliance: OK");
@@ -61,5 +60,5 @@ if (violations.length === 0) {
 
 console.error("\n✗ Gate de compliance — pendências:\n");
 for (const v of violations) console.error(`  • ${v}`);
-console.error("\nAjuste a descrição do PR (ver .github/pull_request_template.md) ou peça o label de revisão.");
+console.error("\nAjuste a descrição do PR (ver .github/pull_request_template.md).");
 process.exit(1);

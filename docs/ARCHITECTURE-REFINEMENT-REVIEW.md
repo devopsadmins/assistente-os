@@ -23,20 +23,20 @@ que dá pra validar de fato.
 1. O alvo primário do refino é: (a) **endurecer** o que existe (testes, correção),
    (b) **ligar e medir** os toggles, (c) **podar** o que não paga o custo, ou uma
    ordem entre esses?
-   → RESPOSTA:
+   → RESPOSTA: endurecer
 2. Você tem **Ollama vivo** num ambiente de teste/staging (não só o CI, que pula o
    tier local)? Se sim, onde?
-   → RESPOSTA:
+   → RESPOSTA: ollama vivo, em container no mesmo servidor
 3. Existe **staging** do daemon separado de produção, ou validação é sempre na
    máquina de produção com flag?
-   → RESPOSTA:
+   → RESPOSTA: nao existe producao ainda, tudo é staging, é uma POC
 4. Você tem **logs de queries reais** da soul `consultoria_ia` (sessões, Telegram,
    WhatsApp) que dê pra minerar para golden set?
-   → RESPOSTA:
+   → RESPOSTA: nao tenho log, mas todos os dados em texto e na RAG sao reais.
 5. Métrica de sucesso do refino: o que faz você dizer "pronto"? (ex.: "os 3
    toggles ligados com número que justifica" / "cobertura de integração nos
    caminhos wired" / "menos env vars")
-   → RESPOSTA:
+   → RESPOSTA: testes com dados reais, logs de comprovação e metrica de resposta estabelecida.
 
 **Testes unitários:** nenhum (etapa de decisão).
 **Validação com você:** revisar as respostas e travar a ordem das etapas seguintes.
@@ -57,17 +57,17 @@ que dá pra validar de fato.
 **Perguntas**
 1. **Cache semântico:** manter (e refinar na Etapa 6) ou **remover** e ficar só com
    o exato?
-   → RESPOSTA:
+   → RESPOSTA: chace semantivo
 2. **Canvas:** manter como ferramenta ad-hoc, **promover** a artefato exigido (em
    criação de soul / review), ou **remover**?
-   → RESPOSTA:
+   → RESPOSTA: promover
 3. **Reranker:** investir num cross-encoder multilíngue (Etapa 4), aceitar
    `RAG_RERANK=off` **definitivo** e remover `rerank.ts`, ou deixar dormente como
    está?
-   → RESPOSTA:
+   → RESPOSTA: investir num cross-encoder
 4. As **6 env vars novas** (`RAG_RERANK_CE_MODEL`, `RAG_SEMANTIC_CACHE`+2,
    `ROUTER_ESCALATION`+2) — todas ficam, ou alguma feature removida leva as suas?
-   → RESPOSTA:
+   → RESPOSTA: vamos resolver o ponto 3 antes.
 
 **Testes unitários:** para cada remoção — apagar o teste correspondente e rodar a
 suíte para confirmar que nada mais depende (`grep` de importadores + build).
@@ -85,19 +85,19 @@ desta jornada). Hoje é peso morto.
 **Perguntas**
 1. Adotar **fluxo de PR** para branches de feature (o gate passa a valer de fato),
    ou manter FF-merge e o gate vira inútil?
-   → RESPOSTA:
+   → RESPOSTA: adotar fluxo
 2. Se mantiver FF-merge: quer uma variante que roda **no `push` para `main`** e lê
    os metadados do **commit** (mensagem tem `Rollback:` + ref de rastreabilidade)
    em vez do corpo do PR? Ou desligar o gate?
-   → RESPOSTA:
+   → RESPOSTA: nao vai manter
 3. A regra "path sensível → exige label `governanca-revisada`" faz sentido num
    fluxo solo? Manter, trocar por "path sensível → exige linha no CHANGELOG", ou
    remover?
-   → RESPOSTA:
+   → RESPOSTA: faz sentido para evidencia futura, prefiro ter changelog.
 4. O `.github/workflows/rag-eval.yml` aponta para `runs-on: self-hosted` que não
    existe. Vai existir um runner self-hosted, ou esse workflow deve ser removido e
    o eval de RAG fica 100% manual (documentado)?
-   → RESPOSTA:
+   → RESPOSTA: remova agora. estamos em POC
 
 **Testes unitários**
 - Se adotar modo `push`/commit: novo caso em `compliance-rules.test.mjs` para
@@ -122,17 +122,17 @@ n=23 tem IC ~±18pp.
 **Perguntas**
 1. **Fonte dos casos:** minerar queries reais (Etapa 0 Q4), você escrever à mão,
    um especialista da Dimastec, ou combinação?
-   → RESPOSTA:
+   → RESPOSTA: aguardar reunião que terei hoje.
 2. **Tamanho alvo:** 50? 80? 120 casos?
-   → RESPOSTA:
+   → RESPOSTA:  ainda aguardar
 3. **Cobertura do corpus:** só hub-kb, ou incluir `references/` (ISO, LGPD, NIST),
    `sessoes/`, `documentos/` da Dimastec?
-   → RESPOSTA:
+   → RESPOSTA: aguardar
 4. **Piso de auditoria** que vira gate: `hit@1 ≥ ?` e `hit@5 ≥ ?` e `recall@5 ≥ ?`.
-   → RESPOSTA:
+   → RESPOSTA: aguardar
 5. Rodar o eval real em **CI** (precisa do runner self-hosted da Etapa 2 Q4) ou
    fica como passo de release manual?
-   → RESPOSTA:
+   → RESPOSTA: aguardar
 
 **Testes unitários**
 - `rag-eval.test.ts` ganha um caso que, **se** `~/.assistant-os/rag-golden.jsonl`
@@ -161,13 +161,13 @@ trocar o modelo. `ms-marco-MiniLM-L-6-v2` (default, só-inglês) → hit@1 73,9%
    localmente (ex.: `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` via
    `optimum`/`transformers.js` scripts)? Ou só usar algo já publicado como
    `Xenova/*`?
-   → RESPOSTA:
+   → RESPOSTA: temos que medir a performance e resposta, estou com hardware limitado
 2. Teto de latência aceitável por consulta com rerank ligado (CPU)? O eval com o
    modelo inglês levou ~58s para 23 casos (~2,5s/caso).
-   → RESPOSTA:
+   → RESPOSTA: 180 segundos, estou com hardware limitado
 3. Se o multilíngue também não superar o baseline `off` de forma clara, o veredito
    é `off` **permanente** + remover o código?
-   → RESPOSTA:
+   → RESPOSTA: nao devido ao hardware
 
 **Testes unitários**
 - Novo teste (guardado por `RAG_RERANK_TEST_MODEL` env, skip no CI padrão) que
@@ -192,18 +192,18 @@ os mais importantes) ficaram de fora por conflito com sessão paralela;
 **Perguntas**
 1. A sessão paralela ("Linkedin & Planos") em `agent-workflow.ts` já **terminou**?
    Posso migrar os system prompts do ReAct para o garden?
-   → RESPOSTA:
+   → RESPOSTA: sim
 2. `prompt-templates.ts` (LangChain) — migrar para o garden (adaptar o
    `PromptSpec` para gerar `ChatPromptTemplate`) ou deixar fora (estrutura
    própria, documentado como exceção)?
-   → RESPOSTA:
+   → RESPOSTA: pode migrar
 3. Vale um comando `os prompt list | show <id> | diff` para inspeção/auditoria, ou
    `git log` nos arquivos do garden basta?
-   → RESPOSTA:
+   → RESPOSTA: via os prompt list
 4. Os templates com JSON literal usam `{{` / `}}` para escapar (ex.:
    `spec-grill-analyst`). Aceitável, ou prefere um campo `outputSchema` separado do
    `template` para não poluir?
-   → RESPOSTA:
+   → RESPOSTA: campo separado para nao poluir
 
 **Testes unitários**
 - Para cada prompt migrado nesta etapa: teste `render()` **byte-idêntico** ao
@@ -227,13 +227,13 @@ Risco: threshold 0.85 pode casar paráfrases que querem contexto diferente.
 **Perguntas**
 1. O ganho que você quer é **latência** ou **custo**? (custo: o cache semântico
    não entrega — a resposta ainda é gerada; só o embedding + busca são poupados.)
-   → RESPOSTA:
+   → RESPOSTA: latencia
 2. Threshold 0.85 — testar com quantos pares reais de paráfrase antes de confiar?
    Você fornece os pares ou eu gero a partir das sessões?
-   → RESPOSTA:
+   → RESPOSTA: gere a partir das sessoes
 3. Aceitável o cache ser **só em memória do processo** (fragmenta em multi-instância),
    ou precisa ser compartilhado (exigiria Redis + índice vetorial)?
-   → RESPOSTA:
+   → RESPOSTA: precisa ser compartilhado, ja havia solicitado uso de redis
 
 **Testes unitários**
 - Teste de integração de `retrieveContext` com um embedder determinístico
@@ -258,13 +258,13 @@ Risco: threshold 0.85 pode casar paráfrases que querem contexto diferente.
 
 **Perguntas**
 1. `--write` deve **preservar** (merge) o bloco 9 existente em vez de sobrescrever?
-   → RESPOSTA:
+   → RESPOSTA: preservar
 2. O gate "agentic" deve ser mais estrito — ex.: soul tem `agent.permissions.tools`
    **explícito** (não default) **e** alcança L3? Ou tier `langgraph` habilitado?
-   → RESPOSTA:
+   → RESPOSTA: tier langgraph
 3. O canvas deve ser **exigido** em algum ponto (ex.: `os soul create` gera o
    esqueleto; um check avisa se está defasado do `config.json`), ou fica ad-hoc?
-   → RESPOSTA:
+   → RESPOSTA: deve ser exigido
 
 **Testes unitários**
 - Teste do merge do bloco 9: canvas com bloco 9 preenchido + `--write` → os
@@ -287,15 +287,15 @@ frágil. Wired só no `POST /souls/:id/chat`.
 **Perguntas**
 1. Sinal de recusa: regex é aceitável, ou quer algo melhor — ex.: o provider
    expõe logprobs/`finish_reason`? (Zen via `opencode run` provavelmente não.)
-   → RESPOSTA:
+   → RESPOSTA: algo melhor
 2. Cada escalada = **2 chamadas LLM**. Quer um teto (ex.: no máx. 1 escalada por
    sessão / por N minutos) e/ou só quando `mode === "fast"`?
-   → RESPOSTA:
+   → RESPOSTA: ambos, definidos em tela com valor default
 3. Escalar também em `agenda` / `events` / `voice`, ou só chat interativo?
-   → RESPOSTA:
+   → RESPOSTA: so chat, voice parece nao funcionar
 4. Ordem de tiers para escalada: sempre o **próximo** de `routerTiers`, ou pular
    direto para o **melhor** (`soul`)?
-   → RESPOSTA:
+   → RESPOSTA: proximo
 
 **Testes unitários**
 - Teste de integração de `handleChat` com `ROUTER_ESCALATION=on`: stub de `run`
@@ -325,13 +325,13 @@ prefixo quando skills casam (índice estático + corpos dinâmicos no mesmo bloc
 **Perguntas**
 1. Vale **medir** o ganho no tier local (instrumentar latência de prefill do
    Ollama turno-1 vs turno-2)? Ou aceitamos "é a ordem correta, ganho é bônus"?
-   → RESPOSTA:
+   → RESPOSTA: vale medir, estamos em poc
 2. Separar `skillsCtx` em **índice** (estático, sobe pro prefixo) e **corpos das
    skills que casaram** (dinâmico, desce)? Mexe em `renderSkillsPrompt` no core.
-   → RESPOSTA:
+   → RESPOSTA: separar
 3. Dá para verificar com o time do opencode/Zen se há prefix caching automático no
    endpoint `opencode.ai/zen/v1`? (define se o esforço no tier pago vale.)
-   → RESPOSTA:
+   → RESPOSTA: aguardar
 
 **Testes unitários**
 - Se separar skills: teste de que o índice de skills fica antes da fronteira
@@ -356,13 +356,13 @@ cobertura real.
 1. Prioridade entre os caminhos wired-sem-teste: (a) hit semântico em
    `retrieveContext`, (b) escalada em `chat.ts`, (c) modelo real do cross-encoder,
    (d) o gate de CI num evento de PR real.
-   → RESPOSTA:
+   → RESPOSTA:  a
 2. Aceitável um refactor pequeno para tornar `ollamaChat` injetável (hoje é uma
    função-módulo) para viabilizar o teste (b)?
-   → RESPOSTA:
+   → RESPOSTA: refactor
 3. Meta de cobertura: "todo caminho que um toggle liga tem ao menos 1 teste de
    integração" — aceita como critério de saída do refino?
-   → RESPOSTA:
+   → RESPOSTA: sim
 
 **Testes unitários / integração:** a soma dos itens marcados nas Etapas 3–9,
 executados aqui como uma sub-suíte nomeada.
@@ -375,10 +375,10 @@ dos caminhos wired.
 
 | Etapa | Respondida | Testes | Validada | Commit |
 |---|---|---|---|---|
-| 0 — Objetivo/ambiente | ☐ | — | ☐ | — |
-| 1 — Poda | ☐ | ☐ | ☐ | — |
-| 2 — Gate de CI | ☐ | ☐ | ☐ | — |
-| 3 — Golden set | ☐ | ☐ | ☐ | — |
+| 0 — Objetivo/ambiente | ✅ | — | ✅ | — |
+| 1 — Poda | ✅ (manter cache+refinar; promover canvas; investir reranker) | — | ✅ | — |
+| 2 — Gate de CI | ✅ | ✅ 13 verdes | ⏳ no PR | `feat/refino-etapa-2` |
+| 3 — Golden set | ⏳ aguardando reunião | ☐ | ☐ | — |
 | 4 — Reranker | ☐ | ☐ | ☐ | — |
 | 5 — Prompt Garden | ☐ | ☐ | ☐ | — |
 | 6 — Cache semântico | ☐ | ☐ | ☐ | — |

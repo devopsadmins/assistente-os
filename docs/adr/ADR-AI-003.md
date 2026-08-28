@@ -91,6 +91,13 @@ Adotar o loop de almas (openclaw-style) e o gate de relevância (SLC-OS) como co
 > governança de dados/ADR era forte mas não automatizada no PR. Ref: T1.1 de
 > `docs/ARCHITECTURE-REVIEW.md`.
 
+> **T1.1 · atualização (2026-08-28, Etapa 2 do refino):** a regra de label
+> `governanca-revisada` foi **removida** — num fluxo enxuto a evidência é a linha
+> no `CHANGELOG.md`. Caminho sensível agora exige o mesmo paper trail
+> (`CHANGELOG.md` ou `docs/adr/`) que a config de governança; editar um ADR já é
+> o registro. O gate passa a valer de fato com o fluxo de PR + branch protection
+> em `main` (`CONTRIBUTING.md`).
+
 ## Histórico
 
 | Data | Evento | Autor |
