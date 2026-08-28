@@ -254,21 +254,28 @@ anterior. memory 77 verde.
 
 **Esforço:** M. **Depende de:** `updated_at` em `chunks` (Epic A, já em `main`).
 
-#### T2.3 — Canvas de arquitetura honesto + `os soul canvas`  *(Análise 1)*
+#### T2.3 — Canvas de arquitetura honesto + `os soul canvas`  *(Análise 1)*  — ✅ feito (2026-08-28)
 
 **Objetivo:** o canvas como filtro arquitetural, descritivo e gerado.
 
-**Arquivos:**
-- Novo: `docs/ARCHITECTURE-CANVAS-TEMPLATE.md` — vocabulário real (tiers
-  `local/zen/soul`+`langgraph` × mode `fast/pro`; vetorial+fallback literal;
-  cache TTL 60s; Guardian OTP; trilha ISO 42001).
-- `packages/cli/src/*` — `os soul canvas <id>`: preenche blocos determinísticos de
-  `config.json` + `os manifest`; deixa em branco só decisão humana.
+**Entregue:**
+- `packages/core/src/soul-canvas.ts` — `buildSoulCanvas(soul, facts)` (puro, markdown),
+  `isAgenticSoul(soul)`, `maxLevelForPattern(pattern)`. 9 blocos: 8 `· auto`
+  (identidade, RAG, roteamento, tools×níveis, autonomia/aprovação, guardrails,
+  dados/memória, auditoria) + 1 `· decisão` (aprovação por ação, fallback, custo
+  do erro, as 3 perguntas do curso).
+- `os soul <id> canvas [--write]` — stdout ou `<soul.dir>/ARCHITECTURE_CANVAS.md`.
+- `docs/ARCHITECTURE-CANVAS-TEMPLATE.md` — referência com o vocabulário real
+  (tiers `local/zen/soul`+langgraph × mode `fast/pro`; vetorial+fallback literal;
+  cache exato+semântico; Guardian OTP; **não há** cascata por confiança).
+- Testes `soul-canvas.test.ts` (6).
 
-**Design:** gerar só para souls agentic (tier `langgraph` + tools L3). Sem os campos
-fictícios da tabela da Análise 1.
+**Design real:** "agentic" = a allowlist resolvida alcança alguma tool **L3** ou
+tem curinga `*` (per-soul, verificável), não "tier langgraph" (que é global). O
+header diz se o canvas completo se aplica. Blocos `· auto` gerados de
+`config.json` + `config.routerTiers`/`ragRerankMode`/etc — **nada fictício**.
 
-**Esforço:** M. **Depende de:** T2.1 ajuda (o canvas cita quais prompts a soul usa).
+**Esforço:** M.
 
 ### Tier 3 — depois / medir antes
 
@@ -307,7 +314,7 @@ T1.4 (rerank bug) ✅ código corrigido; modelo só-inglês piora PT-BR → segu
       ↓
 T2.1 (Prompt Garden)   ✅ feito — garden/ + bloco prompts no hash do manifesto
       ↓
-T2.2 (cache semântico) ✅ feito (default off) ‖ T2.3 (canvas)
+T2.2 (cache semântico) ✅ feito (default off)  ·  T2.3 (canvas) ✅ feito
       ↓
 T3.1 (cascata)   → depois do garden
 T3.2 (hybrid)    → só se T1.3 pedir

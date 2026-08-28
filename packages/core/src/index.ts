@@ -26,6 +26,7 @@ export * from "./prompts/garden/index.js";
 export * from "./errors.js";
 export * from "./policy.js";
 export * from "./soul-spec.js";
+export * from "./soul-canvas.js";
 export * from "./cache.js";
 export * from "./manifest.js";
 export * from "./skills.js";

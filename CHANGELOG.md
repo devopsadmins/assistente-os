@@ -23,6 +23,16 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Canvas de Arquitetura por soul** (T2.3): `os soul <id> canvas [--write]` gera
+  um AI Architecture Decision Canvas descritivo — 8 blocos `· auto` (identidade,
+  RAG, roteamento, tools×níveis L1/L2/L3, autonomia/aprovação, guardrails,
+  dados/memória, auditoria) preenchidos de `config.json` + fatos do sistema, e 1
+  bloco `· decisão` em branco. `buildSoulCanvas`/`isAgenticSoul`/`maxLevelForPattern`
+  em `packages/core/src/soul-canvas.ts`. Vocabulário real (sem os campos fictícios
+  da Análise 1). `docs/ARCHITECTURE-CANVAS-TEMPLATE.md`. Ref: T2.3 de
+  `docs/ARCHITECTURE-REVIEW.md`. Rollback: reverter o commit (comando novo, sem
+  efeito em código existente).
+
 - **Cache semântico do RAG** (T2.2, **desligado por default**): camada acima do
   cache exato de `retrieveContext` — acerta quando o embedding da pergunta está a
   ≥ `RAG_SEMANTIC_CACHE_THRESHOLD` (0.85) de cosseno de uma pergunta recente com

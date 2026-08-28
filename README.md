@@ -396,7 +396,7 @@ Backlog do roadmap: **zerado** (E7 é ação no dashboard Cloudflare, fora do re
 - [Arquitetura](docs/ARCHITECTURE.md)
 - [LangGraph](docs/LANGGRAPH.md)
 - [MCPs](docs/MCPS.md)
-- [Prompt Garden](docs/PROMPT-GARDEN.md)
+- [Prompt Garden](docs/PROMPT-GARDEN.md) · [Canvas de Arquitetura por soul](docs/ARCHITECTURE-CANVAS-TEMPLATE.md)
 - [Avaliação de RAG (`os rag eval`)](docs/RAG-EVAL.md) · [Cache do RAG](docs/RAG-CACHE.md)
 - [Providers gratuitos](docs/FREE_PROVIDERS.md)
 - [Roadmap de implementação](docs/ROADMAP.md)

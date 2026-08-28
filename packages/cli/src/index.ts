@@ -25,6 +25,7 @@ import {
   resendApprovalCode,
   getUsageSummary,
   type UsageSummaryFilters,
+  buildSoulCanvas,
 } from "@assistente-os/core";
 import {
   indexDirectory,
@@ -52,6 +53,7 @@ Uso:
   os souls                           lista as souls
   os soul <id>                       mostra config e arquivos de uma soul
   os soul <id> ativa                 define a soul ativa
+  os soul <id> canvas [--write]      gera o Canvas de Arquitetura da soul (stdout ou ARCHITECTURE_CANVAS.md)
   os chat <soul> <prompt...>         roda opencode run headless na soul
   os migrate <src>                   migra almas do SLC-OS para <home>/souls
   os import-sc <src>                 importa Segundo Cérebro para <home>/souls/segundo-cerebro
@@ -130,7 +132,7 @@ async function main(): Promise<void> {
       const id = args[0];
       const action = args[1];
       if (!id) {
-        console.log("uso: os soul <id> [ativa]");
+        console.log("uso: os soul <id> [ativa | canvas [--write] | anota <txt> | licao <txt> | decide <titulo>]");
         return;
       }
       const soul = getSoul(config.home, id);
@@ -142,6 +144,24 @@ async function main(): Promise<void> {
       if (action === "ativa") {
         setActiveSoul(config.home, id);
         console.log(`soul ativa: ${id}`);
+        return;
+      }
+      if (action === "canvas") {
+        const md = buildSoulCanvas(soul, {
+          routerTiers: config.routerTiers,
+          ragRerankMode: config.ragRerankMode,
+          ragInjectionMode: config.ragInjectionMode,
+          ragHnswEfSearch: config.ragHnswEfSearch,
+          semanticCache: /^(on|1|true)$/i.test(process.env.RAG_SEMANTIC_CACHE ?? ""),
+        });
+        if (args.includes("--write")) {
+          const { writeFileSync } = await import("node:fs");
+          const out = join(soul.dir, "ARCHITECTURE_CANVAS.md");
+          writeFileSync(out, md, "utf8");
+          console.log(`canvas escrito: ${out}`);
+        } else {
+          console.log(md);
+        }
         return;
       }
       if (action === "anota" || action === "licao" || action === "decide") {
