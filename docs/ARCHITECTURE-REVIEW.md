@@ -136,22 +136,26 @@ mudança em `config.ts` sem ADR/CHANGELOG falha; PR limpo passa. Coberto pelos 1
 
 **Esforço:** S. **Depende de:** nada. Zero código de produto.
 
-#### T1.2 — Stitch MCP → OAuth de verdade  *(Análise 3 #1)*
+#### T1.2 — Stitch MCP: auth estática  *(Análise 3 #1)*  — ✅ resolvido por remoção (2026-08-27)
 
-**Objetivo:** eliminar o modo de falha recorrente (`401` por token estático expirado).
+**Descoberta ao abrir o item:** não havia entrada `stitch` para migrar. Verificado
+em `~/.config/opencode/opencode.jsonc` (global) e `/home/support/assistente-os/opencode.json`
+(projeto) — nenhum dos dois tem `stitch`; `~/.assistant-os/.env` não tem `STITCH_*`
+nem `GOOGLE_MCP_*`; `scripts/stitch-mcp.mjs` não existe mais. A entrada foi
+**removida por inteiro** na limpeza de 2026-08-18, não só o token. Ou seja: o modo
+de falha (`401` por token estático) não existe hoje — existe uma ausência.
 
-**Arquivos:**
-- `~/.config/opencode/opencode.jsonc` — trocar a entrada `stitch` pelo bloco `oauth`
-  já documentado em `docs/MCPS.md`.
-- `~/.config/opencode/.env` — `GOOGLE_MCP_CLIENT_ID` / `GOOGLE_MCP_CLIENT_SECRET`.
-- `docs/MCPS.md` — atualizar "Estado real" e "Histórico".
+**Decisão (usuário, 2026-08-27):** não religar. Stitch não é usado desde a remoção
+e não há demanda de geração de UI no fluxo atual.
 
-**Passos:** registrar OAuth client (tipo Desktop) no Google Cloud console para o
-escopo do Stitch MCP → preencher `.env` → trocar o bloco no `opencode.jsonc` →
-rodar o fluxo OAuth do opencode 1× → validar um `stitch` tool call → atualizar doc.
+**Entregue:** `docs/MCPS.md` — seção `## stitch` reescrita como "descontinuado",
+com o histórico do 401 preservado, sem o bloco `oauth` que sugeria migração, e com
+a receita de religamento futuro via OAuth nativo do opencode (≥ 1.18 faz *dynamic
+client registration* + fluxo no navegador; token estático **nunca mais**).
 
-**Esforço:** S, isolado. **Depende de:** acesso humano ao Google Cloud console
-(só o registro do client; o resto é mecânico).
+**Se reabrir no futuro:** `gcloud` agora está instalado nesta máquina (o `MCPS.md`
+antigo dizia que não), então criar um OAuth Client no GCP deixou de ser bloqueio —
+mas provavelmente nem é preciso, dado o DCR automático do opencode.
 
 #### T1.3 — Evaluation Gate do RAG contra corpus real  *(Análise 2)*
 
@@ -259,9 +263,9 @@ Escala TrialForge, não copiloto single-node:
 ## Sequenciamento
 
 ```
-T1.1 (CI gate)   ─┐  independentes; T1.2 espera acesso ao Google Cloud
-T1.2 (Stitch)    ─┤
-T1.3 (eval RAG)  ─┘
+T1.1 (CI gate)   ✅ feito
+T1.2 (Stitch)    ✅ resolvido por remoção (não religar)
+T1.3 (eval RAG)  ← próximo do Tier 1
       ↓
 T2.1 (Prompt Garden)   → estende o manifesto; base para T3.1
       ↓
@@ -279,5 +283,5 @@ T3.2 (hybrid)    → só se T1.3 pedir
 ## Nota operacional
 
 O MCP `plugin:vercel:vercel` exige OAuth e não pôde ser autorizado nesta sessão
-não-interativa — irrelevante para este backlog (só T1.2 envolve MCP, e é Google/Stitch),
+não-interativa — irrelevante para este backlog (nenhum item aberto depende dele),
 mas registrado para não travar quem for executar.

@@ -36,27 +36,37 @@ Config (`command` aponta para o `dist/` deste clone):
 }
 ```
 
-## stitch (remote, Google)
+## stitch (remote, Google) — descontinuado
 
-Design de UI (texto → componentes). Hosted MCP oficial da Google (`https://stitch.googleapis.com/mcp`).
+Design de UI (texto → componentes) via o hosted MCP da Google
+(`https://stitch.googleapis.com/mcp`). **Não está configurado** em nenhum
+`opencode.json` / `opencode.jsonc` (projeto ou global) desde 2026-08-18.
 
-> **Estado real (verificado 2026-08-18):** ao contrário do que este doc dizia antes, a config viva em `~/.config/opencode/opencode.jsonc` **não** usa OAuth — usa um bearer token estático (`headers.authorization: "bearer {env:stitch_access_token}"`). O valor de `STITCH_ACCESS_TOKEN`/`STITCH_PROJECT_ID` (expirado) foi removido de `~/.config/opencode/.env` nesta limpeza; a entrada `stitch` do opencode.jsonc ficará sem token até o OAuth de fato ser configurado — trocar para o bloco `oauth` abaixo quando isso acontecer.
+> **Decisão (2026-08-27 — T1.2 de `docs/ARCHITECTURE-REVIEW.md`):** manter fora.
+> O Stitch não é usado desde a remoção e não há demanda de geração de UI no fluxo
+> atual. Reintroduzir só quando essa necessidade aparecer — e, aí, via OAuth
+> nativo do opencode (ver abaixo), **nunca** com token estático.
 
-```jsonc
-"stitch": {
-  "type": "remote",
-  "url": "https://stitch.googleapis.com/mcp",
-  "enabled": true,
-  "oauth": {
-    "clientId": "{env:GOOGLE_MCP_CLIENT_ID}",
-    "clientSecret": "{env:GOOGLE_MCP_CLIENT_SECRET}"
-  }
-}
-```
+> **Histórico do 401:** o setup original (até 2026-08-15) era um wrapper local
+> (`scripts/stitch-mcp.mjs`, já removido) sobre o `StitchProxy` do
+> `@google/stitch-sdk`, autenticando com um access token OAuth2 **estático**
+> (`STITCH_ACCESS_TOKEN`, prefixo `ya29.`) lido de `~/.assistant-os/.env`. Sem
+> refresh, o token expirava e as chamadas passavam a dar `401`. A migração para o
+> hosted MCP (2026-08-15) trocou o wrapper por uma entrada remota, mas ainda com
+> `headers.authorization: "bearer {env:stitch_access_token}"` — mesmo problema de
+> expiração. Em 2026-08-18 a entrada foi removida por inteiro e
+> `STITCH_ACCESS_TOKEN` / `STITCH_PROJECT_ID` saíram do `.env`.
 
-O opencode faz o fluxo OAuth e renova o token automaticamente. Ferramentas (15+): `create_project`, `get_project`, `list_projects`, `list_screens`, `get_screen`, `generate_screen_from_text`, `edit_screens`, `generate_variants`, `create_design_system`, `apply_design_system`, `download_assets`, etc.
-
-> **Histórico:** o setup anterior era um wrapper local (`scripts/stitch-mcp.mjs`) sobre o `StitchProxy` do `@google/stitch-sdk`, autenticando com um access token OAuth2 (`STITCH_ACCESS_TOKEN`, prefixo `ya29.`) lido de `~/.assistant-os/.env`. Esse token expira (sem refresh; `gcloud` não instalado para regenerar), causando `401`. Migrado para o hosted MCP em 2026-08-15.
+**Se for religar no futuro:** o opencode ≥ 1.18 faz OAuth automático em MCP
+remoto — basta `{ "type": "remote", "url": "https://stitch.googleapis.com/mcp",
+"enabled": true }` sem `headers`; ele detecta o `401`, tenta *dynamic client
+registration* e abre o fluxo no navegador (depois renova o token sozinho). Só se
+o Google recusar DCR é preciso criar um OAuth Client no console do GCP (`gcloud`
+já está instalado nesta máquina) e informar `oauth.clientId` / `oauth.clientSecret`
+via `{env:...}`. Ferramentas que o servidor expõe (15+): `create_project`,
+`get_project`, `list_projects`, `list_screens`, `get_screen`,
+`generate_screen_from_text`, `edit_screens`, `generate_variants`,
+`create_design_system`, `apply_design_system`, `download_assets`, etc.
 
 ## Remotos (globais do opencode)
 
