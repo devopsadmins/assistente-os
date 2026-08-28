@@ -8,7 +8,10 @@
 >
 > Formato igual ao [ROADMAP](ROADMAP.md): objetivo, estado verificado no código,
 > arquivos, esforço (S ≈ ½–1 dia · M ≈ 2–4 dias · L ≈ 1–2 semanas), dependências.
-> Este documento é **backlog selecionável** — nada aqui foi implementado.
+>
+> **Status (2026-08-28): backlog concluído.** T1.1–T1.4, T2.1–T2.3, T3.1 e T3.3
+> implementados (T1.4/T2.2/T3.1 shipam **desligados por default**, aguardando
+> medição). T3.2 fechado como "não fazer". Cada item traz o que ficou pronto.
 
 ## Diagnóstico em uma frase
 
@@ -300,10 +303,19 @@ RAG score + forma da resposta. `agenda`/`events`/`voice` ficam para depois (só 
 chat foi wired). **Validar** precisa de ambiente com Ollama vivo (em CI a sonda
 cai direto pra `zen`). **Esforço:** M.
 
-#### T3.2 — Hybrid / RRF / Multi-Index / Agentic RAG  *(Análise 2)*
+#### T3.2 — Hybrid / RRF / Multi-Index / Agentic RAG  *(Análise 2)*  — ❌ não fazer (fechado 2026-08-28)
 
-**Só se** o golden eval (T1.3) mostrar `hit@1 < 0.8` no corpus real. Medir antes de
-construir. **Esforço:** L.
+O gatilho era "hit@1 < 0.8 no corpus real". O T1.3 deu hit@1 73,9% — abaixo do
+limiar —, **mas**: hit@5 95,7%, recall@5 84,8%, e a única falha em 23 casos é um
+*recall miss* isolado. A **recuperação não está fraca**; o gap é precisão no
+rank-1 em PT-BR. Hybrid/RRF ataca recall (fundir listas BM25 + vetor), não é o
+remédio certo aqui — e é esforço L.
+
+**Substituído por:** o caminho barato para rank-1 é um **cross-encoder multilíngue**
+em ONNX (o default `ms-marco-MiniLM-L-6-v2` é só-inglês e piora o corpus — ver
+T1.4). Achar/converter um CE multilíngue, apontar `RAG_RERANK_CE_MODEL` e re-rodar
+o T1.3. Esforço S–M, reabre o T1.4. Enquanto hit@5 95,7% atender, nem isso é
+urgente.
 
 #### T3.3 — Ordenar o montador de prompt (estático → volátil)  — ✅ feito (2026-08-28)
 
@@ -354,12 +366,13 @@ T2.1 (Prompt Garden)   ✅ feito — garden/ + bloco prompts no hash do manifest
 T2.2 (cache semântico) ✅ feito (default off)  ·  T2.3 (canvas) ✅ feito
       ↓
 T3.1 (cascata)   ✅ mecanismo feito (default off) — validar com Ollama vivo
-T3.2 (hybrid)    → só se T1.3 pedir
+T3.2 (hybrid)    ❌ não fazer — recuperação não está fraca (hit@5 95,7%); ver CE multilíngue (T1.4)
 T3.3 (ordem do prompt) ✅ feito — persona no prefixo, sessão/rag/histórico na cauda
 ```
 
-**Maior alavancagem primeiro:** T1.1 fecha o buraco entre "temos governança" e
-"o CI a aplica" e não toca código de produto.
+**Backlog concluído (2026-08-28).** Pendências abertas, todas de *validação* (não
+de build): ligar e medir `RAG_RERANK` (precisa de CE multilíngue — ver T1.4/T3.2),
+`RAG_SEMANTIC_CACHE` e `ROUTER_ESCALATION` (precisa de ambiente com Ollama vivo).
 
 ---
 
