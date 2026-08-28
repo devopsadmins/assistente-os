@@ -50,6 +50,17 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Corrigido
 
+- **`CacheService` sem Redis** (refino, Etapa 2): `init()` criava `new Redis()` com
+  as opções default (reconexão infinita, sem listener de `error`) → quando não há
+  Redis (CI, dev), o ioredis inundava o stderr com `[ioredis] Unhandled error
+  event` e o `init()` pendurava ~20–40s até `MaxRetriesPerRequestError`. Agora:
+  `lazyConnect` + `connect()` explícito falha na 1ª tentativa; `retryStrategy`
+  desiste após 3 tentativas curtas; listener de `error` silencioso; `disconnect()`
+  do socket em toda falha (`init`/`get`/`set`). Degradação para o `Map` em memória
+  é limpa e imediata (~2s no CI). Teste novo em `cache.test.ts`.
+  Ref: Etapa 2 de `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o commit (volta ao comportamento ruidoso).
+
 - **Reranker cross-encoder do RAG** (T1.4): `getCrossEncoderScorer`
   (`packages/memory/src/rerank.ts`) chamava o pipeline `text-classification` do
   `@xenova/transformers` com uma assinatura de par não suportada → o erro era
