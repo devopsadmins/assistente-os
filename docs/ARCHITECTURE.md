@@ -61,7 +61,7 @@ Servidor MCP mínimo (JSON-RPC 2.0 sobre stdio): `initialize`, `tools/list`, `to
 
 ### packages/cli — comando `os`
 
-`status`, `souls`, `soul <id> [ativa | canvas [--write] | anota | licao | decide]`, `chat <soul> <prompt>`, `migrate <src>`, `memory <soul> index|search|status`, `rag eval [<soul>]`, `graph <soul> list`, `costs`, `agenda add|list`, `manifest`, `daemon [port]`, `voice`, `backup`, `help`.
+`status`, `souls`, `soul <id> [ativa | canvas [--write] | anota | licao | decide]`, `chat <soul> <prompt>`, `migrate <src>`, `memory <soul> index|search|status`, `rag eval [<soul>]`, `prompt list|show <id>`, `graph <soul> list`, `costs`, `agenda add|list`, `manifest`, `daemon [port]`, `voice`, `backup`, `help`.
 
 ## Roteamento local-first
 

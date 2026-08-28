@@ -5,6 +5,7 @@
  * reducers automaticamente e serializa/deserializa o estado entre nós.
  */
 import { Annotation } from "@langchain/langgraph";
+import { agentReactSystem } from "@assistente-os/core";
 
 export interface AgentToolCall {
   id: string;
@@ -82,9 +83,7 @@ export function createInitialState(soul: string): AgentStateType {
     messages: [
       {
         role: "system",
-        content:
-          "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
-          "Você tem acesso a um grafo de memória com entidades, relações e observações.",
+        content: agentReactSystem.render({}),
       },
     ],
     context: "",

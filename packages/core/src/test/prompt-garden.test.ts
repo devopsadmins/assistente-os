@@ -3,11 +3,16 @@ import assert from "node:assert/strict";
 import {
   definePrompt,
   promptHash,
+  promptCanonical,
   GARDEN,
   gardenManifest,
   emailIngestExtraction,
   guardianAudit,
   specGrillAnalyst,
+  entityExtraction,
+  agentReactSystem,
+  ragAnswer,
+  RAG_ANSWER_SUFFIXES,
 } from "../prompts/garden/index.js";
 
 test("definePrompt: render substitui {chave} e escapa {{ }}", () => {
@@ -57,6 +62,60 @@ test("specGrillAnalyst: render sem variáveis produz o JSON literal desescapado"
   assert.doesNotMatch(out, /\{\{|\}\}/);
 });
 
+test("outputSchema: {outputSchema} é injetado no render; ausência lança", () => {
+  const p = definePrompt<Record<string, never>>({
+    id: "os-t",
+    papel: "x",
+    objetivo: "y",
+    regras: [],
+    formatoSaida: "z",
+    outputSchema: '{"a": 1}',
+    versao: 1,
+    template: "responda como {outputSchema}.",
+  });
+  assert.equal(p.render({}), 'responda como {"a": 1}.');
+
+  const semSchema = definePrompt<Record<string, never>>({
+    id: "os-t2",
+    papel: "x",
+    objetivo: "y",
+    regras: [],
+    formatoSaida: "z",
+    versao: 1,
+    template: "quero {outputSchema}",
+  });
+  assert.throws(() => semSchema.render({}), /não define outputSchema/);
+});
+
+test("outputSchema entra na forma canônica / no hash", () => {
+  const base = { id: "h2", papel: "p", objetivo: "o", regras: [] as const, formatoSaida: "f", versao: 1, template: "t" };
+  assert.notEqual(promptHash(base), promptHash({ ...base, outputSchema: '{"x":1}' }));
+  assert.match(promptCanonical({ ...base, outputSchema: '{"x":1}' }), /"outputSchema":"\{\\"x\\":1\}"/);
+});
+
+test("migrados p/ outputSchema: entity-extraction e guardian-audit renderizam o JSON literal (sem {{ }})", () => {
+  const ent = entityExtraction.render({ entityKinds: "pessoa", text: "abc" });
+  assert.match(ent, /\{"entities": \[\{"name": "string"/);
+  assert.doesNotMatch(ent, /\{\{|\}\}/);
+  const g = guardianAudit.render({ taskId: "T", targetAgent: "a", changesSummary: "c", testResultsLine: "" });
+  assert.match(g, /apenas em JSON: \{"score": number, "feedback": string\}\.$/);
+});
+
+test("agentReactSystem: render sem vars é o system prompt do ReAct", () => {
+  assert.equal(
+    agentReactSystem.render({}),
+    "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
+      "Você tem acesso a um grafo de memória com entidades, relações e observações.",
+  );
+});
+
+test("ragAnswer: template preserva {context}/{question}, resolve {suffix}", () => {
+  const human = ragAnswer.template.replace("{suffix}", RAG_ANSWER_SUFFIXES.default);
+  assert.equal(human, "Contexto:\n{context}\n\nPergunta: {question}\n\nResposta:");
+  assert.equal(Object.keys(RAG_ANSWER_SUFFIXES).length, 5);
+  assert.equal(ragAnswer.papel, "Responda à pergunta do usuário com base exclusivamente nas informações fornecidas abaixo.");
+});
+
 test("promptHash: estável para o mesmo spec, muda com o template", () => {
   const base = {
     id: "h",
@@ -93,6 +152,8 @@ test("gardenManifest: uma entrada por prompt, ordenada por id, hash de 64 hex", 
     "entity-extraction",
     "guardian-audit",
     "rag-rerank-scorer",
+    "agent-react-system",
+    "rag-answer",
   ]) {
     assert.ok(ids.has(id), `faltou ${id} no gardenManifest`);
   }
