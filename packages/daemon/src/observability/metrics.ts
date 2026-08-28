@@ -51,6 +51,13 @@ export const ragRerankSeconds = new Histogram({
   registers: [registry],
 });
 
+export const ragCacheEvents = new Counter({
+  name: "aos_rag_cache_total",
+  help: "Recuperações de RAG por origem (result: miss | exact | semantic)",
+  labelNames: ["result"] as const,
+  registers: [registry],
+});
+
 export const routerFallback = new Counter({
   name: "aos_router_fallback_total",
   help: "Quedas de degrau do roteador (sonda falhou, caiu para o próximo)",

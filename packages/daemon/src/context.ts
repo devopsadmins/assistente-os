@@ -100,12 +100,13 @@ ${sessao ? `--- Sessão atual (${today}) ---\n${sessao}\n` : ""}`.trim();
       // aqui só propagamos os findings pelo verdict para o chat.ts logar/alertar.
       const injection = res.injectionFindings ?? [];
       const rerank = { mode: res.rerankMode, ms: res.rerankMs };
+      const cacheHit = res.cacheHit ?? "miss";
       if (res.hasRelevantDocs) {
         ragCtx = `## Contexto de conhecimento relevante (RAG)
 ${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
-        verdict = { ok: true, sources: res.sources, injection, rerank };
+        verdict = { ok: true, sources: res.sources, injection, rerank, cacheHit };
       } else {
-        verdict = { ok: false, motivo: "nenhum documento relevante encontrado", injection, rerank };
+        verdict = { ok: false, motivo: "nenhum documento relevante encontrado", injection, rerank, cacheHit };
       }
     } catch {
       ragCtx = "";

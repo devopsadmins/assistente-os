@@ -30,7 +30,7 @@ import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
-import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds } from "../observability/metrics.js";
+import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents } from "../observability/metrics.js";
 
 /**
  * Chama o /api/chat do Ollama via node:http. O fetch() do Node (undici) aborta
@@ -278,8 +278,16 @@ export async function handleChat(
               motivo?: string;
               injection?: RagInjectionFinding[];
               rerank?: { mode: "off" | "cross-encoder" | "llm"; ms?: number };
+              cacheHit?: "miss" | "exact" | "semantic";
             }
           | null;
+        if (verdict?.cacheHit) {
+          try {
+            ragCacheEvents.inc({ result: verdict.cacheHit });
+          } catch {
+            /* métrica opcional */
+          }
+        }
         const filesLoaded = built.files.filter((f) => f.chars > 0).length;
         const ragMsg =
           verdict == null

@@ -94,7 +94,9 @@ export async function runRagEval(
   const failures: RagEvalMetrics["failures"] = [];
 
   for (const c of cases) {
-    const ctx = await retrieveContext(pool, c.soul, c.query, k);
+    // Sem cache semântico: cada caso do golden set precisa de recuperação real
+    // (dois casos parecidos não podem colidir e corromper a métrica).
+    const ctx = await retrieveContext(pool, c.soul, c.query, k, { semanticCache: false });
     const paths = ctx.sources.map((s) => s.path);
     const rank = firstHitRank(paths, c.expect_path_substr);
     const top1ScoreOk =

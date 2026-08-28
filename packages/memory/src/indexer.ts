@@ -143,8 +143,18 @@ function hnswEfSearch(): number {
   return Math.max(1, Math.min(1000, n));
 }
 
-export async function search(pool: Pool, soul: string, query: string, embedder: Embedder, max = 5): Promise<SearchResult[]> {
-  const qVec = await embedder.embed(query);
+export async function search(
+  pool: Pool,
+  soul: string,
+  query: string,
+  embedder: Embedder,
+  max = 5,
+  precomputedVec?: number[] | null,
+): Promise<SearchResult[]> {
+  // `precomputedVec` evita re-embedar quando o caller já embedou a query (ex.:
+  // cache semântico em retrieveContext). `undefined` = embedar aqui; `null` =
+  // caller tentou e não obteve vetor → cai direto no literal.
+  const qVec = precomputedVec !== undefined ? precomputedVec : await embedder.embed(query);
 
   if (qVec) {
     // SET LOCAL exige transação; conexão dedicada para não vazar o GUC pro pool.

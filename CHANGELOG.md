@@ -23,6 +23,17 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Cache semântico do RAG** (T2.2, **desligado por default**): camada acima do
+  cache exato de `retrieveContext` — acerta quando o embedding da pergunta está a
+  ≥ `RAG_SEMANTIC_CACHE_THRESHOLD` (0.85) de cosseno de uma pergunta recente com
+  os mesmos parâmetros de recuperação. `RAG_SEMANTIC_CACHE=on` liga; `_TTL` 60s.
+  Store em memória do processo (`packages/memory/src/rag-semantic-cache.ts`), caps
+  64/bucket · 256 buckets. `RagContext.cacheHit` = `exact`/`semantic`. Opt-out
+  `{ semanticCache: false }` (usado pelo `os rag eval`). Métrica
+  `aos_rag_cache_total{result}`. `search()` ganha param `precomputedVec` p/ não
+  re-embedar. `docs/RAG-CACHE.md`. Ref: T2.2 de `docs/ARCHITECTURE-REVIEW.md`.
+  Rollback: `RAG_SEMANTIC_CACHE` off (default) já neutraliza; ou reverter o commit.
+
 - **Prompt Garden** (T2.1): biblioteca versionada dos prompts de pipeline/tool em
   `packages/core/src/prompts/garden/`. Cada prompt é um `PromptSpec`
   (`papel`/`objetivo`/`regras`/`formatoSaida`/`versao` + `template` com

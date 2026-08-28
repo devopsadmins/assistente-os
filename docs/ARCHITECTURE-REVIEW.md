@@ -230,17 +230,27 @@ ao mudar um `template`.
 
 **Esforço:** M (real: ~1 sessão).
 
-#### T2.2 — Cache semântico no `retrieveContext`  *(Análise 2)*
+#### T2.2 — Cache semântico no `retrieveContext`  *(Análise 2)*  — ✅ feito (2026-08-27)
 
 **Objetivo:** subir o hit-rate do cache de RAG sem mudar resultado observável.
 
-**Arquivos:** `packages/memory/src/rag-chain.ts` — cache de chave sha1 exata →
-similaridade de embedding (limiar ~0.85, isolado por soul, invalidado no reindex
-via `updated_at` do Epic A).
+**Entregue:**
+- `packages/memory/src/rag-semantic-cache.ts` — store em memória do processo,
+  cosseno de embedding, caps (64/bucket, 256 buckets), TTL. **Desligado por
+  default** (`RAG_SEMANTIC_CACHE=on` liga; `_THRESHOLD` 0.85; `_TTL` 60s) — mesma
+  política do reranker.
+- `retrieveContext` embeda a query uma vez; passa o vetor a `search()`
+  (novo param `precomputedVec`), consulta o bucket
+  `sha1(pool+soul+limit+rerank+injection)` antes de recuperar. Camada extra
+  **acima** do cache exato (que fica igual). `RagContext.cacheHit` = `exact` /
+  `semantic` / undefined.
+- Opt-out `retrieveContext(..., { semanticCache: false })` — usado pelo runner do
+  `os rag eval` (dois casos parecidos não podem colidir) e reservado p/ AIIA/família.
+- Métrica `aos_rag_cache_total{result}` incrementada no `chat.ts`.
+- `docs/RAG-CACHE.md`. Testes: `rag-semantic-cache.test.ts` (9).
 
-**Design:** **nunca** para geração de AIIA / artefato de família (esses exigem
-determinismo). Medir hit-rate + custo poupado com as métricas Prometheus que já
-existem antes de considerar "pronto".
+**Verificação:** com `RAG_SEMANTIC_CACHE` off (default) o caminho é idêntico ao
+anterior. memory 77 verde.
 
 **Esforço:** M. **Depende de:** `updated_at` em `chunks` (Epic A, já em `main`).
 
@@ -297,7 +307,7 @@ T1.4 (rerank bug) ✅ código corrigido; modelo só-inglês piora PT-BR → segu
       ↓
 T2.1 (Prompt Garden)   ✅ feito — garden/ + bloco prompts no hash do manifesto
       ↓
-T2.2 (cache semântico) ‖ T2.3 (canvas)   independentes entre si
+T2.2 (cache semântico) ✅ feito (default off) ‖ T2.3 (canvas)
       ↓
 T3.1 (cascata)   → depois do garden
 T3.2 (hybrid)    → só se T1.3 pedir

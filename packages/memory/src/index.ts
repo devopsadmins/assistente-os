@@ -13,3 +13,4 @@ export * from "./relevance.js";
 export * from "./rerank.js";
 export * from "./rag-injection.js";
 export * from "./rag-eval.js";
+export * from "./rag-semantic-cache.js";

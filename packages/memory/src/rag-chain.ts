@@ -16,6 +16,12 @@ import { langchainTemplates } from "./prompt-templates.js";
 import { getEmbedder } from "./embedder-provider.js";
 import { rerank, rerankConfig } from "./rerank.js";
 import {
+  semanticCacheConfig,
+  ragSemanticCacheGet,
+  ragSemanticCacheSet,
+  logSemanticCacheHit,
+} from "./rag-semantic-cache.js";
+import {
   screenRetrievedChunks,
   ragInjectionMode,
   type ScreenableChunk,
@@ -54,6 +60,8 @@ export interface RagContext {
   rerankMode: "off" | "cross-encoder" | "llm";
   /** Latência do estágio de rerank em ms (undefined quando rerankMode === "off"). */
   rerankMs?: number;
+  /** Origem do resultado: "exact"/"semantic" quando veio de cache; undefined quando recuperado agora. */
+  cacheHit?: "exact" | "semantic";
 }
 
 /**
@@ -155,7 +163,8 @@ export async function retrieveContext(
   pool: Pool,
   soul: string,
   query: string,
-  limit = 5
+  limit = 5,
+  opts: { semanticCache?: boolean } = {},
 ): Promise<RagContext> {
   // Cache em camadas (E4): dois chats idênticos em janela curta (voz, retries de
   // UI) não repetem embedding + query vetorial. TTL curto — a memória da soul
@@ -164,20 +173,43 @@ export async function retrieveContext(
     .update((pool as unknown as { options?: { connectionString?: string } }).options?.connectionString ?? "")
     .digest("hex")
     .slice(0, 8);
-  const cacheKey = `rag:${poolTag}:${soul}:${createHash("sha1").update(`${limit}\n${process.env.RAG_RERANK ?? "off"}\n${ragInjectionMode()}\n${query}`).digest("hex")}`;
+  const discriminants = `${limit}\n${process.env.RAG_RERANK ?? "off"}\n${ragInjectionMode()}`;
+  const cacheKey = `rag:${poolTag}:${soul}:${createHash("sha1").update(`${discriminants}\n${query}`).digest("hex")}`;
   try {
     const hit = await cache.get(cacheKey);
-    if (hit) return JSON.parse(hit) as RagContext;
+    if (hit) return { ...(JSON.parse(hit) as RagContext), cacheHit: "exact" };
   } catch {
     /* cache opcional */
   }
 
   const embedder: Embedder = getEmbedder();
+
+  // T2.2: cache semântico (desligado por default). Embeda a query uma vez e a
+  // reaproveita — hit se um embedding recente do mesmo bucket estiver a
+  // >= threshold de cosseno. `opts.semanticCache === false` opta fora (geração
+  // determinística: AIIA/família, e o runner do `os rag eval`).
+  const scfg = semanticCacheConfig();
+  const useSemantic = scfg.enabled && opts.semanticCache !== false;
+  const semanticBucket = useSemantic
+    ? createHash("sha1").update(`${poolTag}\n${soul}\n${discriminants}`).digest("hex")
+    : "";
+  let queryVec: number[] | null | undefined;
+  if (useSemantic) {
+    queryVec = await embedder.embed(query);
+    if (queryVec) {
+      const semHit = ragSemanticCacheGet(semanticBucket, queryVec, scfg.threshold);
+      if (semHit) {
+        logSemanticCacheHit(semanticBucket, semHit.similarity);
+        return { ...(JSON.parse(semHit.payload) as RagContext), cacheHit: "semantic" };
+      }
+    }
+  }
+
   // E10: com rerank ativo, busca um top-N amplo e reordena par (query, trecho)
   // antes de cortar no `limit`. Com RAG_RERANK=off (default), fetchN == limit.
   const rcfg = rerankConfig(limit);
   const fetchN = rcfg.mode === "off" ? limit : Math.max(rcfg.topN, limit);
-  const results = await search(pool, soul, query, embedder, fetchN);
+  const results = await search(pool, soul, query, embedder, fetchN, queryVec);
 
   // Epic F: screening de indirect prompt injection ANTES do rerank. No modo
   // rerank=llm o body dos chunks é enviado ao Ollama para pontuar — rodar a
@@ -213,10 +245,14 @@ export async function retrieveContext(
     rerankMode: rcfg.mode,
     ...(rerankMs !== undefined ? { rerankMs } : {}),
   };
+  const serialized = JSON.stringify(result);
   try {
-    await cache.set(cacheKey, JSON.stringify(result), 60);
+    await cache.set(cacheKey, serialized, 60);
   } catch {
     /* cache opcional */
+  }
+  if (useSemantic && queryVec) {
+    ragSemanticCacheSet(semanticBucket, queryVec, serialized, scfg.ttlSec);
   }
   return result;
 }
