@@ -28,9 +28,10 @@ gate em CI ou pré-merge.
   (hit@1 73,9% → 56,5%). Apontar `RAG_RERANK_CE_MODEL` para um CE multilíngue
   antes de considerar ativar. Decisão atual: `RAG_RERANK=off`.
 - **Gate:** o CI do PR trava só a fixture sintética (`rag-eval.test.ts`). O eval
-  do corpus real é operator-run (`os rag eval consultoria_ia --min-hit1 0.70`
-  antes de release que toque embedder/índice/RAG) ou via
-  `.github/workflows/rag-eval.yml` (`workflow_dispatch`, runner self-hosted).
+  do corpus real é **passo manual** — `os rag eval consultoria_ia --min-hit1 <piso>`
+  antes de qualquer release que toque embedder / índice / config de RAG. Cole a
+  saída em `docs/adr/ADR-RAG-001.md` §6. (O workflow self-hosted foi removido na
+  Etapa 2 do refino — POC não tem runner.)
 
 ## Formato do golden set (`.jsonl`)
 

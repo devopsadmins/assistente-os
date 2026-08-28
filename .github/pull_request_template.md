@@ -2,8 +2,9 @@
   As três seções abaixo são validadas pelo job `compliance` do CI:
   descrição mínima (~50 caracteres fora de comentários), referência de
   rastreabilidade e plano de rollback. Mudança em caminho sensível
-  (packages/core/src/{policy,migrations}.ts, packages/core/src/governance/,
-  .github/, docs/adr/) também exige o label `governanca-revisada`.
+  (packages/core/src/{config,policy,migrations,manifest}.ts,
+  packages/core/src/{prompts,governance}/, .github/, docs/adr/) exige também
+  uma entrada em CHANGELOG.md ou docs/adr/ no mesmo PR.
 -->
 
 ## Descrição

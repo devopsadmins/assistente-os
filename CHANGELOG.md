@@ -8,6 +8,20 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Alterado
+
+- **Gate de compliance no CI** (refino, Etapa 2): removida a regra de label
+  `governanca-revisada` — num fluxo enxuto a evidência é a linha no `CHANGELOG.md`.
+  Caminho sensível (`config/policy/migrations/manifest.ts`, `prompts/`,
+  `governance/`, `.github/`, `docs/adr/`) agora exige o mesmo paper trail
+  (`CHANGELOG.md` ou `docs/adr/`) que a config de governança; editar um ADR já é
+  o registro. Removido `.github/workflows/rag-eval.yml` (POC não tem runner
+  self-hosted; eval de RAG é passo manual — `docs/RAG-EVAL.md`). Novo
+  `CONTRIBUTING.md` com o fluxo de PR + instruções de branch protection.
+  Ref: T1.1 de `docs/ARCHITECTURE-REVIEW.md`, Etapa 2 de
+  `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o PR (restaura o `rag-eval.yml` e a regra de label).
+
 ### Adicionado
 
 - **Escalonamento por confiança do roteador** (T3.1, **desligado por default**):

@@ -98,11 +98,14 @@ Embedder: `Xenova/multilingual-e5-base` (768d). `RAG_RERANK_TOPN=20`.
 **Gate operacional** (o soul e o índice são dados de cliente — não rodam no CI do
 GitHub): antes de release que toque embedder/índice/RAG, rodar
 `os rag eval consultoria_ia --min-hit1 0.70` na máquina do deploy e colar a saída
-aqui. Piso `hit@1 ≥ 0,70` (baseline 0,739 com folga de 1 caso). O
-`.github/workflows/rag-eval.yml` (`workflow_dispatch`, `runs-on: self-hosted`)
-automatiza isso quando houver runner com `~/.assistant-os`. A fixture sintética
-(`packages/memory/eval/rag-golden.sample.jsonl` via `rag-eval.test.ts`) segue
-travando o CI do PR contra regressão de encanamento.
+aqui. Piso `hit@1 ≥ 0,70` (baseline 0,739 com folga de 1 caso). A fixture
+sintética (`packages/memory/eval/rag-golden.sample.jsonl` via `rag-eval.test.ts`)
+segue travando o CI do PR contra regressão de encanamento.
+
+> **Nota (2026-08-28, Etapa 2 do refino):** o `.github/workflows/rag-eval.yml`
+> (`workflow_dispatch` / `runs-on: self-hosted`) citado neste ADR foi **removido**
+> — o projeto está em POC e não terá runner self-hosted. O eval do corpus real é
+> passo manual até segunda ordem.
 
 Métricas de latência: `curl :4310/metrics | grep aos_rag_rerank_seconds` (só
 relevante depois que o cross-encoder voltar a funcionar).
