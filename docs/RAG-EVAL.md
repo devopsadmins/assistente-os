@@ -15,6 +15,22 @@ antes/depois. Épico C do plano de RAG audit-readiness.
 `os rag eval` sai com código 1 se `hit@1 < --min-hit1` (default 0.7) — serve de
 gate em CI ou pré-merge.
 
+## Estado atual (2026-08-27)
+
+- **Golden set real:** `~/.assistant-os/rag-golden.jsonl` — 23 casos sobre a
+  hub-knowledge-base da Dimastec (soul `consultoria_ia`). Fora do repo (dados de
+  cliente).
+- **Baseline (`--rerank off`):** hit@1 **73,9%** · hit@3 87,0% · hit@5 95,7% ·
+  MRR 0,809 · recall@5 84,8%. Números completos e análise: `docs/adr/ADR-RAG-001.md` §6.
+- **`--rerank cross-encoder` == `off`** hoje: o scorer em
+  `packages/memory/src/rerank.ts` usa uma assinatura de pipeline não suportada
+  pelo `@xenova/transformers` 2.17.2; a falha é engolida e a ordem vetorial é
+  mantida. Corrigir antes de qualquer decisão de ativar rerank.
+- **Gate:** o CI do PR trava só a fixture sintética (`rag-eval.test.ts`). O eval
+  do corpus real é operator-run (`os rag eval consultoria_ia --min-hit1 0.70`
+  antes de release que toque embedder/índice/RAG) ou via
+  `.github/workflows/rag-eval.yml` (`workflow_dispatch`, runner self-hosted).
+
 ## Formato do golden set (`.jsonl`)
 
 Uma linha por objeto JSON. `//` no início da linha = comentário.
@@ -44,7 +60,7 @@ os rag eval consultoria_ia
 
 # comparar cenários de rerank (gera os números do ADR-RAG-001)
 os rag eval consultoria_ia --rerank off
-os rag eval consultoria_ia --rerank cross-encoder
+os rag eval consultoria_ia --rerank cross-encoder   # hoje == off (ver "Estado atual")
 os rag eval consultoria_ia --rerank llm      # requer Ollama
 
 # arquivo e limiar custom

@@ -157,24 +157,36 @@ client registration* + fluxo no navegador; token estático **nunca mais**).
 antigo dizia que não), então criar um OAuth Client no GCP deixou de ser bloqueio —
 mas provavelmente nem é preciso, dado o DCR automático do opencode.
 
-#### T1.3 — Evaluation Gate do RAG contra corpus real  *(Análise 2)*
+#### T1.3 — Evaluation Gate do RAG contra corpus real  *(Análise 2)*  — ✅ feito (2026-08-27)
 
 **Objetivo:** transformar `os rag eval` (primitivo do Epic C) em evidência de
 auditoria + trava de regressão para trocar `RAG_RERANK`/`OLLAMA_EMBED_MODEL`.
 
-**Arquivos:**
-- Novo: `~/.assistant-os/rag-golden.jsonl` — 15–25 casos derivados da hub-kb de
-  `consultoria_ia` (formato em `docs/RAG-EVAL.md`).
-- `docs/adr/ADR-RAG-001.md` §6 — preencher a tabela `off` × `cross-encoder`
-  (hit@1 / hit@3 / MRR / recall@5).
-- `.github/workflows/ci.yml` — `os rag eval consultoria_ia --min-hit1 <n>` como
-  passo nomeado (ou job noturno se o tempo de Xenova pesar no PR).
+**Entregue:**
+- `~/.assistant-os/rag-golden.jsonl` — 23 casos rotulados sobre a hub-knowledge-base
+  da Dimastec (`consultoria_ia`; fora do repo, dados de cliente).
+- `docs/adr/ADR-RAG-001.md` §6 — tabela preenchida com a medição real.
+- `docs/RAG-EVAL.md` — seção "Estado atual" com baseline e a limitação do rerank.
+- `.github/workflows/rag-eval.yml` — `workflow_dispatch` / `runs-on: self-hosted`
+  (o soul e o índice não existem no CI hospedado; o gate real é operator-run
+  `os rag eval consultoria_ia --min-hit1 0.70`). O CI do PR segue travando a
+  fixture sintética via `rag-eval.test.ts`.
 
-**Passos:** semear o golden set → rodar `os rag eval consultoria_ia --rerank off`
-e `--rerank cross-encoder` → colar números no ADR → só então ligar
-`RAG_RERANK=cross-encoder` no `.env` do deploy.
+**Resultado:** baseline `off` — hit@1 **73,9%**, hit@3 87,0%, hit@5 95,7%,
+MRR 0,809, recall@5 84,8%. **`cross-encoder` == `off` número a número** → ver T1.4.
+Decisão: **manter `RAG_RERANK=off`** no deploy (não havia gap de ranking a fechar;
+a única falha é *recall miss*, fora da janela de candidatos).
 
-**Esforço:** S. **Depende de:** Xenova disponível na máquina que roda o eval real.
+#### T1.4 — Consertar o reranker cross-encoder *(descoberto no T1.3)*
+
+`getCrossEncoderScorer` (`packages/memory/src/rerank.ts:~44`) chama o pipeline
+`text-classification` do `@xenova/transformers` 2.17.2 com `{ text, text_pair }` —
+assinatura não suportada nessa versão (`text.split is not a function` por par). O
+erro é engolido pelo `try/catch` de `rerank()`, então o modo `cross-encoder` é um
+**no-op silencioso** (idêntico a `off`). Conserto: fiar tokenizer+model à mão
+(`tokenizer(query, { text_pair })` → `model(...)` → logit) ou subir a lib. Depois,
+re-rodar o T1.3 e reavaliar o ADR-RAG-001. **Esforço:** S–M. **Prioridade:** baixa
+enquanto o baseline `off` (hit@5 95,7%) atender.
 
 ### Tier 2 — próximo (valor claro, esforço M)
 
@@ -265,7 +277,8 @@ Escala TrialForge, não copiloto single-node:
 ```
 T1.1 (CI gate)   ✅ feito
 T1.2 (Stitch)    ✅ resolvido por remoção (não religar)
-T1.3 (eval RAG)  ← próximo do Tier 1
+T1.3 (eval RAG)  ✅ feito — baseline hit@1 73,9%; manter RAG_RERANK=off
+T1.4 (rerank bug) ← novo, prioridade baixa (baseline off atende)
       ↓
 T2.1 (Prompt Garden)   → estende o manifesto; base para T3.1
       ↓

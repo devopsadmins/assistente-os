@@ -7,7 +7,7 @@
 | Campo | Valor |
 |---|---|
 | Código | `ADR-RAG-001` |
-| Status | Aceita (2026-08-27) — ativação em produção pendente da medição do §6 |
+| Status | Aceita (2026-08-27) — medição do §6 feita: **manter `off`**; cross-encoder inoperante (bug em `rerank.ts`) |
 | Perfil de conformidade | AI-3 |
 | Módulos normativos aplicáveis | ai-protocols, observability |
 | Owner técnico | agente assistente-os (Claude Code) |
@@ -65,15 +65,42 @@ latência que o rerank adiciona; (3) registro do modo ativo no manifesto de exec
 
 ## 6. Evidências exigidas (Princípio 10)
 
-Preencher antes de marcar "ativado em produção":
+**Medição de 2026-08-27** (T1.3 de `docs/ARCHITECTURE-REVIEW.md`). Golden set:
+`~/.assistant-os/rag-golden.jsonl`, 23 casos rotulados sobre a hub-knowledge-base
+da Dimastec (soul `consultoria_ia`, 11.568 chunks / 281 arquivos, índice atual).
+Embedder: `Xenova/multilingual-e5-base` (768d). `RAG_RERANK_TOPN=20`.
 
-| Cenário | hit@1 | hit@3 | MRR | recall@5 | rerank p50 (ms) | rerank p95 (ms) |
-|---|---|---|---|---|---|---|
-| `off` (baseline) | _pendente_ | | | | — | — |
-| `cross-encoder` | _pendente_ | | | | _pendente_ | _pendente_ |
+| Cenário | hit@1 | hit@3 | hit@5 | MRR | recall@5 | rerank p50 (ms) | rerank p95 (ms) |
+|---|---|---|---|---|---|---|---|
+| `off` (baseline) | **73,9%** | 87,0% | 95,7% | 0,809 | 84,8% | — | — |
+| `cross-encoder` | 73,9% | 87,0% | 95,7% | 0,809 | 84,8% | n/a | n/a |
 
-Comando: `os rag eval consultoria_ia --rerank <modo>` (golden set em
-`~/.assistant-os/rag-golden.jsonl`) + `curl :4310/metrics | grep aos_rag_rerank_seconds`.
+**Conclusão: não ativar `cross-encoder` em produção.** Dois motivos:
+
+1. **O reranker cross-encoder está inoperante.** `getCrossEncoderScorer`
+   (`packages/memory/src/rerank.ts:~44`) chama o pipeline `text-classification` do
+   `@xenova/transformers` 2.17.2 com `{ text, text_pair }` — assinatura **não
+   suportada** nessa versão (`text.split is not a function` em cada par). O erro é
+   engolido pelo `try/catch` de `rerank()`, os candidatos mantêm a ordem vetorial,
+   e o modo `cross-encoder` fica **idêntico a `off`** (tabela acima, número a
+   número). Precisa de fiação manual tokenizer+model ou upgrade da lib —
+   rastreado como item separado no `docs/ARCHITECTURE-REVIEW.md`.
+2. **Mesmo se funcionasse, o ganho provável é baixo.** Das 23 falhas potenciais só
+   1 sobra (`test-web-suite`), e é *recall miss* — o doc esperado
+   (`testing-matrix.md`) fica fora da janela de 20 candidatos, então rerank não
+   alcançaria. hit@5 já é 95,7%; o gap está na recuperação, não na reordenação.
+
+**Gate operacional** (o soul e o índice são dados de cliente — não rodam no CI do
+GitHub): antes de release que toque embedder/índice/RAG, rodar
+`os rag eval consultoria_ia --min-hit1 0.70` na máquina do deploy e colar a saída
+aqui. Piso `hit@1 ≥ 0,70` (baseline 0,739 com folga de 1 caso). O
+`.github/workflows/rag-eval.yml` (`workflow_dispatch`, `runs-on: self-hosted`)
+automatiza isso quando houver runner com `~/.assistant-os`. A fixture sintética
+(`packages/memory/eval/rag-golden.sample.jsonl` via `rag-eval.test.ts`) segue
+travando o CI do PR contra regressão de encanamento.
+
+Métricas de latência: `curl :4310/metrics | grep aos_rag_rerank_seconds` (só
+relevante depois que o cross-encoder voltar a funcionar).
 
 ## 7. Gatilhos de reavaliação
 
@@ -86,3 +113,4 @@ Comando: `os rag eval consultoria_ia --rerank <modo>` (golden set em
 | Data | Evento | Autor |
 |---|---|---|
 | 2026-08-27 | Criada — ativação por env, latência instrumentada, validação por `os rag eval` | Claude Code |
+| 2026-08-27 | §6 medido (T1.3): baseline hit@1 73,9%; cross-encoder == off (bug em `rerank.ts` / `@xenova/transformers` 2.17.2); decisão: manter `off` | Claude Code |

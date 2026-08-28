@@ -10,6 +10,17 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Evaluation Gate do RAG contra corpus real** (T1.3): golden set de 23 casos
+  para a soul `consultoria_ia` em `~/.assistant-os/rag-golden.jsonl` (fora do
+  repo); baseline medido `RAG_RERANK=off` → hit@1 73,9% / hit@5 95,7% / MRR 0,809,
+  registrado em `docs/adr/ADR-RAG-001.md` §6. Novo `.github/workflows/rag-eval.yml`
+  (`workflow_dispatch`, `runs-on: self-hosted`) para rodar o eval real fora do CI
+  hospedado. Descoberto no processo: o modo `RAG_RERANK=cross-encoder` é um no-op
+  silencioso com `@xenova/transformers` 2.17.2 (assinatura de pipeline inválida em
+  `packages/memory/src/rerank.ts`) — decisão: manter `off`; conserto rastreado
+  como T1.4. Ref: T1.3/T1.4 de `docs/ARCHITECTURE-REVIEW.md`.
+  Rollback: reverter o merge (só docs + workflow inerte sem runner self-hosted).
+
 - **Gate de compliance no CI** (job `compliance`, `.github/workflows/ci.yml`):
   em cada `pull_request` valida (1) descrição mínima, (2) referência de
   rastreabilidade — `ADR-XXX`, `roadmap`, `Exx`, `Tn.n` ou `#issue`, (3) linha
