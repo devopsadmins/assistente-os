@@ -8,6 +8,19 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Escalonamento por confiança do roteador** (T3.1, **desligado por default**):
+  depois da execução no tier `local`, sinais de baixa confiança (local falhou ·
+  resposta vazia/curta · recusa "não sei" + RAG fraco/ausente) disparam **uma**
+  re-tentativa no próximo tier. `ROUTER_ESCALATION=on` liga; `_MIN_SCORE` 0.55,
+  `_MIN_CHARS` 40. `packages/daemon/src/orchestrator/escalation.ts`
+  (`shouldEscalate`, `looksLikeRefusal`, `nextEscalationTier`; 9 testes). Wired só
+  no `POST /souls/:id/chat`; inerte quando off. Métrica
+  `aos_router_escalation_total{reason,to_tier}`. `docs/ROUTER-ESCALATION.md`.
+  Ref: T3.1 de `docs/ARCHITECTURE-REVIEW.md`. Rollback: `ROUTER_ESCALATION` off
+  (default) já neutraliza; ou reverter o commit.
+
 ### Alterado
 
 - **Ordem do montador de prompt** (T3.3): `buildPrompt` (`packages/daemon/src/context.ts`)

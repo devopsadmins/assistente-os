@@ -29,8 +29,14 @@ import { maxFindingSeverity } from "@assistente-os/memory";
 import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
+import {
+  escalationConfig,
+  shouldEscalate,
+  nextEscalationTier,
+  looksLikeRefusal,
+} from "../orchestrator/escalation.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
-import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents } from "../observability/metrics.js";
+import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents, routerEscalation } from "../observability/metrics.js";
 
 /**
  * Chama o /api/chat do Ollama via node:http. O fetch() do Node (undici) aborta
@@ -381,8 +387,8 @@ export async function handleChat(
         await recordRouterSelection(pool, { soul, target: forcedTarget, reason: "tier explícito do usuário: langgraph" });
         decision = { target: forcedTarget };
       }
-      const model = requestedModel ?? orchDecision.model;
-      const tier = requestedTier ?? decision.target.tier;
+      let model = requestedModel ?? orchDecision.model;
+      let tier = requestedTier ?? decision.target.tier;
       emitStep(
         "router",
         `tier selecionado: ${tier} → ${decision.target.provider}/${model} (${decision.reason ?? `modo ${orchDecision.mode}`})`,
@@ -473,6 +479,55 @@ export async function handleChat(
           env,
         });
       }
+      // T3.1 — escalonamento por confiança (default off: ROUTER_ESCALATION=on).
+      // Só a partir de `local`, só sem tier/model fixados pelo usuário, e só
+      // sobe UM degrau, uma vez. Quando desligado, este bloco é inerte.
+      const escCfg = escalationConfig();
+      if (escCfg.enabled && tier === "local" && !requestedTier && !requestedModel) {
+        const localOk = result.code === 0 && !result.timedOut;
+        const v = built.verdict as { ok?: boolean; sources?: Array<{ score?: number }> } | null;
+        const verdict = shouldEscalate(
+          {
+            localFailed: !localOk,
+            ragOk: v?.ok === true,
+            ragTopScore: v?.sources?.[0]?.score ?? 0,
+            answerChars: result.stdout.trim().length,
+            answerRefusalLike: looksLikeRefusal(result.stdout),
+          },
+          escCfg,
+        );
+        const nextTier = verdict.escalate ? nextEscalationTier(config.routerTiers, "local") : undefined;
+        if (nextTier) {
+          const escTarget = resolveTarget(config, soul, nextTier);
+          emitStep("router", `escalando local → ${nextTier} (${verdict.reason})`);
+          try {
+            routerEscalation.inc({ reason: verdict.reason, to_tier: nextTier });
+          } catch {
+            /* métrica opcional */
+          }
+          const escEnv = { ...(process.env as Record<string, string>) };
+          const escKey = nextZenApiKey(config);
+          if (escKey) escEnv.ZEN_API_KEY = escKey;
+          const escResult = await run!(built.fullPrompt, {
+            cwd: soul.dir,
+            model: escTarget.model,
+            timeoutSeconds,
+            agent: soul.config.agent ? soul.id : undefined,
+            soulId: soul.id,
+            env: escEnv,
+          });
+          if (escResult.code === 0 && !escResult.timedOut) {
+            result = escResult;
+            execUsage = undefined; // opencode run não expõe usage → cai no estimate
+            decision = { target: escTarget, reason: `escalado de local: ${verdict.reason}` };
+            tier = nextTier;
+            model = escTarget.model;
+          } else {
+            emitStep("router", "escalonamento falhou; mantém a resposta do local", "err");
+          }
+        }
+      }
+
       const succeeded = result.code === 0 && !result.timedOut;
       emitStep(
         decision.target.provider,
@@ -524,7 +579,7 @@ export async function handleChat(
         await recordRouterSelection(pool, {
           soul,
           target: decision.target,
-          reason: `chat ${tier} (modo ${orchDecision.mode})`,
+          reason: decision.reason ?? `chat ${tier} (modo ${orchDecision.mode})`,
           status: "executed",
           promptTokens: finalUsage.promptTokens,
           completionTokens: finalUsage.completionTokens,

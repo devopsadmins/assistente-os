@@ -279,12 +279,26 @@ header diz se o canvas completo se aplica. Blocos `· auto` gerados de
 
 ### Tier 3 — depois / medir antes
 
-#### T3.1 — Cascata de modelos / escalonamento por confiança  *(Análise 2)*
+#### T3.1 — Cascata de modelos / escalonamento por confiança  *(Análise 2)*  — ✅ mecanismo feito (default off, 2026-08-28)
 
-`local` responde primeiro; score de recuperação do RAG + `lg.usage` como sinais de
-confiança; sobe para `zen`/`soul` só em baixa confiança. Mexe na lógica de mode em
-`packages/daemon/src/orchestrator/router.ts`. Fazer **depois** de T2.1 (as prompts
-da cascata entram no garden). **Esforço:** M.
+`local` responde primeiro; **depois** da execução, sinais de baixa confiança
+(local falhou · resposta vazia/curta · recusa "não sei" + RAG fraco/ausente)
+disparam **uma** re-tentativa no próximo tier.
+
+**Entregue:**
+- `packages/daemon/src/orchestrator/escalation.ts` — `escalationConfig()`
+  (`ROUTER_ESCALATION` off default; `_MIN_SCORE` 0.55; `_MIN_CHARS` 40),
+  `shouldEscalate(signals, cfg)`, `looksLikeRefusal(text)`,
+  `nextEscalationTier(tiers, from)`. Puro, 9 testes.
+- `chat.ts` — bloco gated após a execução: se `tier === "local"`, sem tier/model
+  fixado, e `shouldEscalate` → re-roda no próximo tier via `opencode run`, troca
+  `result`/`decision`/`tier`/`model`. **Inerte quando `ROUTER_ESCALATION` off.**
+- Métrica `aos_router_escalation_total{reason,to_tier}`. `docs/ROUTER-ESCALATION.md`.
+
+**Não usei `lg.usage`** (só existe no tier langgraph, não no local). Os sinais são
+RAG score + forma da resposta. `agenda`/`events`/`voice` ficam para depois (só o
+chat foi wired). **Validar** precisa de ambiente com Ollama vivo (em CI a sonda
+cai direto pra `zen`). **Esforço:** M.
 
 #### T3.2 — Hybrid / RRF / Multi-Index / Agentic RAG  *(Análise 2)*
 
@@ -339,7 +353,7 @@ T2.1 (Prompt Garden)   ✅ feito — garden/ + bloco prompts no hash do manifest
       ↓
 T2.2 (cache semântico) ✅ feito (default off)  ·  T2.3 (canvas) ✅ feito
       ↓
-T3.1 (cascata)   → depois do garden
+T3.1 (cascata)   ✅ mecanismo feito (default off) — validar com Ollama vivo
 T3.2 (hybrid)    → só se T1.3 pedir
 T3.3 (ordem do prompt) ✅ feito — persona no prefixo, sessão/rag/histórico na cauda
 ```

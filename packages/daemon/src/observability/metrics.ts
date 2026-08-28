@@ -65,6 +65,13 @@ export const routerFallback = new Counter({
   registers: [registry],
 });
 
+export const routerEscalation = new Counter({
+  name: "aos_router_escalation_total",
+  help: "Escalonamentos por confiança (local → tier melhor após resposta fraca)",
+  labelNames: ["reason", "to_tier"] as const,
+  registers: [registry],
+});
+
 export const promptInjectionAlerts = new Counter({
   name: "aos_prompt_injection_alerts_total",
   help: "Alertas do detector de prompt injection (source: user_input | retrieved_chunk)",
