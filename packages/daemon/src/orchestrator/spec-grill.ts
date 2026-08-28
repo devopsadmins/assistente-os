@@ -12,7 +12,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { todayISODate } from "@assistente-os/core";
+import { todayISODate, specGrillAnalyst } from "@assistente-os/core";
 import { ollamaUsage, type LlmUsage } from "../observability/record-llm-call.js";
 
 export interface GrillQuestion {
@@ -59,8 +59,7 @@ async function gerarPerguntasViaOllama(
         messages: [
           {
             role: "system",
-            content:
-              'Você é um analista de requisitos. Gere de 3 a 5 perguntas de esclarecimento sobre a feature descrita pelo usuário, categorizadas em "regra-negocio", "edge-case" ou "dependencia-banco-api". Responda em JSON estrito no formato {"questions": [{"categoria": "...", "pergunta": "..."}]}.',
+            content: specGrillAnalyst.render({}),
           },
           { role: "user", content: featureDraft },
         ],

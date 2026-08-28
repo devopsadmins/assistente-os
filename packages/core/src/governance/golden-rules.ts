@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { randomInt, createHash, timingSafeEqual } from "node:crypto";
 import { todayISODate, nowISO, registrarLicao } from "../alma.js";
 import { soulDir } from "../souls.js";
+import { guardianAudit } from "../prompts/garden/index.js";
 
 const PROMOTION_THRESHOLD = 3;
 const AUDIT_SCORE_THRESHOLD = 95;
@@ -454,17 +455,12 @@ export async function auditExecution(input: AuditExecutionInput): Promise<AuditE
   const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
   const chatModel = process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free";
 
-  const prompt = [
-    "Você é o Guardian, supervisor de qualidade e conformidade ISO/IEC 42001.",
-    `Tarefa: ${input.taskId}`,
-    `Agente avaliado: ${input.targetAgent}`,
-    `Resumo das mudanças: ${input.changesSummary}`,
-    input.testResults ? `Resultado dos testes: ${input.testResults}` : "",
-    "",
-    'Avalie a qualidade de 0 a 100 e responda apenas em JSON: {"score": number, "feedback": string}.',
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const prompt = guardianAudit.render({
+    taskId: input.taskId,
+    targetAgent: input.targetAgent,
+    changesSummary: input.changesSummary,
+    testResultsLine: input.testResults ? `Resultado dos testes: ${input.testResults}\n` : "",
+  });
 
   const ac = new AbortController();
   const timeoutId = setTimeout(() => ac.abort(), 30000);

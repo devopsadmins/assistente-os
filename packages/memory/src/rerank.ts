@@ -10,7 +10,7 @@
  * Qualquer falha de modelo → auto-skip com log, cai para "off". Default "off"
  * até validação — ligar com `RAG_RERANK=cross-encoder`.
  */
-import { logger } from "@assistente-os/core";
+import { logger, ragRerankScorer } from "@assistente-os/core";
 
 export type RerankMode = "off" | "llm" | "cross-encoder";
 
@@ -20,7 +20,11 @@ export interface RerankConfig {
   topK: number;
 }
 
-const CROSS_ENCODER_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2";
+// Default é um cross-encoder MS MARCO só-inglês — degrada corpora não-ingleses
+// (medido: -17pp de hit@1 no corpus PT-BR de `consultoria_ia`, ADR-RAG-001 §6).
+// Para PT-BR, apontar `RAG_RERANK_CE_MODEL` para um CE multilíngue, ex.:
+// `Xenova/mmarco-mMiniLMv2-L12-H384-v1`.
+const CROSS_ENCODER_MODEL = process.env.RAG_RERANK_CE_MODEL || "Xenova/ms-marco-MiniLM-L-6-v2";
 
 export function rerankConfig(fallbackTopK = 5): RerankConfig {
   const raw = (process.env.RAG_RERANK ?? "off").toLowerCase();
@@ -38,16 +42,26 @@ export interface Rerankable {
 /** Score de teste/injeção: recebe (query, body) e devolve relevância (maior = melhor). */
 export type PairScorer = (query: string, body: string) => Promise<number> | number;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let crossEncoder: any = null;
+// O pipeline "text-classification" do @xenova/transformers (2.x) não aceita
+// entrada de par (query, doc) — `{ text, text_pair }` dispara "text.split is not
+// a function". Cross-encoders de ranking (ms-marco-MiniLM) são
+// SequenceClassification de 1 logit; a forma correta é tokenizar o par à mão e
+// ler o logit do modelo.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let ceTokenizer: any = null;
+let ceModel: any = null;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 let crossEncoderFailed = false;
 
 async function getCrossEncoderScorer(): Promise<PairScorer | null> {
   if (crossEncoderFailed) return null;
-  if (!crossEncoder) {
+  if (!ceTokenizer || !ceModel) {
     try {
       const t = await import("@xenova/transformers");
-      crossEncoder = await t.pipeline("text-classification", CROSS_ENCODER_MODEL);
+      [ceTokenizer, ceModel] = await Promise.all([
+        t.AutoTokenizer.from_pretrained(CROSS_ENCODER_MODEL),
+        t.AutoModelForSequenceClassification.from_pretrained(CROSS_ENCODER_MODEL),
+      ]);
     } catch (err) {
       crossEncoderFailed = true;
       logger.warn(`[rerank] cross-encoder indisponível, usando ordem por score: ${(err as Error).message}`);
@@ -55,9 +69,11 @@ async function getCrossEncoderScorer(): Promise<PairScorer | null> {
     }
   }
   return async (query: string, body: string) => {
-    const out = await crossEncoder({ text: query, text_pair: body }, { topk: 1 });
-    const first = Array.isArray(out) ? out[0] : out;
-    return typeof first?.score === "number" ? first.score : 0;
+    const inputs = ceTokenizer(query, { text_pair: body, padding: true, truncation: true });
+    const { logits } = await ceModel(inputs);
+    const data = logits.data as Float32Array;
+    // 1 logit (ms-marco) → data[0]; 2 logits ([irrelevante, relevante]) → o último.
+    return data.length > 0 ? data[data.length - 1] : 0;
   };
 }
 
@@ -74,7 +90,7 @@ async function getLlmScorer(): Promise<PairScorer | null> {
           model,
           stream: false,
           messages: [
-            { role: "user", content: `Numa escala 0-3, quão útil é o TRECHO para responder a PERGUNTA? Responda só o número.\n\nPERGUNTA: ${query}\n\nTRECHO: ${body.slice(0, 800)}` },
+            { role: "user", content: ragRerankScorer.render({ pergunta: query, trecho: body.slice(0, 800) }) },
           ],
         }),
       });

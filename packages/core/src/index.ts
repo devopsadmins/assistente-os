@@ -22,7 +22,7 @@ export * from "./governance/audit-trail.js";
 export * from "./governance/golden-rules.js";
 export * from "./governance/aiia.js";
 export * from "./familias.js";
-export * from "./prompts/system-base.js";
+export * from "./prompts/garden/index.js";
 export * from "./errors.js";
 export * from "./policy.js";
 export * from "./soul-spec.js";

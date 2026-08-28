@@ -11,7 +11,7 @@
  *   não como "completed, 0 entidades" — que pareceria só "nada encontrado"
  *   quando na verdade o Ollama caiu.
  */
-import { sanitizeUserPrompt, sanitizeLLMResponse } from "@assistente-os/core";
+import { sanitizeUserPrompt, sanitizeLLMResponse, entityExtraction } from "@assistente-os/core";
 import { upsertEntity, upsertRelation } from "./graph.js";
 import type { Pool } from "@assistente-os/core";
 
@@ -118,16 +118,7 @@ export async function extractEntitiesWithOllama(
   const sanitized = sanitizeUserPrompt(text).sanitized;
   const truncated = sanitized.length > MAX_EXTRACTION_INPUT_CHARS ? sanitized.slice(0, MAX_EXTRACTION_INPUT_CHARS) : sanitized;
 
-  const prompt = [
-    "Extraia entidades e relações do texto abaixo.",
-    `Tipos de entidade permitidos: ${ENTITY_KINDS.join(", ")}.`,
-    "Responda apenas em JSON, exatamente neste formato:",
-    '{"entities": [{"name": "string", "kind": "string"}], "relations": [{"from": "string", "rel": "string", "to": "string"}]}',
-    "Se não houver entidades/relações claras, responda com arrays vazios.",
-    "",
-    "TEXTO:",
-    truncated,
-  ].join("\n");
+  const prompt = entityExtraction.render({ entityKinds: ENTITY_KINDS.join(", "), text: truncated });
 
   const ac = new AbortController();
   const timeoutId = setTimeout(() => ac.abort(), EXTRACTION_TIMEOUT_MS);

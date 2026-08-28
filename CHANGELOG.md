@@ -8,7 +8,31 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Corrigido
+
+- **Reranker cross-encoder do RAG** (T1.4): `getCrossEncoderScorer`
+  (`packages/memory/src/rerank.ts`) chamava o pipeline `text-classification` do
+  `@xenova/transformers` com uma assinatura de par não suportada → o erro era
+  engolido e `RAG_RERANK=cross-encoder` virava um no-op silencioso (idêntico a
+  `off`). Reescrito para `AutoTokenizer` + `AutoModelForSequenceClassification`
+  diretos. Novo env `RAG_RERANK_CE_MODEL` para trocar o modelo. Medição em
+  `docs/adr/ADR-RAG-001.md` §6: o modelo default (só-inglês) piora o corpus PT-BR
+  (hit@1 73,9% → 56,5%) — `RAG_RERANK` segue `off`. Ref: T1.4 de
+  `docs/ARCHITECTURE-REVIEW.md`.
+  Rollback: reverter o commit; o comportamento anterior era `cross-encoder` == `off`.
+
 ### Adicionado
+
+- **Prompt Garden** (T2.1): biblioteca versionada dos prompts de pipeline/tool em
+  `packages/core/src/prompts/garden/`. Cada prompt é um `PromptSpec`
+  (`papel`/`objetivo`/`regras`/`formatoSaida`/`versao` + `template` com
+  `{placeholder}` e `render(vars)` que valida). Migrados os 7 literais inline
+  (concise-output, email/meeting-ingest, spec-grill, entity-extraction,
+  guardian-audit, rag-rerank-scorer). `buildExecutionManifest` ganha
+  `prompts: [{id, versao, hash}]` **dentro do hash** — mudar um template muda o
+  hash do manifesto. `docs/PROMPT-GARDEN.md`. Ref: T2.1 de `docs/ARCHITECTURE-REVIEW.md`.
+  Rollback: reverter o commit (refactor puro, textos idênticos; `system-base.ts`
+  reexporta `CONCISE_OUTPUT_DIRECTIVE` para compat).
 
 - **Evaluation Gate do RAG contra corpus real** (T1.3): golden set de 23 casos
   para a soul `consultoria_ia` em `~/.assistant-os/rag-golden.jsonl` (fora do

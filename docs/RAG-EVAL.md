@@ -22,10 +22,11 @@ gate em CI ou pré-merge.
   cliente).
 - **Baseline (`--rerank off`):** hit@1 **73,9%** · hit@3 87,0% · hit@5 95,7% ·
   MRR 0,809 · recall@5 84,8%. Números completos e análise: `docs/adr/ADR-RAG-001.md` §6.
-- **`--rerank cross-encoder` == `off`** hoje: o scorer em
-  `packages/memory/src/rerank.ts` usa uma assinatura de pipeline não suportada
-  pelo `@xenova/transformers` 2.17.2; a falha é engolida e a ordem vetorial é
-  mantida. Corrigir antes de qualquer decisão de ativar rerank.
+- **`--rerank cross-encoder`:** o scorer em `packages/memory/src/rerank.ts` foi
+  corrigido (T1.4) e roda de fato. Mas o modelo default
+  `Xenova/ms-marco-MiniLM-L-6-v2` é só-inglês e **piora** o corpus PT-BR
+  (hit@1 73,9% → 56,5%). Apontar `RAG_RERANK_CE_MODEL` para um CE multilíngue
+  antes de considerar ativar. Decisão atual: `RAG_RERANK=off`.
 - **Gate:** o CI do PR trava só a fixture sintética (`rag-eval.test.ts`). O eval
   do corpus real é operator-run (`os rag eval consultoria_ia --min-hit1 0.70`
   antes de release que toque embedder/índice/RAG) ou via
@@ -60,7 +61,8 @@ os rag eval consultoria_ia
 
 # comparar cenários de rerank (gera os números do ADR-RAG-001)
 os rag eval consultoria_ia --rerank off
-os rag eval consultoria_ia --rerank cross-encoder   # hoje == off (ver "Estado atual")
+os rag eval consultoria_ia --rerank cross-encoder   # roda; modelo default piora PT-BR (ver "Estado atual")
+RAG_RERANK_CE_MODEL=<ce-multilingue> os rag eval consultoria_ia --rerank cross-encoder
 os rag eval consultoria_ia --rerank llm      # requer Ollama
 
 # arquivo e limiar custom

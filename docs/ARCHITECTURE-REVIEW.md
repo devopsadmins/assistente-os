@@ -177,43 +177,58 @@ MRR 0,809, recall@5 84,8%. **`cross-encoder` == `off` número a número** → ve
 Decisão: **manter `RAG_RERANK=off`** no deploy (não havia gap de ranking a fechar;
 a única falha é *recall miss*, fora da janela de candidatos).
 
-#### T1.4 — Consertar o reranker cross-encoder *(descoberto no T1.3)*
+#### T1.4 — Consertar o reranker cross-encoder *(descoberto no T1.3)*  — ✅ código corrigido (2026-08-27)
 
-`getCrossEncoderScorer` (`packages/memory/src/rerank.ts:~44`) chama o pipeline
-`text-classification` do `@xenova/transformers` 2.17.2 com `{ text, text_pair }` —
-assinatura não suportada nessa versão (`text.split is not a function` por par). O
-erro é engolido pelo `try/catch` de `rerank()`, então o modo `cross-encoder` é um
-**no-op silencioso** (idêntico a `off`). Conserto: fiar tokenizer+model à mão
-(`tokenizer(query, { text_pair })` → `model(...)` → logit) ou subir a lib. Depois,
-re-rodar o T1.3 e reavaliar o ADR-RAG-001. **Esforço:** S–M. **Prioridade:** baixa
-enquanto o baseline `off` (hit@5 95,7%) atender.
+**Era:** `getCrossEncoderScorer` (`packages/memory/src/rerank.ts`) chamava o
+pipeline `text-classification` do `@xenova/transformers` 2.17.2 com
+`{ text, text_pair }` — assinatura não suportada (`text.split is not a function`
+por par); erro engolido pelo `try/catch` de `rerank()` → `cross-encoder` era um
+**no-op silencioso** (idêntico a `off`).
+
+**Entregue:** reescrito para `AutoTokenizer` + `AutoModelForSequenceClassification`
+diretos (lê o logit de relevância do par). Agora roda de verdade e o fallback
+(modelo indisponível → warn → ordem por score) funciona. Novo env
+`RAG_RERANK_CE_MODEL` para trocar o modelo sem mudar código. Testes `rerank.test.ts`
+seguem verdes (usam `scoreFn` injetado, não o modelo real).
+
+**Medição (ADR-RAG-001 §6):** com o modelo default `Xenova/ms-marco-MiniLM-L-6-v2`
+(só-inglês) o CE **piora** o corpus PT-BR — hit@1 73,9% → 56,5%, MRR 0,809 → 0,696,
+~15× mais lento. Um CE multilíngue ONNX pronto não existe no HF hoje.
+**Decisão mantida: `RAG_RERANK=off`.** Reabrir só quando houver um CE multilíngue
+para apontar em `RAG_RERANK_CE_MODEL` — aí re-rodar o T1.3.
 
 ### Tier 2 — próximo (valor claro, esforço M)
 
-#### T2.1 — Prompt Garden  *(Análise 3 #3)*
+#### T2.1 — Prompt Garden  *(Análise 3 #3)*  — ✅ feito (2026-08-27)
 
 **Objetivo:** prompts de pipeline/tool viram patrimônio versionado com diff + replay,
 amarrado ao manifesto.
 
-**Arquivos:**
-- Novo: `packages/core/src/prompts/garden/` — 1 arquivo por prompt, cada um com
-  frontmatter `papel` / `objetivo` / `regras` / `formato_saida` / `versao` e o
-  corpo como `const` exportada (ou loader).
-- Migrar literais inline: extração `email-ingest`, extração `meeting-ingest`,
-  analista `spec-grill`, `entity-extraction`, template de resposta do `rag-chain`,
-  scorer LLM do `rerank`, auditoria do Guardian.
-- `packages/core/src/manifest.ts` — bloco `prompts` (sha256 por arquivo do garden)
-  **dentro do hash**, mesma ideia do bloco `rag` do Epic E.
-- `README.md` / `docs/ARCHITECTURE.md` — seção "Prompt Garden".
+**Entregue:**
+- `packages/core/src/prompts/garden/` — `types.ts` (`PromptSpec`, `definePrompt`,
+  `promptHash`, `promptCanonical`), `index.ts` (`GARDEN`, `gardenManifest()`), e
+  um arquivo por prompt com metadados `papel`/`objetivo`/`regras`/`formatoSaida`/
+  `versao` + `template` com `{placeholder}` (`{{`/`}}` escapam).
+- Migrados: `concise-output`, `email-ingest-extraction`, `meeting-ingest-extraction`,
+  `spec-grill-analyst`, `entity-extraction`, `guardian-audit`, `rag-rerank-scorer`.
+  Call sites (`email-ingest.ts`, `meeting-ingest.ts`, `spec-grill.ts`,
+  `entity-extraction.ts`, `golden-rules.ts`, `rerank.ts`) agora fazem `.render(vars)`.
+- `packages/core/src/manifest.ts` — `prompts: [{id, versao, hash}]` **dentro do hash**.
+- `packages/core/src/prompts/system-base.ts` vira reexport (compat de
+  `CONCISE_OUTPUT_DIRECTIVE`).
+- `docs/PROMPT-GARDEN.md` + ponteiro no README.
+- Testes: `packages/core/src/test/prompt-garden.test.ts` (8) + asserts novos em
+  `manifest.test.ts`.
 
-**Design:** refactor puro, **sem mudança de comportamento** (os textos são os mesmos,
-só saem de dentro do código). "Qual versão de prompt rodou" passa a vir no hash do
-manifesto; replay = checkout do commit + re-run. ~8 call sites.
+**Fora deste round:** `prompt-templates.ts` (LangChain `ChatPromptTemplate`) e os
+system prompts do agente ReAct (`agent-workflow.ts`/`agent-state.ts` — trabalho em
+sessão paralela).
 
-**Aceitação:** nenhum literal de prompt multi-linha em `pipelines/`/`orchestrator/`;
-`os manifest` muda de hash quando um arquivo do garden muda; suítes verdes sem edição.
+**Verificação:** refactor puro, texto idêntico. core 263 · memory 68 · cli 8 ·
+daemon+tools 151 verdes (`DATABASE_URL` só, como o CI). `os manifest` muda de hash
+ao mudar um `template`.
 
-**Esforço:** M. **Depende de:** nada (mas facilita T3.1).
+**Esforço:** M (real: ~1 sessão).
 
 #### T2.2 — Cache semântico no `retrieveContext`  *(Análise 2)*
 
@@ -278,9 +293,9 @@ Escala TrialForge, não copiloto single-node:
 T1.1 (CI gate)   ✅ feito
 T1.2 (Stitch)    ✅ resolvido por remoção (não religar)
 T1.3 (eval RAG)  ✅ feito — baseline hit@1 73,9%; manter RAG_RERANK=off
-T1.4 (rerank bug) ← novo, prioridade baixa (baseline off atende)
+T1.4 (rerank bug) ✅ código corrigido; modelo só-inglês piora PT-BR → segue off
       ↓
-T2.1 (Prompt Garden)   → estende o manifesto; base para T3.1
+T2.1 (Prompt Garden)   ✅ feito — garden/ + bloco prompts no hash do manifesto
       ↓
 T2.2 (cache semântico) ‖ T2.3 (canvas)   independentes entre si
       ↓

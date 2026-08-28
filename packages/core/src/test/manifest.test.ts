@@ -30,6 +30,13 @@ test("buildExecutionManifest: determinístico (mesmo estado → mesmo hash)", as
     assert.equal(m1.souls[0]!.id, "main");
     assert.match(m1.souls[0]!.systemPromptHash, /^[0-9a-f]{64}$/);
     assert.ok(m1.migrations.length > 0, "migrações aplicadas no schema de teste");
+    assert.ok(m1.prompts.length >= 6, "prompt garden no manifesto");
+    assert.ok(m1.prompts.some((p) => p.id === "guardian-audit" && /^[0-9a-f]{64}$/.test(p.hash)));
+    assert.deepEqual(
+      m1.prompts.map((p) => p.id),
+      [...m1.prompts.map((p) => p.id)].sort((a, b) => a.localeCompare(b)),
+      "prompts ordenados por id (canônico p/ o hash)",
+    );
   } finally {
     rmSync(home, { recursive: true, force: true });
     await db.cleanup();

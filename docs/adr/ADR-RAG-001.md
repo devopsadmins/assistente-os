@@ -7,7 +7,7 @@
 | Campo | Valor |
 |---|---|
 | Código | `ADR-RAG-001` |
-| Status | Aceita (2026-08-27) — medição do §6 feita: **manter `off`**; cross-encoder inoperante (bug em `rerank.ts`) |
+| Status | Aceita (2026-08-27) — medição do §6 feita: **manter `off`**; CE corrigido mas o modelo só-inglês degrada o corpus PT-BR |
 | Perfil de conformidade | AI-3 |
 | Módulos normativos aplicáveis | ai-protocols, observability |
 | Owner técnico | agente assistente-os (Claude Code) |
@@ -70,25 +70,30 @@ latência que o rerank adiciona; (3) registro do modo ativo no manifesto de exec
 da Dimastec (soul `consultoria_ia`, 11.568 chunks / 281 arquivos, índice atual).
 Embedder: `Xenova/multilingual-e5-base` (768d). `RAG_RERANK_TOPN=20`.
 
-| Cenário | hit@1 | hit@3 | hit@5 | MRR | recall@5 | rerank p50 (ms) | rerank p95 (ms) |
-|---|---|---|---|---|---|---|---|
-| `off` (baseline) | **73,9%** | 87,0% | 95,7% | 0,809 | 84,8% | — | — |
-| `cross-encoder` | 73,9% | 87,0% | 95,7% | 0,809 | 84,8% | n/a | n/a |
+| Cenário | hit@1 | hit@3 | hit@5 | MRR | recall@5 | tempo eval (23 casos) |
+|---|---|---|---|---|---|---|
+| `off` (baseline) | **73,9%** | 87,0% | 95,7% | 0,809 | 84,8% | ~4 s |
+| `cross-encoder` = `Xenova/ms-marco-MiniLM-L-6-v2` | 56,5% | 82,6% | 91,3% | 0,696 | 80,4% | ~58 s |
 
-**Conclusão: não ativar `cross-encoder` em produção.** Dois motivos:
+**Conclusão: manter `RAG_RERANK=off` em produção.** Histórico da medição:
 
-1. **O reranker cross-encoder está inoperante.** `getCrossEncoderScorer`
-   (`packages/memory/src/rerank.ts:~44`) chama o pipeline `text-classification` do
-   `@xenova/transformers` 2.17.2 com `{ text, text_pair }` — assinatura **não
-   suportada** nessa versão (`text.split is not a function` em cada par). O erro é
-   engolido pelo `try/catch` de `rerank()`, os candidatos mantêm a ordem vetorial,
-   e o modo `cross-encoder` fica **idêntico a `off`** (tabela acima, número a
-   número). Precisa de fiação manual tokenizer+model ou upgrade da lib —
-   rastreado como item separado no `docs/ARCHITECTURE-REVIEW.md`.
-2. **Mesmo se funcionasse, o ganho provável é baixo.** Das 23 falhas potenciais só
-   1 sobra (`test-web-suite`), e é *recall miss* — o doc esperado
-   (`testing-matrix.md`) fica fora da janela de 20 candidatos, então rerank não
-   alcançaria. hit@5 já é 95,7%; o gap está na recuperação, não na reordenação.
+1. **Bug corrigido (T1.4, 2026-08-27).** `getCrossEncoderScorer`
+   (`packages/memory/src/rerank.ts`) chamava o pipeline `text-classification` do
+   `@xenova/transformers` 2.17.2 com `{ text, text_pair }` — assinatura não
+   suportada (`text.split is not a function` por par), erro engolido pelo
+   `try/catch` de `rerank()` → o modo `cross-encoder` era **idêntico a `off`**.
+   Reescrito para tokenizer + `AutoModelForSequenceClassification` diretos (lê o
+   logit de relevância). Agora roda de fato.
+2. **O modelo default degrada o corpus.** `Xenova/ms-marco-MiniLM-L-6-v2` é um
+   cross-encoder treinado só em inglês (MS MARCO). No corpus PT-BR de
+   `consultoria_ia` ele **piora** o retrieval: −17,4 pp de hit@1, −0,11 de MRR
+   (tabela). E custa ~15× o tempo.
+3. **Um CE multilíngue não está disponível pronto.** `Xenova/mmarco-mMiniLMv2-L12-H384-v1`
+   não tem build ONNX no HF (401). Fica atrás de `RAG_RERANK_CE_MODEL` (novo env)
+   para quando existir um CE multilíngue convertido — aí re-rodar esta medição.
+4. **O baseline `off` já é forte.** hit@5 95,7%; a única falha (`test-web-suite`)
+   é *recall miss* (doc esperado fora da janela de 20 candidatos) — rerank não
+   alcançaria. O gap está na recuperação, não na reordenação.
 
 **Gate operacional** (o soul e o índice são dados de cliente — não rodam no CI do
 GitHub): antes de release que toque embedder/índice/RAG, rodar
@@ -114,3 +119,4 @@ relevante depois que o cross-encoder voltar a funcionar).
 |---|---|---|
 | 2026-08-27 | Criada — ativação por env, latência instrumentada, validação por `os rag eval` | Claude Code |
 | 2026-08-27 | §6 medido (T1.3): baseline hit@1 73,9%; cross-encoder == off (bug em `rerank.ts` / `@xenova/transformers` 2.17.2); decisão: manter `off` | Claude Code |
+| 2026-08-27 | T1.4: CE corrigido (tokenizer+model diretos) + env `RAG_RERANK_CE_MODEL`; medido com ms-marco-MiniLM (inglês) → hit@1 56,5% (pior); decisão mantida: `off` | Claude Code |

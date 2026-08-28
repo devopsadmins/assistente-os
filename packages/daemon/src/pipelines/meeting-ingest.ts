@@ -22,7 +22,7 @@ import {
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { todayISODate } from "@assistente-os/core";
+import { todayISODate, meetingIngestExtraction } from "@assistente-os/core";
 import { recordLlmCall } from "../observability/record-llm-call.js";
 
 // ── Funções auxiliares de parse (inline - baseadas no meeting-ingest original) ──
@@ -274,10 +274,7 @@ export async function meetingIngestPipeline(
     ollamaChatModel:
       process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free",
   };
-  const buildPrompt = `Extraia JSON com chaves: decisoes (string[]), acoes (objectos com texto/responsavel/prazo), objeccoes (string[]), resumo (string).
-
-TRANSCRIÇÃO:
-${rawTranscript}`;
+  const buildPrompt = meetingIngestExtraction.render({ transcript: rawTranscript });
 
   const meetingPayload = await extractMeetingWithOllama(
     buildPrompt,

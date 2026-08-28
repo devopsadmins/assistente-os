@@ -18,6 +18,7 @@ import { listSouls } from "./souls.js";
 import { CAPABILITY_CATALOG, CAPABILITY_CATALOG_VERSION } from "./policy.js";
 import { loadConfig } from "./config.js";
 import { CONCISE_OUTPUT_DIRECTIVE } from "./prompts/system-base.js";
+import { gardenManifest, type PromptManifestEntry } from "./prompts/garden/index.js";
 
 const SOUL_PROMPT_FILES = ["perfil.md", "contexto.md", "soul.md"] as const;
 
@@ -40,6 +41,9 @@ export interface ExecutionManifest {
   };
   souls: ManifestSoul[];
   migrations: string[];
+  /** Prompt Garden: {id, versao, hash} por prompt de pipeline/tool (dentro do
+   * hash — mudar um template muda o hash do manifesto). */
+  prompts: PromptManifestEntry[];
   /** Config de RAG que altera as respostas (entra no hash — dois deploys com
    * RAG_RERANK diferente têm hashes diferentes). */
   rag: {
@@ -106,6 +110,7 @@ export async function buildExecutionManifest(opts: { home: string; pool: Pool })
     capabilityCatalog,
     souls,
     migrations,
+    prompts: gardenManifest(),
     rag: {
       // embedder primário é Xenova/multilingual-e5-base (local, 768d); este é o
       // fallback via Ollama — ambos 768d, então a coluna vector(768) é consistente.

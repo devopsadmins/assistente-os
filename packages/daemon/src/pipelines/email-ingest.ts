@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { todayISODate } from "@assistente-os/core";
+import { todayISODate, emailIngestExtraction } from "@assistente-os/core";
 import { ollamaUsage, recordLlmCall, type LlmUsage } from "../observability/record-llm-call.js";
 
 // ── Tipos de saída estruturada ───────────────────────────────────────
@@ -280,10 +280,7 @@ export async function emailIngestPipeline(
       process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free",
   };
   const extractionResult = await extractWithOllama(
-    `Extraia JSON com chaves: topicos (string[]), secoes (string[]), decisoes (string[]), acoes (objectos com texto/responsavel/prazo), lições (string[]).
-
-EMAIL BODY:
-${cleanBody}`,
+    emailIngestExtraction.render({ emailBody: cleanBody }),
     config.ollamaUrl,
     config.ollamaChatModel
   );
