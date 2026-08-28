@@ -61,13 +61,23 @@ export async function buildPrompt(options: {
     { path: sessionPath, chars: sessao.length },
   ];
 
-  let almaCtx = "";
-  if (perfil || licoes || sessao) {
-    almaCtx = `## Identidade da alma (persistente — leia antes de responder)
+  // T3.3: persona (perfil + licoes) é semi-estática por soul → fica no prefixo
+  // estável, apto a prompt caching / reuso de KV cache do Ollama. O log da
+  // sessão do dia cresce a cada turno → sai daqui e vai pra cauda dinâmica
+  // (`sessaoCtx`, junto de RAG e histórico).
+  let personaCtx = "";
+  if (perfil || licoes) {
+    personaCtx = `## Identidade da alma (persistente — leia antes de responder)
 ${perfil ? `--- Perfil ---\n${perfil}\n` : ""}
-${licoes ? `--- Lições aprendidas ---\n${licoes}\n` : ""}
-${sessao ? `--- Sessão atual (${today}) ---\n${sessao}\n` : ""}`.trim();
+${licoes ? `--- Lições aprendidas ---\n${licoes}\n` : ""}`.trim();
   }
+  let sessaoCtx = "";
+  if (sessao) {
+    sessaoCtx = `## Sessão atual (${today})\n${sessao}`.trim();
+  }
+  // Compat: `almaCtx` no retorno segue sendo persona + sessão (o inspector de
+  // buffer e o consumidor de eventos leem esse campo).
+  const almaCtx = [personaCtx, sessaoCtx].filter(Boolean).join("\n\n");
 
   // ── Skills por soul: índice sempre + corpo das relevantes ──
   let skillsCtx = "";
@@ -126,9 +136,22 @@ ${history.map((m) => `**${m.role === "user" ? "Usuário" : "Assistente"}:** ${m.
 ${activeRules.map((r) => `- **${r.topic}:** ${r.ruleText}`).join("\n")}`;
   }
 
-  // Diretriz FinOps (output conciso) sempre presente, incondicional, como
-  // primeiro item — sem flag de configuração, vale pra todas as souls.
-  const prefixParts = [CONCISE_OUTPUT_DIRECTIVE, rulesCtx, almaCtx, skillsCtx, ragCtx, historyCtx].filter(Boolean);
+  // Ordem do mais estático para o mais volátil (T3.3): maximiza o prefixo de
+  // bytes idêntico entre turnos → prompt caching e reuso de KV cache (Ollama).
+  //   estático  : CONCISE_OUTPUT_DIRECTIVE (const global)
+  //   semi-estát: rulesCtx (golden rules globais), personaCtx (perfil+licoes da soul)
+  //   dinâmico  : skillsCtx (skills que casaram), sessaoCtx (log do dia),
+  //               ragCtx (recuperação), historyCtx (turnos recentes)
+  // CONCISE_OUTPUT_DIRECTIVE fica sempre em 1º (há teste que exige startsWith).
+  const prefixParts = [
+    CONCISE_OUTPUT_DIRECTIVE,
+    rulesCtx,
+    personaCtx,
+    skillsCtx,
+    sessaoCtx,
+    ragCtx,
+    historyCtx,
+  ].filter(Boolean);
   const fullPrompt = prefixParts.length > 1
     ? `${prefixParts.join("\n\n")}\n\n--- Instrução do usuário ---\n${prompt}`
     : `${prefixParts.join("\n\n")}\n\n${prompt}`;

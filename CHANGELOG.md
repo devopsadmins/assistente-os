@@ -8,6 +8,19 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Alterado
+
+- **Ordem do montador de prompt** (T3.3): `buildPrompt` (`packages/daemon/src/context.ts`)
+  passa a montar do mais estático para o mais volátil, para maximizar o prefixo de
+  bytes idêntico entre turnos (prompt caching / reuso de KV cache do Ollama). O
+  bloco de identidade da alma foi partido: `perfil.md`+`licoes.md` (estáveis) vão
+  pro prefixo; `${today}` + o log de `sessoes/<data>.md` (que cresce a cada turno)
+  descem pra cauda, junto de RAG e histórico. Ordem:
+  `CONCISE_OUTPUT_DIRECTIVE → regras de ouro → persona → skills → sessão → RAG →
+  histórico → instrução do usuário`. `CONCISE_OUTPUT_DIRECTIVE` segue em 1º. Campo
+  de retorno `almaCtx` inalterado (persona + sessão). Ref: T3.3 de
+  `docs/ARCHITECTURE-REVIEW.md`. Rollback: reverter o commit.
+
 ### Corrigido
 
 - **Reranker cross-encoder do RAG** (T1.4): `getCrossEncoderScorer`

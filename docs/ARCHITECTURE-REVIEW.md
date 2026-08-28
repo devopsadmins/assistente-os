@@ -291,6 +291,29 @@ da cascata entram no garden). **Esforço:** M.
 **Só se** o golden eval (T1.3) mostrar `hit@1 < 0.8` no corpus real. Medir antes de
 construir. **Esforço:** L.
 
+#### T3.3 — Ordenar o montador de prompt (estático → volátil)  — ✅ feito (2026-08-28)
+
+**Origem:** proposta de "prefix caching" (ordenação rígida do mais estático para o
+mais dinâmico). O princípio procede; a proposta original assumia API
+Anthropic/OpenAI direta com `cache_control` — o projeto **não tem** (tiers
+`zen`/`soul` vão por `opencode run <fullPrompt>`; `local` = `/api/chat` do Ollama).
+Escopo aplicável: só o reorder do `buildPrompt` + medir no tier local (KV cache do
+Ollama). **Não** feitos (sem alvo): breakpoints `cache_control`, ordenação de tools
+no montador (o montador não injeta tools; `packages/tools` já é array fixo).
+
+**Entregue:** `packages/daemon/src/context.ts` — o bloco `almaCtx` (que juntava
+`perfil.md`+`licoes.md` estáveis **com** `${today}` + o log de `sessoes/<data>.md`
+que cresce a cada turno) foi partido: `personaCtx` (estável) sobe pro prefixo;
+`sessaoCtx` (volátil) desce pra cauda. Nova ordem de `prefixParts`:
+`CONCISE_OUTPUT_DIRECTIVE → rulesCtx → personaCtx → skillsCtx → sessaoCtx → ragCtx
+→ historyCtx → instrução do usuário`. Campo de compat `almaCtx` no retorno segue =
+persona + sessão. Testes `context-prompt-order.test.ts` (2) — incl. "o prefixo até
+a persona não muda entre turnos quando só o log de sessão cresce".
+
+**Esforço:** S. Ganho real: prefill mais rápido no tier `local`; possível
+auto-cache no Zen (não verificável). Sem ganho de $ tipo "90%" (isso é da API
+Anthropic com breakpoint).
+
 ---
 
 ## Explicitamente fora de escopo
@@ -318,6 +341,7 @@ T2.2 (cache semântico) ✅ feito (default off)  ·  T2.3 (canvas) ✅ feito
       ↓
 T3.1 (cascata)   → depois do garden
 T3.2 (hybrid)    → só se T1.3 pedir
+T3.3 (ordem do prompt) ✅ feito — persona no prefixo, sessão/rag/histórico na cauda
 ```
 
 **Maior alavancagem primeiro:** T1.1 fecha o buraco entre "temos governança" e
