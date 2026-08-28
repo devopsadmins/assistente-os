@@ -34,15 +34,51 @@ class CacheService {
 
   async init(): Promise<void> {
     if (this.initialized) return;
+    let client: Redis | null = null;
     try {
-      this.redis = new Redis(this.REDIS_URL);
-      const pong = await this.redis.ping();
+      // Falha rápido e SEM spam quando não há Redis (CI, dev sem Redis):
+      // lazyConnect + connect() explícito rejeita já na 1ª tentativa; o
+      // retryStrategy desiste após 3 tentativas curtas em vez de reconectar
+      // pra sempre; o listener de 'error' evita o "[ioredis] Unhandled error
+      // event" no stderr — a degradação para memória é silenciosa por design.
+      client = new Redis(this.REDIS_URL, {
+        lazyConnect: true,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 2,
+        retryStrategy: (times) => (times > 3 ? null : Math.min(times * 200, 1000)),
+        reconnectOnError: () => false,
+      });
+      client.on("error", () => {
+        /* silencioso — quem usa cai para o Map em memória */
+      });
+      await client.connect();
+      const pong = await client.ping();
+      this.redis = client;
       console.log("[Cache] Redis conectado com sucesso:", pong);
     } catch (err) {
-      console.warn("[Cache] Redis indisponível, usando fallback em memória apenas:", err);
+      console.warn(
+        "[Cache] Redis indisponível, usando fallback em memória apenas:",
+        (err as Error).message,
+      );
+      try {
+        client?.disconnect();
+      } catch {
+        /* já desconectado */
+      }
       this.redis = null;
     }
     this.initialized = true;
+  }
+
+  /** Redis falhou em runtime → desconecta o socket e passa a usar só memória. */
+  private dropRedis(op: string, err: unknown): void {
+    console.warn(`[Cache] Redis ${op} falhou, mudando para memória:`, (err as Error).message);
+    try {
+      this.redis?.disconnect();
+    } catch {
+      /* já desconectado */
+    }
+    this.redis = null;
   }
 
   /** Obter valor do cache (Redis -> Memória) */
@@ -53,8 +89,7 @@ class CacheService {
         const value = await this.redis.get(key);
         if (value) return value;
       } catch (err) {
-        console.warn("[Cache] Redis GET falhou, mudando para memória:", err);
-        this.redis = null;
+        this.dropRedis("GET", err);
       }
     }
 
@@ -71,8 +106,7 @@ class CacheService {
       try {
         await this.redis.set(key, value, "EX", ttlSeconds);
       } catch (err) {
-        console.warn("[Cache] Redis SET falhou, somente memória:", err);
-        this.redis = null;
+        this.dropRedis("SET", err);
       }
     }
 

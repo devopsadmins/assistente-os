@@ -1,6 +1,32 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it, before, after, test } from "node:test";
 import assert from "node:assert/strict";
 import CacheService from "../cache.js";
+
+test("CacheService: sem Redis degrada para memória — rápido, sem lançar, sem spam", async () => {
+  const prev = process.env.REDIS_URL;
+  process.env.REDIS_URL = "redis://127.0.0.1:6399"; // porta morta
+  const errs: unknown[] = [];
+  const onUnhandled = (e: unknown) => errs.push(e);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const c = new CacheService();
+    const t0 = Date.now();
+    await c.init(); // não pode pendurar nem lançar
+    assert.ok(Date.now() - t0 < 8000, "init deve falhar rápido sem Redis");
+    assert.equal(c.isRedisAvailable(), false);
+    await c.set("k", "v");
+    assert.equal(await c.get("k"), "v"); // memória
+    assert.equal(await c.get("ausente"), null);
+    await c.close();
+    // dá uma volta no event loop para capturar rejeições atrasadas do ioredis
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(errs, [], "nenhuma unhandledRejection do ioredis");
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    if (prev === undefined) delete process.env.REDIS_URL;
+    else process.env.REDIS_URL = prev;
+  }
+});
 
 describe("CacheService", () => {
   let cache: CacheService;
