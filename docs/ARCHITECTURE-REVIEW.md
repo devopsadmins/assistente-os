@@ -128,14 +128,16 @@ medir** — o `hybridSearch` antigo já era código morto e foi removido no Epic
   checagem de path: mudança em `config.ts`/`policy.ts`/`migrations.ts`/`manifest.ts`/
   `prompts/`/`governance/`/`.github/workflows/` exige entrada nova em `docs/adr/` **ou**
   `CHANGELOG.md` no mesmo diff.
-- Paths sensíveis (`packages/core/src/governance/**`, `packages/core/src/policy.ts`,
-  `packages/core/src/migrations.ts`, `.github/**`, `docs/adr/**`) exigem label
-  `governanca-revisada` (escape hatch para merge local: o gate roda só em PR).
+- Paths sensíveis (`governance/**`, `config/policy/migrations/manifest.ts`,
+  `prompts/`, `.github/**`, `docs/adr/**`) exigem o mesmo paper trail —
+  `CHANGELOG.md` ou `docs/adr/` no diff. **(Etapa 2 do refino, 2026-08-28:
+  removida a regra de label `governanca-revisada` — num fluxo enxuto a evidência
+  é o CHANGELOG. `evaluateCompliance` agora recebe só `{body, changedFiles}`.)**
 - `os rag eval` já falha o CI hoje via `rag-eval.test.ts` dentro de `npm test` (corpus
   sintético). Rodá-lo contra corpus real é **T1.3**, não T1.1.
 
-**Aceitação:** PR sem `Rollback:` falha; mudança em `policy.ts` sem label falha;
-mudança em `config.ts` sem ADR/CHANGELOG falha; PR limpo passa. Coberto pelos 13 testes.
+**Aceitação:** PR sem `Rollback:` falha; mudança em `policy.ts` sem CHANGELOG/ADR
+falha; PR limpo passa. Coberto por 13 testes.
 
 **Esforço:** S. **Depende de:** nada. Zero código de produto.
 
@@ -170,10 +172,9 @@ auditoria + trava de regressão para trocar `RAG_RERANK`/`OLLAMA_EMBED_MODEL`.
   da Dimastec (`consultoria_ia`; fora do repo, dados de cliente).
 - `docs/adr/ADR-RAG-001.md` §6 — tabela preenchida com a medição real.
 - `docs/RAG-EVAL.md` — seção "Estado atual" com baseline e a limitação do rerank.
-- `.github/workflows/rag-eval.yml` — `workflow_dispatch` / `runs-on: self-hosted`
-  (o soul e o índice não existem no CI hospedado; o gate real é operator-run
-  `os rag eval consultoria_ia --min-hit1 0.70`). O CI do PR segue travando a
-  fixture sintética via `rag-eval.test.ts`.
+- Eval do corpus real = **passo manual** (`os rag eval consultoria_ia --min-hit1 <piso>`).
+  O CI do PR segue travando só a fixture sintética via `rag-eval.test.ts`.
+  (O `.github/workflows/rag-eval.yml` self-hosted foi removido na Etapa 2 do refino.)
 
 **Resultado:** baseline `off` — hit@1 **73,9%**, hit@3 87,0%, hit@5 95,7%,
 MRR 0,809, recall@5 84,8%. **`cross-encoder` == `off` número a número** → ver T1.4.
