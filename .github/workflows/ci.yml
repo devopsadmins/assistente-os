@@ -76,20 +76,24 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Prime o Postgres do serviço ANTES dos testes: `os status` roda
+      # runMigrations() no schema `public`, o que inclui `0001_extensions`
+      # (CREATE EXTENSION vector). Sem isto, o `public` fica vazio e os testes
+      # que não criam schema isolado próprio (langgraph-tools.test.ts com pool
+      # cru) ou cujo `CREATE EXTENSION IF NOT EXISTS vector` num schema de teste
+      # não resolve o tipo `vector` falhavam ("type vector does not exist" /
+      # "relation chunks does not exist"). Com o `public` já migrado, o
+      # search_path `<schema>,public` dos helpers de teste enxerga o tipo e as
+      # tabelas base — mesmo estado do dev local.
+      - name: Prime database (migrations + pgvector)
+        run: node packages/cli/dist/index.js status
+
       - name: Test
         run: npm test
 
-      # Gate AI-3 (ADR-AI-003 §6 / roadmap E8.2): a cada build gera o manifesto de execução
-      # determinístico (tiers do router, catálogo de capacidades L1/L2/L3,
-      # souls, migrações aplicadas + hash) e anexa ao build.
-      #
-      # `os <cmd>` roda runMigrations() antes de qualquer comando que toca o
-      # banco e imprime "migrações aplicadas: ..." em stdout na primeira vez.
-      # Rodamos `os status` primeiro para drenar essa saída contra o Postgres
-      # limpo do serviço; assim `os manifest` emite só o JSON (redirect limpo)
-      # e o array `migrations` já vem populado.
-      - name: Prime database (migrations)
-        run: node packages/cli/dist/index.js status
+      # Gate AI-3 (ADR-AI-003 §6 / roadmap E8.2): a cada build gera o manifesto de
+      # execução determinístico (tiers do router, catálogo L1/L2/L3, souls,
+      # migrações aplicadas + hash) e anexa ao build.
 
       - name: Execution manifest
         run: |

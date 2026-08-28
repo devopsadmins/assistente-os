@@ -50,6 +50,16 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Corrigido
 
+- **CI: `Test` rodava antes de `Prime database`** — o Postgres do serviço ficava
+  sem migrações (nem a extensão `vector`) durante `npm test`. Testes que não
+  criam schema isolado próprio (`langgraph-tools.test.ts`, pool cru) ou cujo
+  `CREATE EXTENSION IF NOT EXISTS vector` num schema de teste não resolvia o tipo
+  `vector` quebravam em CI (`type "vector" does not exist` · `relation "chunks"
+  does not exist`) — 26 falhas mascaradas localmente por um `public` já migrado.
+  `Prime database (migrations + pgvector)` agora roda **antes** de `Test`.
+  Ref: Etapa 2 de `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o commit (volta a ordenação antiga).
+
 - **`CacheService` sem Redis** (refino, Etapa 2): `init()` criava `new Redis()` com
   as opções default (reconexão infinita, sem listener de `error`) → quando não há
   Redis (CI, dev), o ioredis inundava o stderr com `[ioredis] Unhandled error
