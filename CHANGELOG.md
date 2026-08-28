@@ -48,6 +48,20 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
   de retorno `almaCtx` inalterado (persona + sessão). Ref: T3.3 de
   `docs/ARCHITECTURE-REVIEW.md`. Rollback: reverter o commit.
 
+### Alterado
+
+- **Prompt Garden — buracos fechados** (refino, Etapa 5): migrados os 2 prompts
+  que faltavam — `agent-react-system` (system do agente ReAct, em
+  `agent-workflow.ts` **e** `agent-state.ts`, antes duplicado) e `rag-answer`
+  (`prompt-templates.ts` monta o `ChatPromptTemplate` a partir de `ragAnswer` +
+  `RAG_ANSWER_SUFFIXES`). Jardim: 9 prompts. Novo campo `outputSchema` no
+  `PromptSpec` — o JSON literal da saída sai do `template` (sem `{{ }}` de escape),
+  referenciado como `{outputSchema}`; `spec-grill-analyst` / `entity-extraction` /
+  `guardian-audit` migrados (render **byte-idêntico** verificado). Novo
+  `os prompt list` / `os prompt show <id>`. Ref: Etapa 5 de
+  `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o PR (refactor puro, textos idênticos).
+
 ### Corrigido
 
 - **CI: `Test` rodava antes de `Prime database`** — o Postgres do serviço ficava

@@ -18,13 +18,14 @@ export const guardianAudit = definePrompt<{
     "Só o JSON na resposta.",
     "Falha segura: na dúvida, nota baixa (o caller só aprova score >= 95).",
   ],
-  formatoSaida: '{"score": number, "feedback": string}',
+  formatoSaida: "JSON com score (number) e feedback (string).",
+  outputSchema: '{"score": number, "feedback": string}',
   versao: 1,
   template: [
     "Você é o Guardian, supervisor de qualidade e conformidade ISO/IEC 42001.",
     "Tarefa: {taskId}",
     "Agente avaliado: {targetAgent}",
     "Resumo das mudanças: {changesSummary}",
-    '{testResultsLine}Avalie a qualidade de 0 a 100 e responda apenas em JSON: {{"score": number, "feedback": string}}.',
+    "{testResultsLine}Avalie a qualidade de 0 a 100 e responda apenas em JSON: {outputSchema}.",
   ].join("\n"),
 });

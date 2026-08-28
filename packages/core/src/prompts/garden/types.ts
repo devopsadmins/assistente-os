@@ -1,19 +1,18 @@
 /**
  * Prompt Garden — biblioteca versionada de prompts de pipeline/tool (T2.1 de
- * `docs/ARCHITECTURE-REVIEW.md`).
+ * `docs/ARCHITECTURE-REVIEW.md`; buracos fechados na Etapa 5 do refino).
  *
  * Antes, cada prompt de extração/análise/auditoria era um literal solto no meio
  * do código do pipeline: sem versão, sem diff, sem forma padrão, sem entrar no
  * manifesto de execução. Aqui cada prompt é um `PromptSpec` com metadados
- * (papel / objetivo / regras / formato de saída / versão) + um `template` com
+ * (papel / objetivo / regras / formato de saída / versão), um `template` com
  * `{placeholders}` e um `render(vars)` que substitui e valida.
  *
  * O hash de cada spec entra no `buildExecutionManifest` (`prompts[]`), então
  * "qual versão de qual prompt rodou neste release" é auditável pelo hash.
  *
  * NÃO cobre: prompts de soul (`perfil.md`/`contexto.md`/`soul.md` — já
- * versionados por git e hasheados em `soulSystemPromptHash`) nem os
- * `ChatPromptTemplate` do LangChain em `packages/memory/src/prompt-templates.ts`.
+ * versionados por git e hasheados em `soulSystemPromptHash`).
  */
 import { createHash } from "node:crypto";
 
@@ -26,15 +25,21 @@ export interface PromptMeta {
   objetivo: string;
   /** Restrições duras (uma por item). */
   regras: readonly string[];
-  /** Forma exata da saída esperada. */
+  /** Descrição curta da forma da saída (prosa). */
   formatoSaida: string;
+  /**
+   * Forma EXATA da saída (ex.: o JSON literal esperado). Fica fora do `template`
+   * para não poluí-lo com `{{ }}` de escape — o `template` referencia como
+   * `{outputSchema}` e o `render` injeta automaticamente. Opcional.
+   */
+  outputSchema?: string;
   /** Sobe a cada mudança semântica do template/metadados. */
   versao: number;
 }
 
 export interface PromptSpec<V extends Record<string, string | number> = Record<string, string | number>>
   extends PromptMeta {
-  /** Texto do prompt. Interpola `{chave}` a partir de `vars`. `{{` / `}}` escapam chaves literais. */
+  /** Texto do prompt. Interpola `{chave}` a partir de `vars` (+ `{outputSchema}`). `{{`/`}}` escapam chaves literais. */
   template: string;
   /** Substitui os `{placeholders}` e valida que toda variável referida foi fornecida. */
   render: (vars: V) => string;
@@ -45,15 +50,20 @@ export function definePrompt<V extends Record<string, string | number>>(
   spec: PromptMeta & { template: string },
 ): PromptSpec<V> {
   const render = (vars: V): string =>
-    spec.template
-      .replace(/\{\{|\}\}|\{(\w+)\}/g, (match, key: string | undefined) => {
-        if (match === "{{") return "{";
-        if (match === "}}") return "}";
-        if (!key || !(key in vars)) {
-          throw new Error(`prompt "${spec.id}": variável {${key}} não fornecida`);
+    spec.template.replace(/\{\{|\}\}|\{(\w+)\}/g, (match, key: string | undefined) => {
+      if (match === "{{") return "{";
+      if (match === "}}") return "}";
+      if (key === "outputSchema") {
+        if (spec.outputSchema === undefined) {
+          throw new Error(`prompt "${spec.id}": template usa {outputSchema} mas o spec não define outputSchema`);
         }
-        return String(vars[key as keyof V]);
-      });
+        return spec.outputSchema;
+      }
+      if (!key || !(key in vars)) {
+        throw new Error(`prompt "${spec.id}": variável {${key}} não fornecida`);
+      }
+      return String(vars[key as keyof V]);
+    });
   return { ...spec, render };
 }
 
@@ -65,6 +75,7 @@ export function promptCanonical(spec: PromptMeta & { template: string }): string
     objetivo: spec.objetivo,
     regras: spec.regras,
     formatoSaida: spec.formatoSaida,
+    outputSchema: spec.outputSchema ?? null,
     versao: spec.versao,
     template: spec.template,
   });
