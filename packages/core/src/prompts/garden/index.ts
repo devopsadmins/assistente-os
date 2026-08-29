@@ -11,6 +11,7 @@ export { guardianAudit } from "./guardian-audit.js";
 export { ragRerankScorer } from "./rag-rerank-scorer.js";
 export { agentReactSystem } from "./agent-react-system.js";
 export { ragAnswer, RAG_ANSWER_SUFFIXES, type RagAnswerStyle } from "./rag-answer.js";
+export { routerEscalationJudge } from "./router-escalation-judge.js";
 
 import type { PromptSpec } from "./types.js";
 import { promptHash } from "./types.js";
@@ -23,6 +24,7 @@ import { guardianAudit } from "./guardian-audit.js";
 import { ragRerankScorer } from "./rag-rerank-scorer.js";
 import { agentReactSystem } from "./agent-react-system.js";
 import { ragAnswer } from "./rag-answer.js";
+import { routerEscalationJudge } from "./router-escalation-judge.js";
 
 /** Todos os prompts do jardim. */
 export const GARDEN: ReadonlyArray<PromptSpec<never>> = [
@@ -35,6 +37,7 @@ export const GARDEN: ReadonlyArray<PromptSpec<never>> = [
   ragRerankScorer,
   agentReactSystem,
   ragAnswer,
+  routerEscalationJudge,
 ] as ReadonlyArray<PromptSpec<never>>;
 
 export interface PromptManifestEntry {
