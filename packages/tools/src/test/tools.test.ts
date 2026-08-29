@@ -655,3 +655,117 @@ test("mcp: skill_list e skill_create — dry-run/plan_hash/L3 + allowlist (Skill
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+// ── Zero Trust central (Onda 1) — gate em handleToolCall ────────────────
+
+test("mcp ZeroTrust: MCP_ZERO_TRUST desligado = no-op (comportamento pré-Onda-1)", async () => {
+  const home = await tempHome();
+  // soul restritiva: só memory_search na allowlist
+  createSoul(home, "restrita", {
+    name: "restrita",
+    description: "x",
+    agent: { autonomy: "suggest", guardrails: {}, permissions: { tools: ["memory_search"] } },
+  });
+  const prevFlag = process.env.MCP_ZERO_TRUST;
+  const prevSoul = process.env.AGENT_SOUL_ID;
+  delete process.env.MCP_ZERO_TRUST;
+  process.env.AGENT_SOUL_ID = "restrita";
+  const server = new McpServer({ home });
+  try {
+    // agenda_list (L1) roda mesmo com autonomy suggest + fora da allowlist,
+    // porque o gate central está desligado (os checks por-caso é que valem).
+    const res = await server.handleMessage({
+      jsonrpc: "2.0", id: 200, method: "tools/call",
+      params: { name: "agenda_list", arguments: {} },
+    });
+    assert.ok(res?.result, "sem o flag, o gate central não bloqueia");
+    assert.equal(res?.error, undefined);
+  } finally {
+    if (prevFlag === undefined) delete process.env.MCP_ZERO_TRUST; else process.env.MCP_ZERO_TRUST = prevFlag;
+    if (prevSoul === undefined) delete process.env.AGENT_SOUL_ID; else process.env.AGENT_SOUL_ID = prevSoul;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp ZeroTrust: MCP_ZERO_TRUST=on aplica allowlist + autonomy a TODA tool", async () => {
+  const home = await tempHome();
+  createSoul(home, "restrita", {
+    name: "restrita",
+    description: "x",
+    agent: { autonomy: "suggest", guardrails: {}, permissions: { tools: ["memory_search", "agenda_add"] } },
+  });
+  const prevFlag = process.env.MCP_ZERO_TRUST;
+  const prevSoul = process.env.AGENT_SOUL_ID;
+  process.env.MCP_ZERO_TRUST = "on";
+  process.env.AGENT_SOUL_ID = "restrita";
+  const server = new McpServer({ home });
+  try {
+    // L1 na allowlist → passa
+    const l1 = await server.handleMessage({
+      jsonrpc: "2.0", id: 210, method: "tools/call",
+      params: { name: "memory_search", arguments: { soul: "restrita", query: "x" } },
+    });
+    assert.ok(l1?.result, "L1 na allowlist passa");
+
+    // L2 na allowlist mas autonomy 'suggest' bloqueia L2
+    const l2 = await server.handleMessage({
+      jsonrpc: "2.0", id: 211, method: "tools/call",
+      params: { name: "agenda_add", arguments: { soul: "restrita", title: "t" } },
+    });
+    assert.equal(l2?.result, undefined);
+    assert.match(JSON.stringify(l2?.error), /suggest|42001/);
+
+    // fora da allowlist → E_AUTHZ mesmo sendo L2
+    const fora = await server.handleMessage({
+      jsonrpc: "2.0", id: 212, method: "tools/call",
+      params: { name: "observation_add", arguments: { soul: "restrita", entity_name: "e", text: "x" } },
+    });
+    assert.equal(fora?.result, undefined);
+    assert.match(JSON.stringify(fora?.error), /snapshot|42001/);
+  } finally {
+    if (prevFlag === undefined) delete process.env.MCP_ZERO_TRUST; else process.env.MCP_ZERO_TRUST = prevFlag;
+    if (prevSoul === undefined) delete process.env.AGENT_SOUL_ID; else process.env.AGENT_SOUL_ID = prevSoul;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp ZeroTrust: MCP_ZERO_TRUST=on + sem soul identificável nega tool soul-scoped", async () => {
+  const home = await tempHome();
+  const prevFlag = process.env.MCP_ZERO_TRUST;
+  const prevSoul = process.env.AGENT_SOUL_ID;
+  process.env.MCP_ZERO_TRUST = "on";
+  delete process.env.AGENT_SOUL_ID;
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({
+      jsonrpc: "2.0", id: 220, method: "tools/call",
+      params: { name: "memory_search", arguments: { query: "x" } },
+    });
+    assert.equal(res?.result, undefined);
+    assert.match(JSON.stringify(res?.error), /soul identificada|42001/);
+  } finally {
+    if (prevFlag === undefined) delete process.env.MCP_ZERO_TRUST; else process.env.MCP_ZERO_TRUST = prevFlag;
+    if (prevSoul === undefined) delete process.env.AGENT_SOUL_ID; else process.env.AGENT_SOUL_ID = prevSoul;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: skill_list/skill_create/mission_run rejeitam soul id inválido (path traversal)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const sl = await server.handleMessage({
+      jsonrpc: "2.0", id: 230, method: "tools/call",
+      params: { name: "skill_list", arguments: { soul: "../../etc" } },
+    });
+    assert.match(JSON.stringify(sl?.error ?? sl?.result), /soul inválida/);
+
+    const mr = await server.handleMessage({
+      jsonrpc: "2.0", id: 231, method: "tools/call",
+      params: { name: "mission_run", arguments: { mission_id: "m1", soul: "../evil" } },
+    });
+    assert.match(JSON.stringify(mr?.error ?? mr?.result), /soul inválida|AGENT_SOUL_ID/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

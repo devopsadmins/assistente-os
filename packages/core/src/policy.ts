@@ -147,6 +147,20 @@ export interface AuthorizeExecutionInput {
   confirmation?: ConfirmationCheckResult;
   /** Patterns de denylist global / golden rules já resolvidos pelo chamador. */
   denylist?: string[];
+  /**
+   * `false` pula os passos 5 (autonomy × nível) e 6 (approvalPolicy) — mantém
+   * denylist, allowlist, conector e budget. Usado pelo gate do MCP/LangGraph
+   * enquanto `MCP_ZERO_TRUST` está desligado: nesse modo a autorização é só a
+   * allowlist (comportamento pré-Onda-1), sem quebrar souls que ainda não
+   * declararam `autonomy`. Default (`undefined`/`true`) = enforcement completo.
+   */
+  enforcePolicyGates?: boolean;
+}
+
+/** `MCP_ZERO_TRUST=on|1|true` liga o enforcement de autonomia/aprovação no gate de tools do MCP e do agente LangGraph. */
+export function mcpZeroTrustOn(): boolean {
+  const v = (process.env.MCP_ZERO_TRUST ?? "off").toLowerCase();
+  return v === "on" || v === "1" || v === "true";
 }
 
 function effectiveRiskLevel(capability: string, effect?: "read" | "write" | "external"): RiskLevel {
@@ -198,17 +212,21 @@ export function authorizeExecution(input: AuthorizeExecutionInput): PolicyDecisi
     return { allow: false, code: "E_BUDGET", reason: budget.reason ?? "budget insuficiente" };
   }
 
+  // Passos 5–6 (autonomy / approvalPolicy) podem ser pulados quando o chamador
+  // passa enforcePolicyGates:false (gate do MCP com MCP_ZERO_TRUST desligado).
+  const gatesOn = input.enforcePolicyGates !== false;
+
   // 5. autonomy
   const level = effectiveRiskLevel(capability, effect);
   const autonomy = resolveAutonomy(agentConfig);
-  if (autonomy === "suggest" && (level === "L2" || level === "L3")) {
+  if (gatesOn && autonomy === "suggest" && (level === "L2" || level === "L3")) {
     return {
       allow: false,
       code: "E_POLICY_APPROVAL",
       reason: `autonomy 'suggest' bloqueia '${capability}' (nível ${level})`,
     };
   }
-  if (autonomy === "ask" && level === "L3" && !(confirmation && confirmation.ok)) {
+  if (gatesOn && autonomy === "ask" && level === "L3" && !(confirmation && confirmation.ok)) {
     return {
       allow: false,
       code: "E_POLICY_APPROVAL",
@@ -219,7 +237,7 @@ export function authorizeExecution(input: AuthorizeExecutionInput): PolicyDecisi
 
   // 6. approvalPolicy — só ADICIONA exigência de aprovação, nunca libera o que foi negado acima
   const requiresApproval = resolveApprovalPolicy(agentConfig).some((p) => matchesToolPattern(p, capability));
-  if (requiresApproval && !(confirmation && confirmation.ok)) {
+  if (gatesOn && requiresApproval && !(confirmation && confirmation.ok)) {
     return {
       allow: false,
       code: "E_POLICY_APPROVAL",
