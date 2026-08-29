@@ -72,11 +72,12 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 # antes de cortar no limite. "cross-encoder" = modelo local sem custo; "llm" =
 # pergunta 0-3 ao Ollama por trecho. NOTA (ADR-RAG-001 §6): o modelo default
 # (Xenova/ms-marco-MiniLM-L-6-v2) é só-inglês e PIORA corpora PT-BR — aponte
-# RAG_RERANK_CE_MODEL para um cross-encoder multilíngue antes de ligar.
+# RAG_RERANK_CE_MODEL para um cross-encoder multilíngue (ex.: Xenova/bge-reranker-base).
 # RAG_RERANK=cross-encoder
 # RAG_RERANK_TOPN=20          # quantos candidatos buscar antes de reordenar
 # RAG_RERANK_TOPK=5           # quantos manter após o rerank
-# RAG_RERANK_CE_MODEL=Xenova/ms-marco-MiniLM-L-6-v2   # modelo do cross-encoder
+# RAG_RERANK_CE_MODEL=Xenova/bge-reranker-base        # cross-encoder multilíngue (PT-BR ok)
+# RAG_RERANK_BUDGET_MS=30000  # orçamento p/ reordenar 1 consulta; estourou -> ordem original (0 desliga)
 # RAG_INJECTION_MODO=aviso    # aviso | recusar (descarta chunk de severidade alta)
 # RAG_HNSW_EF_SEARCH=40       # ef_search fixo na busca vetorial (reprodutibilidade)
 #
@@ -110,7 +111,8 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `ZEN_API_KEYS` | — | Chaves OpenCode Zen em rodízio (round-robin por chamada); vírgula-separadas. Alternativas: `ZEN_API_KEY_1..7` ou `ZEN_API_KEY` (uma só) |
 | `ZEN_CHAT_MODEL` | `nemotron-3-ultra-free` | Modelo usado no tier `zen` |
 | `RAG_RERANK` | `off` | Reranker do RAG: `off` \| `cross-encoder` (local) \| `llm`. **Modelo default só-inglês piora PT-BR** — ver [ADR-RAG-001 §6](docs/adr/ADR-RAG-001.md). Latência em `aos_rag_rerank_seconds` |
-| `RAG_RERANK_CE_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` | Modelo do cross-encoder (aponte para um multilíngue antes de ligar) |
+| `RAG_RERANK_CE_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` | Modelo do cross-encoder. Para PT-BR: `Xenova/bge-reranker-base` (multilíngue, verificado). Lido em runtime |
+| `RAG_RERANK_BUDGET_MS` | `30000` | Orçamento p/ reordenar 1 consulta; estourou → volta à ordem por score original. `0` desliga o teto |
 | `RAG_INJECTION_MODO` | `aviso` | Screening de prompt injection em chunks de RAG: `aviso` \| `recusar` |
 | `RAG_HNSW_EF_SEARCH` | `40` | `ef_search` fixado na busca vetorial HNSW (reprodutibilidade) |
 | `RAG_SEMANTIC_CACHE` | `off` | Cache semântico do RAG (`on` liga). `_THRESHOLD` `0.85`, `_TTL` `60`. Ver [docs/RAG-CACHE.md](docs/RAG-CACHE.md) |
