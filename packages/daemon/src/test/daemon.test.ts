@@ -55,6 +55,69 @@ test("daemon: health, souls e context respondem", async () => {
   }
 });
 
+test("daemon: rate limit por cliente → 429 com Retry-After (Onda 1b)", async () => {
+  const { home, cleanup } = await tempHome();
+  const prev = process.env.AOS_RATE_LIMIT;
+  process.env.AOS_RATE_LIMIT = "3";
+  const { __resetRateLimiter } = await import("../throttle.js");
+  __resetRateLimiter();
+  const daemon = await startDaemon({ port: 0, home });
+  try {
+    const base = `http://127.0.0.1:${daemon.port}`;
+    const codes: number[] = [];
+    for (let i = 0; i < 5; i++) codes.push((await fetch(`${base}/souls`, { headers: { "x-client-id": "flood" } })).status);
+    assert.deepEqual(codes.slice(0, 3), [200, 200, 200]);
+    assert.equal(codes[3], 429);
+    assert.equal(codes[4], 429);
+    const r = await fetch(`${base}/souls`, { headers: { "x-client-id": "flood" } });
+    assert.ok(Number(r.headers.get("retry-after")) >= 1);
+    // /health não conta e nunca é barrado
+    assert.equal((await fetch(`${base}/health`)).status, 200);
+    // outro cliente não é afetado
+    assert.equal((await fetch(`${base}/souls`, { headers: { "x-client-id": "outro" } })).status, 200);
+  } finally {
+    if (prev === undefined) delete process.env.AOS_RATE_LIMIT;
+    else process.env.AOS_RATE_LIMIT = prev;
+    __resetRateLimiter();
+    await daemon.close();
+    await cleanup();
+  }
+});
+
+test("daemon: cap de execuções caras simultâneas → 503; rota barata não é afetada (Onda 1b)", async () => {
+  const { home, cleanup } = await tempHome();
+  const prev = process.env.AOS_MAX_CONCURRENT_EXEC;
+  process.env.AOS_MAX_CONCURRENT_EXEC = "1";
+  const { tryAcquireExecSlot, releaseExecSlot, __resetExecSlots } = await import("../throttle.js");
+  __resetExecSlots();
+  const daemon = await startDaemon({ port: 0, home });
+  try {
+    const base = `http://127.0.0.1:${daemon.port}`;
+    // ocupa o único slot manualmente (simula um chat já em execução)
+    assert.equal(tryAcquireExecSlot(), true);
+
+    const chat = await fetch(`${base}/souls/main/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "oi" }),
+    });
+    assert.equal(chat.status, 503);
+    assert.equal((await chat.json() as { error: string }).error.includes("ocupado"), true);
+    assert.ok(Number(chat.headers.get("retry-after")) >= 1);
+
+    // rota barata (não-cara) passa mesmo com o semáforo cheio
+    assert.equal((await fetch(`${base}/souls`)).status, 200);
+
+    releaseExecSlot();
+  } finally {
+    if (prev === undefined) delete process.env.AOS_MAX_CONCURRENT_EXEC;
+    else process.env.AOS_MAX_CONCURRENT_EXEC = prev;
+    __resetExecSlots();
+    await daemon.close();
+    await cleanup();
+  }
+});
+
 test("daemon: rota desconhecida responde 404", async () => {
   const { home, cleanup } = await tempHome();
   const daemon = await startDaemon({ port: 0, home });
