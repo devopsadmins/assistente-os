@@ -111,6 +111,7 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `RAG_INJECTION_MODO` | `aviso` | Screening de prompt injection em chunks de RAG: `aviso` \| `recusar` |
 | `RAG_HNSW_EF_SEARCH` | `40` | `ef_search` fixado na busca vetorial HNSW (reprodutibilidade) |
 | `RAG_SEMANTIC_CACHE` | `off` | Cache semântico do RAG (`on` liga). `_THRESHOLD` `0.85`, `_TTL` `60`. Ver [docs/RAG-CACHE.md](docs/RAG-CACHE.md) |
+| `REDIS_URL` | — | Se setada, o daemon conecta o cache em camadas ao Redis no boot → cache exato e semântico do RAG **compartilhados entre instâncias**. Sem ela, só memória do processo |
 | `ROUTER_ESCALATION` | `off` | Escalonamento por confiança do roteador (`on` liga). `_MIN_SCORE` `0.55`, `_MIN_CHARS` `40`. Ver [docs/ROUTER-ESCALATION.md](docs/ROUTER-ESCALATION.md) |
 
 ## 4. PostgreSQL (opcional mas recomendado)

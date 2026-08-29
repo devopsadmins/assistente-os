@@ -225,7 +225,14 @@ os mais importantes) ficaram de fora por conflito com sessão paralela;
 
 ---
 
-## Etapa 6 — T2.2 Cache semântico  *(só se sobreviver à Etapa 1)*
+## Etapa 6 — T2.2 Cache semântico  — ✅ feito (PR `refino/etapa-6-semantic-cache-redis`)
+
+> Persistência movida para o `cache` em camadas do core (`ragSemanticCacheGet/Set`
+> async; bucket = JSON `[{v,p,exp}]`; cosseno em Node). Daemon chama `cache.init()`
+> no boot se `REDIS_URL` setada → cache exato **e** semântico compartilhados entre
+> instâncias. `exp` por-entrada preserva expiração preguiçosa no Map. Threshold
+> 0.85 e a validação com pares de paráfrase das sessões seguem para quando
+> `RAG_SEMANTIC_CACHE=on` for ligado em staging. 532 testes verdes.
 
 **Contexto.** Default off. Sem teste do caminho de **hit** semântico em
 `retrieveContext` (os testes de integração usam `LiteralEmbedder` → vetor nulo).
@@ -394,7 +401,7 @@ dos caminhos wired.
 | 3 — Golden set | ⏳ aguardando reunião | ☐ | ☐ | — |
 | 4 — Reranker | ☐ | ☐ | ☐ | — |
 | 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ⏳ no PR (`os prompt list`) | `refino/etapa-5-prompt-garden` |
-| 6 — Cache semântico | ☐ | ☐ | ☐ | — |
+| 6 — Cache semântico | ✅ | ✅ 532 verdes | ⏳ no PR (medir hit-rate em staging c/ Redis) | `refino/etapa-6-semantic-cache-redis` |
 | 7 — Canvas | ☐ | ☐ | ☐ | — |
 | 8 — Escalonamento | ☐ | ☐ | ☐ | — |
 | 9 — Ordem do prompt | ✅ | ✅ 531 verdes | ⏳ no PR (medir prefill em staging) | `refino/etapa-9-skills-split` |

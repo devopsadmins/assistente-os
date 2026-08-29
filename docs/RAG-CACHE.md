@@ -4,6 +4,11 @@
 Ambas degradam em silêncio e têm TTL curto porque a memória da soul muda com
 reindex.
 
+**Backend (Etapa 6 do refino):** as duas camadas persistem pelo `cache` em
+camadas do `@assistente-os/core`. Se o daemon iniciar com `REDIS_URL` setada, ele
+chama `cache.init()` no boot e o cache passa a ser **compartilhado entre
+instâncias** (Redis). Sem `REDIS_URL`, fica só o `Map` em memória do processo.
+
 ## 1. Cache exato (sempre ligado)
 
 Chave `sha1(limit + RAG_RERANK + injectionMode + query)` → `RagContext`
@@ -25,11 +30,14 @@ pergunta recente com os **mesmos** parâmetros de recuperação (`limit`,
 
 Detalhes:
 
-- **Só em memória do processo.** A matemática vetorial não cabe no KV do Redis;
-  é cache de latência, não fonte de verdade. Multi-instância = cada uma tem o seu.
+- **Compartilhado via Redis** quando `REDIS_URL` está setada (senão `Map` em
+  memória — ver acima). Um bucket = um valor JSON `[{v,p,exp}]`; o cosseno roda
+  em Node sobre as entradas do bucket (Redis puro não tem índice vetorial).
 - **Sem checagem de `updated_at`** — o TTL (default 60s, igual ao cache exato) é o
-  limite de obsolescência após reindex.
-- Caps: 64 entradas por bucket, 256 buckets; evicção do mais antigo.
+  limite de obsolescência após reindex. `exp` por-entrada dá expiração preguiçosa
+  mesmo no Map em memória; o TTL do bucket descarta o resto (real no Redis).
+- Cap: 64 entradas por bucket (evicta as mais antigas). Sem cap de nº de buckets —
+  cada um expira sozinho pelo TTL.
 - **Não usar em geração determinística.** O runner do `os rag eval` e qualquer
   caller de artefato (AIIA/família) passam `retrieveContext(..., { semanticCache: false })`.
 - Métrica: `aos_rag_cache_total{result="miss|exact|semantic"}` (incrementada no
@@ -37,4 +45,4 @@ Detalhes:
   poupado antes de ligar em produção.
 
 Módulo: `packages/memory/src/rag-semantic-cache.ts`
-(`semanticCacheConfig`, `ragSemanticCacheGet/Set`, `cosineSim`).
+(`semanticCacheConfig`, `ragSemanticCacheGet/Set` — async —, `cosineSim`).

@@ -1,25 +1,25 @@
 /**
- * Cache semântico do RAG (T2.2 de `docs/ARCHITECTURE-REVIEW.md`).
+ * Cache semântico do RAG (T2.2 de `docs/ARCHITECTURE-REVIEW.md`; Etapa 6 do
+ * refino: passa a persistir via o cache em camadas do core).
  *
  * O cache exato de `retrieveContext` (chave sha1 de query+params, TTL 60s) só
- * acerta quando a pergunta é byte-a-byte igual. Este camada extra acerta quando
+ * acerta quando a pergunta é byte-a-byte igual. Esta camada extra acerta quando
  * o *embedding* da pergunta está a ≥ `threshold` de cosseno de uma pergunta
  * recente com os mesmos parâmetros de recuperação (limit, rerank, injection).
  *
- * Conservador de propósito:
- *  - **Desligado por default** (`RAG_SEMANTIC_CACHE=on` liga) — mesma política do
- *    reranker (capacidade pronta, ativação por env após medir).
- *  - Só em memória do processo (a matemática vetorial não cabe no KV do Redis).
- *    Multi-instância = cada uma tem o seu; é cache de latência, não fonte de
- *    verdade.
- *  - TTL curto (default 60s, igual ao cache exato) cobre a defasagem de reindex —
- *    não há checagem de `updated_at` aqui, o TTL é o limite de obsolescência.
- *  - Caps por bucket e no total de buckets; evicção do mais antigo.
+ *  - **Desligado por default** (`RAG_SEMANTIC_CACHE=on` liga).
+ *  - Armazenado via `cache` do `@assistente-os/core` (Redis quando o daemon
+ *    chamou `cache.init()` com `REDIS_URL` — **compartilhado entre instâncias**;
+ *    senão o `Map` em memória do processo). Um bucket = um valor JSON
+ *    `[{v:number[], p:string}]`; o TTL do valor cobre a defasagem de reindex.
+ *  - A matemática de cosseno roda em Node sobre as entradas do bucket (não há
+ *    índice vetorial no Redis puro).
+ *  - Cap por bucket; sem cap de nº de buckets (cada um expira sozinho pelo TTL).
  *
  * NÃO usar em geração determinística (AIIA/família): o caller passa
  * `retrieveContext(..., { semanticCache: false })`.
  */
-import { logger } from "@assistente-os/core";
+import { cache, logger } from "@assistente-os/core";
 
 export interface SemanticCacheConfig {
   enabled: boolean;
@@ -30,7 +30,10 @@ export interface SemanticCacheConfig {
 }
 
 const MAX_ENTRIES_PER_BUCKET = 64;
-const MAX_BUCKETS = 256;
+const KEY_PREFIX = "rag:sem:";
+
+/** Buckets tocados neste processo — só para `__resetRagSemanticCache` (testes). */
+const touchedKeys = new Set<string>();
 
 export function semanticCacheConfig(): SemanticCacheConfig {
   const raw = (process.env.RAG_SEMANTIC_CACHE ?? "off").toLowerCase();
@@ -59,16 +62,11 @@ export function cosineSim(a: readonly number[], b: readonly number[]): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-interface Entry {
-  vec: number[];
-  payload: string;
-  expiresAt: number;
-}
-
-const store = new Map<string, Entry[]>();
-
-function prune(entries: Entry[], now: number): Entry[] {
-  return entries.filter((e) => e.expiresAt > now);
+/** Entrada serializada no bucket: `v` vetor, `p` payload, `exp` epoch-ms de expiração. */
+interface StoredEntry {
+  v: number[];
+  p: string;
+  exp: number;
 }
 
 export interface SemanticCacheHit {
@@ -76,51 +74,73 @@ export interface SemanticCacheHit {
   similarity: number;
 }
 
-/** Melhor entrada do bucket com cosseno ≥ threshold e não expirada; senão null. */
-export function ragSemanticCacheGet(
+/**
+ * Lê o bucket e filtra entradas expiradas. O `exp` por-entrada dá expiração
+ * preguiçosa mesmo no Map em memória (que só limpa TTL na escrita); o TTL do
+ * `cache.set` cuida do descarte do bucket inteiro (real no Redis).
+ */
+async function readBucket(key: string): Promise<StoredEntry[]> {
+  try {
+    const raw = await cache.get(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as StoredEntry[];
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    return parsed.filter((e) => e && typeof e.exp === "number" && e.exp > now);
+  } catch {
+    return [];
+  }
+}
+
+/** Melhor entrada do bucket com cosseno ≥ threshold; senão null. */
+export async function ragSemanticCacheGet(
   bucket: string,
   queryVec: readonly number[],
   threshold: number,
-): SemanticCacheHit | null {
-  const now = Date.now();
-  const entries = store.get(bucket);
-  if (!entries || entries.length === 0) return null;
-  const live = prune(entries, now);
-  if (live.length !== entries.length) store.set(bucket, live);
-
+): Promise<SemanticCacheHit | null> {
+  const entries = await readBucket(KEY_PREFIX + bucket);
   let best: SemanticCacheHit | null = null;
-  for (const e of live) {
-    const sim = cosineSim(queryVec, e.vec);
+  for (const e of entries) {
+    const sim = cosineSim(queryVec, e.v);
     if (sim >= threshold && (!best || sim > best.similarity)) {
-      best = { payload: e.payload, similarity: sim };
+      best = { payload: e.p, similarity: sim };
     }
   }
   return best;
 }
 
-export function ragSemanticCacheSet(
+export async function ragSemanticCacheSet(
   bucket: string,
   queryVec: readonly number[],
   payload: string,
   ttlSec: number,
-): void {
-  const now = Date.now();
-  const entry: Entry = { vec: [...queryVec], payload, expiresAt: now + ttlSec * 1000 };
-  const entries = prune(store.get(bucket) ?? [], now);
-  entries.push(entry);
-  if (entries.length > MAX_ENTRIES_PER_BUCKET) entries.splice(0, entries.length - MAX_ENTRIES_PER_BUCKET);
-  store.set(bucket, entries);
-
-  if (store.size > MAX_BUCKETS) {
-    // remove o bucket "mais frio" (primeiro do iterador de inserção)
-    const oldest = store.keys().next().value as string | undefined;
-    if (oldest !== undefined && oldest !== bucket) store.delete(oldest);
+): Promise<void> {
+  const key = KEY_PREFIX + bucket;
+  // read-modify-write: corrida entre instâncias só custa um miss futuro (cache
+  // de latência, não fonte de verdade) — não vale WATCH/MULTI.
+  const entries = await readBucket(key);
+  entries.push({ v: [...queryVec], p: payload, exp: Date.now() + ttlSec * 1000 });
+  if (entries.length > MAX_ENTRIES_PER_BUCKET) {
+    entries.splice(0, entries.length - MAX_ENTRIES_PER_BUCKET);
+  }
+  try {
+    await cache.set(key, JSON.stringify(entries), ttlSec);
+    touchedKeys.add(key);
+  } catch {
+    /* cache opcional */
   }
 }
 
 /** Só para testes. */
-export function __resetRagSemanticCache(): void {
-  store.clear();
+export async function __resetRagSemanticCache(): Promise<void> {
+  for (const key of touchedKeys) {
+    try {
+      await cache.del(key);
+    } catch {
+      /* ignore */
+    }
+  }
+  touchedKeys.clear();
 }
 
 /** Log de diagnóstico (nível debug) — sem PII, só o bucket e a similaridade. */
