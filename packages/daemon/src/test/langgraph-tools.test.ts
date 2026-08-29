@@ -127,4 +127,41 @@ describe("LangGraph tools (unit)", () => {
     assert.ok("spent" in result);
     assert.ok("recent" in result);
   });
+
+  // Zero Trust (Onda 1): o agente só recebe as tools da allowlist da soul.
+  it("createAgentTools filtra pela allowlist da soul", () => {
+    const restrictedId = "lg-restricted";
+    mkdirSync(join(TEST_HOME, "souls", restrictedId), { recursive: true });
+    writeFileSync(join(TEST_HOME, "souls", restrictedId, "perfil.md"), "# x\n");
+    writeFileSync(
+      join(TEST_HOME, "souls", restrictedId, "config.json"),
+      JSON.stringify({ name: restrictedId, agent: { permissions: { tools: ["memory_search", "graph_list"] } } }),
+    );
+    const tools = createAgentTools({ home: TEST_HOME, pool, soulId: restrictedId });
+    const names = tools.map((t) => t.name).sort();
+    assert.deepEqual(names, ["graph_list", "memory_search"]);
+    assert.ok(!names.includes("observation_add"), "tool fora da allowlist não é entregue ao agente");
+    assert.ok(!names.includes("soul_decidir"));
+  });
+
+  it("createAgentTools com MCP_ZERO_TRUST=on + autonomy suggest bloqueia L2 na chamada", async () => {
+    const sid = "lg-suggest";
+    mkdirSync(join(TEST_HOME, "souls", sid), { recursive: true });
+    writeFileSync(join(TEST_HOME, "souls", sid, "perfil.md"), "# x\n");
+    writeFileSync(
+      join(TEST_HOME, "souls", sid, "config.json"),
+      JSON.stringify({ name: sid, agent: { autonomy: "suggest", permissions: { tools: ["memory_search", "observation_add"] } } }),
+    );
+    const prev = process.env.MCP_ZERO_TRUST;
+    process.env.MCP_ZERO_TRUST = "on";
+    try {
+      const tools = createAgentTools({ home: TEST_HOME, pool, soulId: sid });
+      const obs = tools.find((t) => t.name === "observation_add")!;
+      const out = await invoke(obs, { entity_name: "x", body: "y" });
+      assert.match(JSON.stringify(out), /42001|suggest/);
+    } finally {
+      if (prev === undefined) delete process.env.MCP_ZERO_TRUST;
+      else process.env.MCP_ZERO_TRUST = prev;
+    }
+  });
 });

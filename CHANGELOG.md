@@ -10,6 +10,33 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Segurança
 
+- **Onda 1 — Zero Trust aplicado no MCP e no agente LangGraph** (roadmap de
+  remediação da análise crítica 2026-08-29, Onda 1a; segue a Onda 0 em #11;
+  `MCP_ZERO_TRUST`, **default off**):
+  - **Gate central em `tools/call`** (`packages/tools/src/index.ts`): toda tool
+    passa por `authorizeExecution` — allowlist + nível de risco × `autonomy` +
+    fail-closed para capability fora do catálogo. Antes, `authorizeExecution` (o
+    motor com autonomia/budget/approvalPolicy) tinha **1 caller** em todo o
+    código; o MCP só checava a allowlist. Com `MCP_ZERO_TRUST=off` (default) o
+    gate central é **no-op** — comportamento idêntico ao anterior, sem quebrar
+    souls que ainda não declararam `autonomy`. `on` = enforcement completo.
+  - **Agente LangGraph** (`packages/daemon/src/langgraph-tools.ts`):
+    `createAgentTools` agora **filtra as tools pela allowlist da soul** (antes
+    executava qualquer tool ignorando o snapshot) e cada `func` passa por
+    `authorizeExecution`. O filtro de allowlist vale **sempre**; o gate
+    autonomia/aprovação só com `MCP_ZERO_TRUST=on`.
+  - `authorizeExecution` ganha `enforcePolicyGates?: boolean` (default `true`):
+    `false` pula os passos 5–6 (autonomy/approvalPolicy) mantendo denylist,
+    allowlist, conector e budget.
+  - **Path traversal**: `skill_list` / `skill_create` / `mission_run` passam a
+    validar `args.soul` com `isValidSoulId` antes de qualquer `join(home,
+    "souls", …)`.
+  - Testes: `policy.test.ts` (+2), `tools.test.ts` (+4), `langgraph-tools.test.ts`
+    (+2).
+  Rollback: `MCP_ZERO_TRUST` off (default) já neutraliza o gate de autonomia; o
+  filtro de allowlist do LangGraph e a validação de `soul` exigem reverter o
+  commit.
+
 - **Onda 0 de contenção** (pós-análise crítica 2026-08-29, `docs/superpowers/`
   não — plano em `.claude/plans/`):
   - `GET /health` (rota pública, sem token) **deixa de listar as souls** — os ids
