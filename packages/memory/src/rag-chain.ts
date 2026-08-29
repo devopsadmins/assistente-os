@@ -197,7 +197,7 @@ export async function retrieveContext(
   if (useSemantic) {
     queryVec = await embedder.embed(query);
     if (queryVec) {
-      const semHit = ragSemanticCacheGet(semanticBucket, queryVec, scfg.threshold);
+      const semHit = await ragSemanticCacheGet(semanticBucket, queryVec, scfg.threshold);
       if (semHit) {
         logSemanticCacheHit(semanticBucket, semHit.similarity);
         return { ...(JSON.parse(semHit.payload) as RagContext), cacheHit: "semantic" };
@@ -252,7 +252,7 @@ export async function retrieveContext(
     /* cache opcional */
   }
   if (useSemantic && queryVec) {
-    ragSemanticCacheSet(semanticBucket, queryVec, serialized, scfg.ttlSec);
+    await ragSemanticCacheSet(semanticBucket, queryVec, serialized, scfg.ttlSec);
   }
   return result;
 }
