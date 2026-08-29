@@ -12,6 +12,7 @@ export interface AgendaItem {
   status: string;
   attempt: number;
   last_error: string | null;
+  claimed_at: string | null;
 }
 
 export async function addAgendaItem(
@@ -72,7 +73,7 @@ export async function markAgendaDone(pool: Pool, id: number): Promise<void> {
  */
 export async function claimDueAgenda(pool: Pool, limit = 5): Promise<AgendaItem[]> {
   const { rows } = await pool.query<AgendaItem>(
-    `UPDATE agenda SET status = 'processing', attempt = attempt + 1
+    `UPDATE agenda SET status = 'processing', attempt = attempt + 1, claimed_at = now()
      WHERE id IN (
        SELECT id FROM agenda
        WHERE done = false AND status = 'pending' AND (due_at IS NULL OR due_at <= now())
@@ -98,4 +99,33 @@ export async function finishAgendaItem(
     error ?? null,
     id,
   ]);
+}
+
+/**
+ * Reaper de itens presos em 'processing' (crash entre claim e finish). Itens
+ * reivindicados há mais de `staleMinutes` voltam para 'pending' se ainda têm
+ * tentativa; se `attempt >= maxAttempts`, falham de vez.
+ */
+export async function reapStaleAgenda(
+  pool: Pool,
+  opts: { staleMinutes?: number; maxAttempts?: number } = {},
+): Promise<{ retried: number; failed: number }> {
+  const stale = Math.max(1, Math.floor(opts.staleMinutes ?? 15));
+  const maxAttempts = Math.max(1, Math.floor(opts.maxAttempts ?? 3));
+  const failed = await pool.query(
+    `UPDATE agenda SET status = 'failed', done = true, done_at = now(), claimed_at = NULL,
+        last_error = 'reaper: preso em processing sem tentativas restantes'
+     WHERE status = 'processing' AND claimed_at IS NOT NULL
+       AND claimed_at < now() - ($1 || ' minutes')::interval
+       AND attempt >= $2`,
+    [String(stale), maxAttempts],
+  );
+  const retried = await pool.query(
+    `UPDATE agenda SET status = 'pending', claimed_at = NULL
+     WHERE status = 'processing' AND claimed_at IS NOT NULL
+       AND claimed_at < now() - ($1 || ' minutes')::interval
+       AND attempt < $2`,
+    [String(stale), maxAttempts],
+  );
+  return { retried: retried.rowCount ?? 0, failed: failed.rowCount ?? 0 };
 }

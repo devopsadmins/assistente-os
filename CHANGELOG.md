@@ -10,6 +10,22 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Alterado
 
+- **Onda 3c — observabilidade dos jobs de background + reaper de agenda** (roadmap
+  de remediação da análise crítica 2026-08-29; migração `0016_agenda_claimed_at`):
+  - Os 4 loops de background do daemon (`monitors`, `events`, `agenda`,
+    `entity_extraction`) tinham `.catch(() => {})` — falha silenciosa, sem log,
+    sem métrica. Agora usam `onJobError(job)`: `logger.error` + counter
+    **`aos_background_job_errors_total{job}`**.
+  - **Reaper de agenda**: `claimDueAgenda` carimba `claimed_at`; `reapStaleAgenda`
+    (chamado no início de `processDueAgenda`) devolve para `pending` os itens
+    presos em `processing` há mais de `AOS_AGENDA_STALE_MINUTES` (15) — ou falha
+    de vez se `attempt >= AOS_AGENDA_MAX_ATTEMPTS` (3). Antes, um crash entre
+    claim e finish prendia o item para sempre.
+  - Testes: `core.test.ts` +1 (`reapStaleAgenda`).
+  Rollback: reverter o commit (a coluna `claimed_at` permanece, inofensiva).
+
+### Alterado
+
 - **Onda 3b — checksum de SQL das migrações** (roadmap de remediação da análise
   crítica 2026-08-29; `packages/core/src/db.ts`): `schema_migrations` ganha
   `sql_sha256` (via `ADD COLUMN IF NOT EXISTS` no bootstrap do `runMigrations`).

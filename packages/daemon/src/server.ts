@@ -34,6 +34,7 @@ import { handleMissions } from "./routes/missions.js";
 import { handleMetrics } from "./routes/metrics.js";
 import { handleManifest } from "./routes/manifest.js";
 import { initSentry, captureError } from "./observability/sentry.js";
+import { backgroundJobErrors } from "./observability/metrics.js";
 import { handleCosts } from "./routes/costs.js";
 
 /**
@@ -311,7 +312,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
           /* ws opcional */
         }
       })
-      .catch(() => {});
+      .catch(onJobError("monitors"));
   }, 60_000);
   monitorTimer.unref?.();
   const eventTimer = setInterval(() => {
@@ -322,7 +323,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
       onResponse: whatsappChannel
         ? (eventId, stdout) => void whatsappChannel!.processResponse(eventId, stdout)
         : undefined,
-    }).catch(() => {});
+    }).catch(onJobError("events"));
   }, 30_000);
   eventTimer.unref?.();
   // Rotina de retenção LGPD (familias): primeira varredura logo após o boot
@@ -350,7 +351,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     ? ((eventId: number, stdout: string) => void telegramChannel!.processResponse(eventId, stdout))
     : undefined;
   const agendaTimer = setInterval(() => {
-    void processDueAgenda({ home, run: runFn, onDone: onAgendaDone }).catch(() => {});
+    void processDueAgenda({ home, run: runFn, onDone: onAgendaDone }).catch(onJobError("agenda"));
   }, 30_000);
   agendaTimer.unref?.();
   const onEntityExtractionDone = (job: { id: number; soul: string; status: string }) => {
@@ -361,7 +362,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
     }
   };
   const entityExtractionTimer = setInterval(() => {
-    void processEntityExtractionJobs({ home, onDone: onEntityExtractionDone }).catch(() => {});
+    void processEntityExtractionJobs({ home, onDone: onEntityExtractionDone }).catch(onJobError("entity_extraction"));
   }, 20_000);
   entityExtractionTimer.unref?.();
   return {
@@ -456,6 +457,18 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleManifest,
   handleCosts,
 ];
+
+/** Handler de erro para os loops de background: loga + incrementa a métrica (nunca lança). */
+function onJobError(job: string): (err: unknown) => void {
+  return (err) => {
+    logger.error({ err, job }, `loop de background '${job}' falhou`);
+    try {
+      backgroundJobErrors.inc({ job });
+    } catch {
+      /* metrica opcional */
+    }
+  };
+}
 
 async function handle(req: IncomingMessage, res: ServerResponse, context: RequestContext): Promise<void> {
   const { token, webDir } = context;
