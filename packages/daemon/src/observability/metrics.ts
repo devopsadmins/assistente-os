@@ -58,6 +58,20 @@ export const ragCacheEvents = new Counter({
   registers: [registry],
 });
 
+export const ollamaPrefillSeconds = new Histogram({
+  name: "aos_ollama_prefill_seconds",
+  help: "Tempo de prefill do Ollama (prompt_eval_duration) — cai quando o KV cache reaproveita o prefixo",
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+  registers: [registry],
+});
+
+export const ollamaPromptEvalTokens = new Histogram({
+  name: "aos_ollama_prompt_eval_tokens",
+  help: "Tokens do prompt processados pelo Ollama (prompt_eval_count) — baixo = prefixo veio do cache",
+  buckets: [0, 16, 64, 256, 512, 1024, 2048, 4096, 8192],
+  registers: [registry],
+});
+
 export const routerFallback = new Counter({
   name: "aos_router_fallback_total",
   help: "Quedas de degrau do roteador (sonda falhou, caiu para o próximo)",

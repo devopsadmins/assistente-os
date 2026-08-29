@@ -50,6 +50,38 @@ test("buildPrompt: índice sempre; corpo só quando o prompt casa a keyword", as
   }
 });
 
+test("buildPrompt (Etapa 9): índice de skills antes da fronteira volátil; corpo da skill ativa na cauda", async () => {
+  const { home, cleanup } = await homeWithSkill();
+  try {
+    const config = await loadConfig({ home });
+    const soul = getSoul(home, "main")!;
+    const p = (
+      await buildPrompt({
+        home,
+        soul,
+        prompt: "isso tem palavra-magica aqui",
+        config,
+        withRag: false,
+        history: [
+          { role: "user", content: "oi" },
+          { role: "assistant", content: "olá" },
+        ],
+      })
+    ).fullPrompt;
+
+    const iIndex = p.indexOf("## Skills disponíveis");
+    const iActive = p.indexOf("## Skill ativa: gatilho");
+    const iHist = p.indexOf("## Histórico da conversa");
+    const iUser = p.indexOf("--- Instrução do usuário ---");
+    assert.ok(iIndex > 0 && iActive > 0 && iHist > 0 && iUser > 0);
+    assert.ok(iIndex < iActive, "índice (estático) antes do corpo da skill ativa (dinâmico)");
+    assert.ok(iActive < iHist, "corpo da skill ativa antes do histórico");
+    assert.ok(iHist < iUser, "histórico antes da instrução do usuário");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("buildPrompt: SKILLS_ENABLED=0 remove a seção", async () => {
   const { home, cleanup } = await homeWithSkill();
   const prev = process.env.SKILLS_ENABLED;
