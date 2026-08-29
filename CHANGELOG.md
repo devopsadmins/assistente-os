@@ -8,6 +8,24 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Alterado
+
+- **Reranker cross-encoder endurecido** (refino, Etapa 4, **default `off`
+  mantido**): (1) `RAG_RERANK_BUDGET_MS` (default 30 000; `0` desliga) — `rerank()`
+  cronometra a reordenação e, se estourar no meio, abandona e volta à ordem por
+  score original (`logger.warn`) — o cross-encoder roda inferência local não
+  abortável e podia travar uma consulta em hardware limitado; (2)
+  `RAG_RERANK_CE_MODEL` passa a ser lido em runtime (`crossEncoderModel()`) em vez
+  de no load do módulo — vale sem reimportar; (3) **`Xenova/bge-reranker-base`**
+  identificado como cross-encoder multilíngue viável (carrega + pontua par PT-BR
+  corretamente) — vira o modelo recomendado no `ADR-RAG-001` para corpora PT-BR;
+  (4) novo teste do caminho tokenizer+model real (`packages/memory/src/test/rerank.test.ts`,
+  guardado por `RAG_RERANK_TEST_MODEL`, skip no CI) + `__resetRerankState()`. A
+  medição `off`×`bge-reranker-base` no corpus real é passo de deployment (o golden
+  set real saiu do escopo do refino — é dado de cliente). Ref: Etapas 3 e 4 de
+  `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`, `docs/adr/ADR-RAG-001.md`.
+  Rollback: `RAG_RERANK` off (default) neutraliza; ou reverter o commit.
+
 ### Adicionado
 
 - **Cobertura de teste de integração dos caminhos "wired"** (refino, Etapa 10):
