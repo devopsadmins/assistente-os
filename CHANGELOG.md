@@ -8,6 +8,18 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Alterado
+
+- **Onda 3b — checksum de SQL das migrações** (roadmap de remediação da análise
+  crítica 2026-08-29; `packages/core/src/db.ts`): `schema_migrations` ganha
+  `sql_sha256` (via `ADD COLUMN IF NOT EXISTS` no bootstrap do `runMigrations`).
+  Na subida, o checksum atual de cada migração já aplicada é comparado com o
+  gravado — divergência (**migração editada depois de aplicada** em algum
+  ambiente, que o framework append-only + `IF NOT EXISTS` deixava invisível) vira
+  `console.warn` de `DRIFT`, **sem derrubar o boot** (é POC). Linhas antigas sem
+  checksum são preenchidas com o valor atual. Teste em `core.test.ts`.
+  Rollback: reverter o commit (a coluna fica, inofensiva).
+
 ### Adicionado
 
 - **Onda 2 — trace de execução unificado** (roadmap de remediação da análise
