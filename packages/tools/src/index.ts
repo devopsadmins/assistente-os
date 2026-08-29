@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, type SoulSpec, type SkillFrontmatter } from "@assistente-os/core";
+import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, type SoulSpec, type SkillFrontmatter } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
 import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
 import { join } from "node:path";
@@ -897,8 +897,59 @@ export class McpServer {
     const tool = TOOLS.find((t) => t.name === name);
     if (!tool) return respond(null, { code: -32602, message: `ferramenta desconhecida: ${name}` });
 
+    // Zero Trust central (Onda 1): TODA tool passa por authorizeExecution —
+    // allowlist + nível de risco × autonomy (este só quando MCP_ZERO_TRUST=on) +
+    // fail-closed para capability fora do catálogo. Os checks por-caso
+    // (`authorizeTool`/`requireSoul`) continuam como defesa em profundidade.
+    const gate = this.zeroTrustGate(name, args);
+    if (!gate.ok) return respond(null, { code: -32000, message: gate.message });
+
     const result = await this.executeTool(name, args);
     return respond({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+  }
+
+  /**
+   * Gate Zero Trust central. **`MCP_ZERO_TRUST` desligado (default) = no-op** —
+   * o comportamento fica idêntico ao pré-Onda-1 (os `authorizeTool`/`requireSoul`
+   * por-caso seguem valendo). Ligado: resolve a soul do chamador (`args.soul`
+   * senão `AGENT_SOUL_ID`) e roda `authorizeExecution` completo — allowlist +
+   * nível de risco × autonomy + fail-closed para capability fora do catálogo.
+   */
+  private zeroTrustGate(name: string, args: Record<string, unknown>): { ok: true } | { ok: false; message: string } {
+    if (!mcpZeroTrustOn()) return { ok: true };
+    const soulId =
+      (typeof args.soul === "string" && args.soul.trim() ? args.soul.trim() : "") ||
+      (process.env.AGENT_SOUL_ID ?? "");
+    if (!soulId) {
+      if (SOUL_SCOPED_TOOLS.has(name)) {
+        return { ok: false, message: `[Security 42001] '${name}' exige uma soul identificada (args.soul ou AGENT_SOUL_ID)` };
+      }
+      return { ok: true };
+    }
+    let agentConfig;
+    try {
+      agentConfig = getSoul(this.config.home, soulId)?.config?.agent;
+    } catch {
+      return { ok: false, message: `[Security 42001] soul inválida: ${soulId}` };
+    }
+    const decision = authorizeExecution({
+      soulId,
+      capability: name,
+      agentConfig,
+      enforcePolicyGates: true,
+    });
+    if (!decision.allow) {
+      logFullAuditEntry({
+        ts: new Date().toISOString(),
+        sessionId: "mcp-zt-gate",
+        soulId,
+        intention: `BLOQUEIO ZeroTrust: '${name}' (${decision.code})`,
+        toolsCalled: [name],
+        params: { denied: true, reason: decision.reason },
+      });
+      return { ok: false, message: `[Security 42001] ${decision.reason}` };
+    }
+    return { ok: true };
   }
 
   private requireSoul(id: unknown): { id: string } | { error: string } {
@@ -1715,6 +1766,7 @@ export class McpServer {
       case "skill_list": {
         const soulId =
           (typeof args.soul === "string" && args.soul.trim()) || process.env.AGENT_SOUL_ID || "main";
+        if (!isValidSoulId(soulId)) throw new Error(`skill_list: soul inválida: ${soulId}`);
         const soul = getSoul(this.config.home, soulId);
         const allow = new Set(soul?.config.agent?.permissions?.skills ?? []);
         const discovered = scanSkillDirs(this.config.home, soulId);
@@ -1742,6 +1794,7 @@ export class McpServer {
           str(v) ? str(v).split(",").map((x) => x.trim()).filter(Boolean) : [];
         const scope = str(args.scope) === "global" ? "global" : "soul";
         const soulId = str(args.soul) || process.env.AGENT_SOUL_ID || "main";
+        if (scope === "soul" && !isValidSoulId(soulId)) throw new Error(`skill_create: soul inválida: ${soulId}`);
         const fm: SkillFrontmatter = {
           name: str(args.name),
           description: str(args.description),
@@ -1782,6 +1835,7 @@ export class McpServer {
         const missionId = typeof args.mission_id === "string" && args.mission_id.trim() ? args.mission_id.trim() : null;
         if (!missionId) throw new Error("parâmetro mission_id é obrigatório");
         const soul = typeof args.soul === "string" && args.soul.trim() ? args.soul.trim() : undefined;
+        if (soul !== undefined && !isValidSoulId(soul)) throw new Error(`mission_run: soul inválida: ${soul}`);
         return await runMission(missionId, { soulOverride: soul });
       }
 

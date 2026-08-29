@@ -175,6 +175,40 @@ test("authorizeExecution: autonomy 'auto' libera L3 já no snapshot sem exigir c
   assert.equal(decision.allow, true);
 });
 
+test("authorizeExecution: enforcePolicyGates:false pula autonomy e approvalPolicy, mantém allowlist", () => {
+  // gate do MCP/LangGraph com MCP_ZERO_TRUST desligado: L3 com autonomy 'ask'
+  // e approvalPolicy passa, mas capability fora do snapshot continua negada.
+  const cfg = agentConfig({ autonomy: "ask", approvalPolicy: ["browser_navigate"] });
+  const l3 = authorizeExecution({
+    soulId: "s1",
+    capability: "browser_navigate",
+    agentConfig: cfg,
+    enforcePolicyGates: false,
+  });
+  assert.equal(l3.allow, true, "sem os gates, autonomy/approvalPolicy não mordem");
+
+  const foraDoSnapshot = authorizeExecution({
+    soulId: "s1",
+    capability: "guardian_approve_rule",
+    agentConfig: cfg,
+    enforcePolicyGates: false,
+  });
+  assert.equal(foraDoSnapshot.allow, false, "allowlist continua valendo");
+  if (!foraDoSnapshot.allow) assert.equal(foraDoSnapshot.code, "E_AUTHZ");
+});
+
+test("authorizeExecution: enforcePolicyGates:false ainda respeita a denylist", () => {
+  const decision = authorizeExecution({
+    soulId: "s1",
+    capability: "memory_search",
+    agentConfig: agentConfig(),
+    denylist: ["memory_*"],
+    enforcePolicyGates: false,
+  });
+  assert.equal(decision.allow, false);
+  if (!decision.allow) assert.equal(decision.code, "E_AUTHZ");
+});
+
 test("authorizeExecution: approvalPolicy adiciona exigência sem confirmação, mesmo com autonomy 'auto'", () => {
   const cfg = agentConfig({ autonomy: "auto", approvalPolicy: ["soul_create"] });
   const denied = authorizeExecution({ soulId: "s1", capability: "soul_create", agentConfig: cfg });
