@@ -296,7 +296,13 @@ Risco: threshold 0.85 pode casar paráfrases que querem contexto diferente.
 
 ---
 
-## Etapa 8 — T3.1 Escalonamento por confiança
+## Etapa 8 — T3.1 Escalonamento por confiança  — ✅ feito (PR `refino/etapa-8-escalation-judge`)
+
+> Sinal de recusa: juiz LLM local SIM/NÃO (`router-escalation-judge` no garden),
+> acionado só quando o RAG foi fraco. Tetos: `_MAX_PER_SESSION` (1) +
+> `_COOLDOWN_MIN` (10) + `_FAST_ONLY` (1, só mode=fast). `canEscalateSession`
+> in-process. Só chat (Q3). 535 testes verdes. Validação (Ollama vivo) segue
+> para quando `ROUTER_ESCALATION=on` em staging.
 
 **Contexto.** Default off. Não validável no CI (precisa Ollama vivo). O bloco em
 `chat.ts` que troca `result`/`decision`/`tier`/`model` **não tem teste de
@@ -408,6 +414,6 @@ dos caminhos wired.
 | 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ⏳ no PR (`os prompt list`) | `refino/etapa-5-prompt-garden` |
 | 6 — Cache semântico | ✅ | ✅ 532 verdes | ✅ PR #6 mergeado | `refino/etapa-6-semantic-cache-redis` |
 | 7 — Canvas | ✅ | ✅ core 9 · cli 12 (534 total) | ⏳ no PR | `refino/etapa-7-canvas` |
-| 8 — Escalonamento | ☐ | ☐ | ☐ | — |
+| 8 — Escalonamento | ✅ | ✅ 535 verdes (escalation +11) | ⏳ no PR (validar c/ Ollama vivo) | `refino/etapa-8-escalation-judge` |
 | 9 — Ordem do prompt | ✅ | ✅ 531 verdes | ⏳ no PR (medir prefill em staging) | `refino/etapa-9-skills-split` |
 | 10 — Cobertura integração | ☐ | ☐ | ☐ | — |
