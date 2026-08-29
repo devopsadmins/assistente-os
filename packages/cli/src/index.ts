@@ -26,6 +26,10 @@ import {
   getUsageSummary,
   type UsageSummaryFilters,
   buildSoulCanvas,
+  mergeCanvasDecisions,
+  canvasDrift,
+  type CanvasSystemFacts,
+  type AssistenteOsConfig,
 } from "@assistente-os/core";
 import {
   indexDirectory,
@@ -45,6 +49,18 @@ import { runRagCommand, isIndexStale } from "./rag.js";
 import { runPromptCommand } from "./prompt.js";
 
 const BACKUP_RETENTION_DAYS = 7;
+
+/** Fatos do sistema para o Canvas de Arquitetura (`os soul <id> canvas`). */
+function canvasFacts(config: AssistenteOsConfig): CanvasSystemFacts {
+  return {
+    routerTiers: config.routerTiers,
+    ragRerankMode: config.ragRerankMode,
+    ragInjectionMode: config.ragInjectionMode,
+    ragHnswEfSearch: config.ragHnswEfSearch,
+    semanticCache: /^(on|1|true)$/i.test(process.env.RAG_SEMANTIC_CACHE ?? ""),
+    langgraphEnabled: process.env.LANGGRAPH_ENABLED === "true",
+  };
+}
 
 const HELP = `
 os — Assistente OS
@@ -150,18 +166,19 @@ async function main(): Promise<void> {
         return;
       }
       if (action === "canvas") {
-        const md = buildSoulCanvas(soul, {
-          routerTiers: config.routerTiers,
-          ragRerankMode: config.ragRerankMode,
-          ragInjectionMode: config.ragInjectionMode,
-          ragHnswEfSearch: config.ragHnswEfSearch,
-          semanticCache: /^(on|1|true)$/i.test(process.env.RAG_SEMANTIC_CACHE ?? ""),
-        });
+        const facts = canvasFacts(config);
+        const md = buildSoulCanvas(soul, facts);
         if (args.includes("--write")) {
-          const { writeFileSync } = await import("node:fs");
+          const { writeFileSync, readFileSync, existsSync } = await import("node:fs");
           const out = join(soul.dir, "ARCHITECTURE_CANVAS.md");
-          writeFileSync(out, md, "utf8");
-          console.log(`canvas escrito: ${out}`);
+          const prev = existsSync(out) ? readFileSync(out, "utf8") : null;
+          const merged = mergeCanvasDecisions(md, prev);
+          writeFileSync(out, merged, "utf8");
+          console.log(
+            prev && merged !== md
+              ? `canvas escrito (bloco 9 preservado): ${out}`
+              : `canvas escrito: ${out}`,
+          );
         } else {
           console.log(md);
         }
@@ -206,6 +223,13 @@ async function main(): Promise<void> {
       }
       console.log(`id: ${soul.id}`);
       console.log(`dir: ${soul.dir}`);
+      {
+        const { readFileSync, existsSync } = await import("node:fs");
+        const canvasPath = join(soul.dir, "ARCHITECTURE_CANVAS.md");
+        const prev = existsSync(canvasPath) ? readFileSync(canvasPath, "utf8") : null;
+        const drift = canvasDrift(soul, canvasFacts(config), prev);
+        console.log(`canvas: ${drift.stale ? `⚠️ defasado — ${drift.reason}` : "atualizado"}`);
+      }
       console.log(`config: ${JSON.stringify(soul.config, null, 2)}`);
       return;
     }
