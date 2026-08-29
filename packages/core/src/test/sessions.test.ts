@@ -5,6 +5,9 @@ import {
   bumpSessionPrompt,
   recordSessionMessage,
   getRecentSessionMessages,
+  recordExecution,
+  recordExecutionSpan,
+  getTrace,
 } from "../sessions.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
@@ -169,6 +172,34 @@ test("getRecentSessionMessages: isolamento entre sessões diferentes", async () 
     assert.equal(historyA[0]!.content, "mensagem da soul-a");
     assert.equal(historyB.length, 1);
     assert.equal(historyB[0]!.content, "mensagem da soul-b");
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("trace (Onda 2): recordExecution + spans → getTrace reconstrói o turno em ordem", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const s = await openSession(testDb.pool, "soul-t", 10, undefined, "default");
+    const traceId = "11111111-2222-3333-4444-555555555555";
+
+    await recordExecutionSpan(testDb.pool, { traceId, soul: "soul-t", sessionId: s.id, seq: 2, module: "rag", message: "3 chunks" });
+    await recordExecutionSpan(testDb.pool, { traceId, soul: "soul-t", sessionId: s.id, seq: 0, module: "chat", message: "prompt recebido", elapsedMs: 5 });
+    await recordExecutionSpan(testDb.pool, { traceId, soul: "soul-t", sessionId: s.id, seq: 1, module: "router", message: "tier=local", elapsedMs: 12 });
+    await recordExecutionSpan(testDb.pool, { traceId, soul: "soul-t", sessionId: s.id, seq: 3, module: "ollama", message: "timeout", level: "err", elapsedMs: 300 });
+    await recordExecution(testDb.pool, { sessionId: s.id, soul: "soul-t", kind: "chat", tier: "local", status: "failed", traceId });
+
+    const trace = await getTrace(testDb.pool, traceId);
+    assert.ok(trace.execution, "achou a linha canônica pelo trace_id");
+    assert.equal(trace.execution!.status, "failed");
+    assert.equal(trace.execution!.traceId, traceId);
+    assert.deepEqual(trace.spans.map((s) => s.module), ["chat", "router", "rag", "ollama"], "spans em ordem de seq");
+    assert.equal(trace.spans[3]!.level, "err");
+    assert.equal(trace.spans[3]!.message, "timeout");
+
+    const vazio = await getTrace(testDb.pool, "nao-existe-trace-id");
+    assert.equal(vazio.execution, null);
+    assert.equal(vazio.spans.length, 0);
   } finally {
     await testDb.cleanup();
   }
