@@ -13,7 +13,7 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage, type AIMessageChun
 import type { StructuredTool } from "@langchain/core/tools";
 import { runRagChain } from "./rag-chain.js";
 import { AgentState, type AgentStateType } from "./agent-state.js";
-import { loadConfig, nextZenApiKey, type Pool } from "@assistente-os/core";
+import { loadConfig, nextZenApiKey, agentReactSystem, type Pool } from "@assistente-os/core";
 
 export type { AgentStateType };
 
@@ -300,9 +300,7 @@ function buildGraphWithoutTools(pool: Pool) {
  *
  * @param tools Tools LangChain disponíveis para o agente (opcional)
  */
-const AGENT_SYSTEM_BASE =
-  "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
-  "Você tem acesso a um grafo de memória com entidades, relações e observações.";
+const AGENT_SYSTEM_BASE = agentReactSystem.render({});
 
 export async function runAgent(
   pool: Pool,

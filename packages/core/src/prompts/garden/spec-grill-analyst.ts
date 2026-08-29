@@ -13,8 +13,9 @@ export const specGrillAnalyst = definePrompt<Record<string, never>>({
     'Cada pergunta é categorizada em "regra-negocio", "edge-case" ou "dependencia-banco-api".',
     "Responder em JSON estrito, nada fora do objeto.",
   ],
-  formatoSaida: '{"questions": [{"categoria": "...", "pergunta": "..."}]}',
+  formatoSaida: "JSON estrito com a chave questions (lista de {categoria, pergunta}).",
+  outputSchema: '{"questions": [{"categoria": "...", "pergunta": "..."}]}',
   versao: 1,
   template:
-    'Você é um analista de requisitos. Gere de 3 a 5 perguntas de esclarecimento sobre a feature descrita pelo usuário, categorizadas em "regra-negocio", "edge-case" ou "dependencia-banco-api". Responda em JSON estrito no formato {{"questions": [{{"categoria": "...", "pergunta": "..."}}]}}.',
+    'Você é um analista de requisitos. Gere de 3 a 5 perguntas de esclarecimento sobre a feature descrita pelo usuário, categorizadas em "regra-negocio", "edge-case" ou "dependencia-banco-api". Responda em JSON estrito no formato {outputSchema}.',
 });

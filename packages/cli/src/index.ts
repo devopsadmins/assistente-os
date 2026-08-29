@@ -42,6 +42,7 @@ import { join } from "node:path";
 import { createFullBackup, pruneOldBackups } from "./backup.js";
 import { runSkillCommand } from "./skill.js";
 import { runRagCommand, isIndexStale } from "./rag.js";
+import { runPromptCommand } from "./prompt.js";
 
 const BACKUP_RETENTION_DAYS = 7;
 
@@ -62,6 +63,8 @@ Uso:
   os memory <soul> status            contagem de chunks e grafo
   os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <p>] [--min-hit1 0.7]
                                      avalia recuperação: hit@k / MRR / recall@5
+  os prompt list                     lista os prompts do Prompt Garden (id / versão / hash)
+  os prompt show <id>                mostra o detalhe de um prompt do garden
   os graph <soul> list               lista entidades/relações/observações
   os costs                           resumo de custos
   os costs usage [--soul <id>] [--from <date>] [--to <date>]  resumo agregado de uso/tokens
@@ -402,6 +405,12 @@ async function main(): Promise<void> {
 
     case "rag": {
       const code = await runRagCommand(config, args);
+      if (code !== 0) process.exitCode = 1;
+      return;
+    }
+
+    case "prompt": {
+      const code = runPromptCommand(args);
       if (code !== 0) process.exitCode = 1;
       return;
     }

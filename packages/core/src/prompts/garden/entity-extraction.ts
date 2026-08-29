@@ -10,14 +10,15 @@ export const entityExtraction = definePrompt<{ entityKinds: string; text: string
     "Só o JSON na resposta, exatamente no formato dado.",
     "Sem entidades/relações claras → arrays vazios (não inventar).",
   ],
-  formatoSaida:
+  formatoSaida: "JSON com entities ([{name, kind}]) e relations ([{from, rel, to}]).",
+  outputSchema:
     '{"entities": [{"name": "string", "kind": "string"}], "relations": [{"from": "string", "rel": "string", "to": "string"}]}',
   versao: 1,
   template: [
     "Extraia entidades e relações do texto abaixo.",
     "Tipos de entidade permitidos: {entityKinds}.",
     "Responda apenas em JSON, exatamente neste formato:",
-    '{{"entities": [{{"name": "string", "kind": "string"}}], "relations": [{{"from": "string", "rel": "string", "to": "string"}}]}}',
+    "{outputSchema}",
     "Se não houver entidades/relações claras, responda com arrays vazios.",
     "",
     "TEXTO:",
