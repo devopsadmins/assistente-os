@@ -5,6 +5,7 @@ import {
   looksLikeRefusal,
   parseJudgeVerdict,
   shouldRunJudge,
+  judgeAnswer,
   shouldEscalate,
   nextEscalationTier,
   canEscalateSession,
@@ -100,6 +101,65 @@ test("shouldEscalate: resposta boa / juiz 'ok' / juiz 'unknown' → NÃO escala"
   assert.deepEqual(shouldEscalate(sig(), CFG), { escalate: false, reason: "confident" });
   assert.equal(shouldEscalate(sig({ judge: "ok" }), CFG).escalate, false);
   assert.equal(shouldEscalate(sig({ judge: "unknown" }), CFG).escalate, false);
+});
+
+test("[wired] judgeAnswer: monta o prompt do garden, chama o chat injetado e faz parse do verdito", async () => {
+  const calls: Array<{ url: string; payload: { model: string; messages: Array<{ content: string }> }; timeoutMs: number }> = [];
+  const chat = async (url: string, payload: unknown, timeoutMs: number) => {
+    calls.push({ url, payload: payload as (typeof calls)[number]["payload"], timeoutMs });
+    return { code: 0, stdout: "NÃO — a resposta é evasiva" };
+  };
+
+  const verdict = await judgeAnswer(
+    { pergunta: "como reinicio o pm2?", contexto: "docs do pm2", resposta: "sei lá" },
+    { chat, ollamaUrl: "http://host.docker.internal:11434", model: "ollama/qwen2.5:7b", timeoutMs: 45000 },
+  );
+
+  assert.equal(verdict, "weak");
+  assert.equal(calls.length, 1);
+  // rewrite docker + strip do prefixo do modelo
+  assert.equal(calls[0]!.url, "http://192.168.65.254:11434");
+  assert.equal(calls[0]!.payload.model, "qwen2.5:7b");
+  // o prompt renderizado carrega os três campos
+  const content = calls[0]!.payload.messages[0]!.content;
+  assert.match(content, /como reinicio o pm2\?/);
+  assert.match(content, /docs do pm2/);
+  assert.match(content, /sei lá/);
+});
+
+test("[wired] judgeAnswer: SIM → ok; contexto vazio vira '(sem contexto)'", async () => {
+  let seenContent = "";
+  const chat = async (_u: string, payload: unknown) => {
+    seenContent = (payload as { messages: Array<{ content: string }> }).messages[0]!.content;
+    return { code: 0, stdout: "SIM" };
+  };
+  const verdict = await judgeAnswer(
+    { pergunta: "p", contexto: "", resposta: "r" },
+    { chat, ollamaUrl: "http://127.0.0.1:11434", model: "qwen2.5", timeoutMs: 1000 },
+  );
+  assert.equal(verdict, "ok");
+  assert.match(seenContent, /\(sem contexto\)/);
+});
+
+test("[wired] judgeAnswer: HTTP != 0 e exceção no chat → 'unknown' (não escala por isto)", async () => {
+  const httpErr = await judgeAnswer(
+    { pergunta: "p", contexto: "c", resposta: "r" },
+    { chat: async () => ({ code: 1, stdout: "" }), ollamaUrl: "http://x", model: "m", timeoutMs: 100 },
+  );
+  assert.equal(httpErr, "unknown");
+
+  const threw = await judgeAnswer(
+    { pergunta: "p", contexto: "c", resposta: "r" },
+    {
+      chat: async () => {
+        throw new Error("conexão recusada");
+      },
+      ollamaUrl: "http://x",
+      model: "m",
+      timeoutMs: 100,
+    },
+  );
+  assert.equal(threw, "unknown");
 });
 
 test("nextEscalationTier: sobe um degrau; undefined no último ou tier desconhecido", () => {

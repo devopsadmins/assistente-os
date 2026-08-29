@@ -8,6 +8,21 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Cobertura de teste de integração dos caminhos "wired"** (refino, Etapa 10):
+  sub-suíte nomeada `[wired]` que exercita o comportamento montado que os toggles
+  ligam, não só as funções puras. (1) `retrieveContext` com `RAG_SEMANTIC_CACHE=on`
+  serve **hit semântico** para query parafraseada (`packages/memory/.../integ-wired-paths.test.ts`);
+  (2) `judgeAnswer` (novo em `orchestrator/escalation.ts`) encapsula a chamada do
+  juiz LLM — rewrite de URL docker, strip do prefixo do modelo, render do prompt
+  do garden e parse do verdito — com `chat` **injetável**; `routes/chat.ts` passa
+  a chamá-lo em vez do bloco inline. Critério de saída do refino: todo caminho
+  que um toggle liga tem ≥ 1 teste de integração. Ref: Etapa 10 de
+  `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o commit (só adiciona testes + extrai um helper sem mudar
+  comportamento).
+
 ### Alterado
 
 - **Escalonamento por confiança endurecido** (refino, Etapa 8, **segue desligado
