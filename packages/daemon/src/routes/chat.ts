@@ -23,6 +23,7 @@ import {
   logFullAuditEntry,
   estimateTokens,
   nextZenApiKey,
+  routerEscalationJudge,
 } from "@assistente-os/core";
 import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
 import { maxFindingSeverity } from "@assistente-os/memory";
@@ -32,8 +33,12 @@ import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
 import {
   escalationConfig,
   shouldEscalate,
+  shouldRunJudge,
   nextEscalationTier,
   looksLikeRefusal,
+  parseJudgeVerdict,
+  canEscalateSession,
+  recordSessionEscalation,
 } from "../orchestrator/escalation.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
 import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents, routerEscalation, ollamaPrefillSeconds, ollamaPromptEvalTokens } from "../observability/metrics.js";
@@ -522,51 +527,103 @@ export async function handleChat(
           env,
         });
       }
-      // T3.1 — escalonamento por confiança (default off: ROUTER_ESCALATION=on).
-      // Só a partir de `local`, só sem tier/model fixados pelo usuário, e só
-      // sobe UM degrau, uma vez. Quando desligado, este bloco é inerte.
+      // T3.1 + Etapa 8 — escalonamento por confiança (default off).
+      // Só a partir de `local`, sem tier/model fixados, no máx. N por sessão com
+      // cooldown, e (default) só em `mode=fast`. Sinal: heurísticas baratas +
+      // um juiz LLM local (SIM/NÃO) quando o RAG foi fraco. Inerte quando off.
       const escCfg = escalationConfig();
       if (escCfg.enabled && tier === "local" && !requestedTier && !requestedModel) {
         const localOk = result.code === 0 && !result.timedOut;
         const v = built.verdict as { ok?: boolean; sources?: Array<{ score?: number }> } | null;
-        const verdict = shouldEscalate(
-          {
-            localFailed: !localOk,
-            ragOk: v?.ok === true,
-            ragTopScore: v?.sources?.[0]?.score ?? 0,
-            answerChars: result.stdout.trim().length,
-            answerRefusalLike: looksLikeRefusal(result.stdout),
-          },
-          escCfg,
-        );
-        const nextTier = verdict.escalate ? nextEscalationTier(config.routerTiers, "local") : undefined;
-        if (nextTier) {
-          const escTarget = resolveTarget(config, soul, nextTier);
-          emitStep("router", `escalando local → ${nextTier} (${verdict.reason})`);
+        const answerChars = result.stdout.trim().length;
+        const refusalLike = looksLikeRefusal(result.stdout);
+        const baseSig = {
+          localFailed: !localOk,
+          ragOk: v?.ok === true,
+          ragTopScore: v?.sources?.[0]?.score ?? 0,
+          answerChars,
+          answerRefusalLike: refusalLike,
+          mode: orchDecision.mode,
+        };
+
+        // Juiz LLM só quando nenhum sinal barato já decidiu E o RAG foi fraco.
+        let judge: "ok" | "weak" | "unknown" | undefined;
+        const cheapDecides =
+          (escCfg.fastModeOnly && orchDecision.mode !== "fast") ||
+          baseSig.localFailed ||
+          answerChars < escCfg.minAnswerChars ||
+          refusalLike;
+        if (!cheapDecides && shouldRunJudge(baseSig, escCfg)) {
           try {
-            routerEscalation.inc({ reason: verdict.reason, to_tier: nextTier });
+            let jUrl = config.ollamaUrl;
+            if (jUrl.includes("host.docker.internal")) jUrl = jUrl.replace("host.docker.internal", "192.168.65.254");
+            const jr = await ollamaChat(
+              jUrl,
+              {
+                model: config.ollamaChatModel.replace(/^(ollama|openai)\//, ""),
+                messages: [
+                  {
+                    role: "user",
+                    content: routerEscalationJudge.render({
+                      pergunta: prompt.slice(0, 2000),
+                      contexto: (built.ragCtx || "(sem contexto)").slice(0, 4000),
+                      resposta: result.stdout.slice(0, 4000),
+                    }),
+                  },
+                ],
+                stream: false,
+              },
+              Math.min(timeoutSeconds, 45) * 1000,
+            );
+            judge = jr.code === 0 ? parseJudgeVerdict(jr.stdout) : "unknown";
+            emitStep("router", `juiz de confiança: ${judge}`);
           } catch {
-            /* métrica opcional */
+            judge = "unknown";
           }
-          const escEnv = { ...(process.env as Record<string, string>) };
-          const escKey = nextZenApiKey(config);
-          if (escKey) escEnv.ZEN_API_KEY = escKey;
-          const escResult = await run!(built.fullPrompt, {
-            cwd: soul.dir,
-            model: escTarget.model,
-            timeoutSeconds,
-            agent: soul.config.agent ? soul.id : undefined,
-            soulId: soul.id,
-            env: escEnv,
-          });
-          if (escResult.code === 0 && !escResult.timedOut) {
-            result = escResult;
-            execUsage = undefined; // opencode run não expõe usage → cai no estimate
-            decision = { target: escTarget, reason: `escalado de local: ${verdict.reason}` };
-            tier = nextTier;
-            model = escTarget.model;
+        }
+
+        const verdict = shouldEscalate({ ...baseSig, judge }, escCfg);
+        if (verdict.escalate) {
+          const gate = canEscalateSession(String(session.id), escCfg);
+          if (!gate.ok) {
+            emitStep("router", `escalonamento bloqueado (${gate.reason})`);
+            try {
+              routerEscalation.inc({ reason: gate.reason, to_tier: "-" });
+            } catch {
+              /* métrica opcional */
+            }
           } else {
-            emitStep("router", "escalonamento falhou; mantém a resposta do local", "err");
+            const nextTier = nextEscalationTier(config.routerTiers, "local");
+            if (nextTier) {
+              const escTarget = resolveTarget(config, soul, nextTier);
+              emitStep("router", `escalando local → ${nextTier} (${verdict.reason})`);
+              try {
+                routerEscalation.inc({ reason: verdict.reason, to_tier: nextTier });
+              } catch {
+                /* métrica opcional */
+              }
+              const escEnv = { ...(process.env as Record<string, string>) };
+              const escKey = nextZenApiKey(config);
+              if (escKey) escEnv.ZEN_API_KEY = escKey;
+              const escResult = await run!(built.fullPrompt, {
+                cwd: soul.dir,
+                model: escTarget.model,
+                timeoutSeconds,
+                agent: soul.config.agent ? soul.id : undefined,
+                soulId: soul.id,
+                env: escEnv,
+              });
+              if (escResult.code === 0 && !escResult.timedOut) {
+                result = escResult;
+                execUsage = undefined; // opencode run não expõe usage → cai no estimate
+                decision = { target: escTarget, reason: `escalado de local: ${verdict.reason}` };
+                tier = nextTier;
+                model = escTarget.model;
+                recordSessionEscalation(String(session.id));
+              } else {
+                emitStep("router", "escalonamento falhou; mantém a resposta do local", "err");
+              }
+            }
           }
         }
       }

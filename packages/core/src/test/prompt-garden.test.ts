@@ -154,6 +154,7 @@ test("gardenManifest: uma entrada por prompt, ordenada por id, hash de 64 hex", 
     "rag-rerank-scorer",
     "agent-react-system",
     "rag-answer",
+    "router-escalation-judge",
   ]) {
     assert.ok(ids.has(id), `faltou ${id} no gardenManifest`);
   }
