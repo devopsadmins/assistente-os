@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addAgendaItem, claimDueAgenda, finishAgendaItem, getAgendaItems } from "../kernelDb.js";
+import { addAgendaItem, claimDueAgenda, reapStaleAgenda, finishAgendaItem, getAgendaItems } from "../kernelDb.js";
 import { recordCostCall, sumCostBySoul, recentCalls } from "../costs.js";
 import { route, resolveTarget, selectRoute, type RouterProbe } from "../router.js";
 import { createSoul, listSouls, getSoul, setActiveSoul, getActiveSoul, ensureSoulFiles } from "../souls.js";
@@ -78,6 +78,42 @@ test("agenda: claimDueAgenda reivindica itens vencidos e ignora futuros/já reiv
     assert.equal(failed.status, "failed");
     assert.equal(failed.last_error, "opencode saiu com código 1");
     assert.equal((await getAgendaItems(testDb.pool, "pending")).length, 1);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("agenda (Onda 3c): reapStaleAgenda devolve preso p/ fila; falha quando esgota tentativas", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const a = await addAgendaItem(testDb.pool, "main", "presa retry", null, null);
+    const b = await addAgendaItem(testDb.pool, "main", "presa sem retry", null, null);
+    await claimDueAgenda(testDb.pool, 10); // marca 'processing', attempt=1, claimed_at=now()
+
+    // nada envelheceu ainda → reaper não mexe
+    assert.deepEqual(await reapStaleAgenda(testDb.pool, { staleMinutes: 15, maxAttempts: 3 }), { retried: 0, failed: 0 });
+
+    // envelhece o claimed_at das duas; b já esgotou tentativas
+    await testDb.pool.query("UPDATE agenda SET claimed_at = now() - interval '30 minutes' WHERE id = ANY($1)", [[a.id, b.id]]);
+    await testDb.pool.query("UPDATE agenda SET attempt = 3 WHERE id = $1", [b.id]);
+
+    const reaped = await reapStaleAgenda(testDb.pool, { staleMinutes: 15, maxAttempts: 3 });
+    assert.deepEqual(reaped, { retried: 1, failed: 1 });
+
+    const rows = Object.fromEntries(
+      (await testDb.pool.query("SELECT id, status, done FROM agenda WHERE id = ANY($1)", [[a.id, b.id]])).rows.map(
+        (r) => [Number(r.id), r],
+      ),
+    );
+    assert.equal(rows[a.id].status, "pending");
+    assert.equal(rows[a.id].done, false);
+    assert.equal(rows[b.id].status, "failed");
+    assert.equal(rows[b.id].done, true);
+
+    // o que voltou p/ fila pode ser reivindicado de novo
+    const again = await claimDueAgenda(testDb.pool, 10);
+    assert.deepEqual(again.map((x) => x.id), [a.id]);
+    assert.ok(again[0]!.claimed_at, "claimDueAgenda carimba claimed_at");
   } finally {
     await testDb.cleanup();
   }

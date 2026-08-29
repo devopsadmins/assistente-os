@@ -367,4 +367,12 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_execution_spans_trace ON execution_spans (trace_id, seq);
     `,
   },
+  {
+    // Onda 3c: reaper de agenda. `claimDueAgenda` marca 'processing' sem carimbo
+    // de quando — um crash entre claim e finish deixava o item preso pra sempre.
+    // `claimed_at` permite ao reaper devolver itens presos há > N min pra fila
+    // (ou falhar de vez se as tentativas esgotaram).
+    id: "0016_agenda_claimed_at",
+    sql: `ALTER TABLE agenda ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;`,
+  },
 ];
