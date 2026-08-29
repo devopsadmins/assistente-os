@@ -36,7 +36,7 @@ import {
   looksLikeRefusal,
 } from "../orchestrator/escalation.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
-import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents, routerEscalation } from "../observability/metrics.js";
+import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents, routerEscalation, ollamaPrefillSeconds, ollamaPromptEvalTokens } from "../observability/metrics.js";
 
 /**
  * Chama o /api/chat do Ollama via node:http. O fetch() do Node (undici) aborta
@@ -50,11 +50,25 @@ interface ExecUsage {
   source: "provider" | "estimate";
 }
 
+interface OllamaPrefill {
+  /** Tokens do prompt processados (baixo = KV cache reaproveitou o prefixo). */
+  promptEvalCount: number;
+  /** Tempo de prefill em ms (`prompt_eval_duration` do Ollama, ns → ms). */
+  promptEvalMs: number;
+}
+
 function ollamaChat(
   baseUrl: string,
   payload: unknown,
   timeoutMs: number,
-): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }> {
+): Promise<{
+  code: number;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  usage?: ExecUsage;
+  prefill?: OllamaPrefill;
+}> {
   return new Promise((resolvePromise) => {
     let url: URL;
     try {
@@ -87,6 +101,7 @@ function ollamaChat(
               message?: { content?: string };
               prompt_eval_count?: number;
               eval_count?: number;
+              prompt_eval_duration?: number;
             };
             const usage: ExecUsage | undefined =
               typeof parsed.prompt_eval_count === "number" || typeof parsed.eval_count === "number"
@@ -96,7 +111,21 @@ function ollamaChat(
                     source: "provider",
                   }
                 : undefined;
-            resolvePromise({ code: 0, stdout: parsed.message?.content || "(sem resposta)", stderr: "", timedOut: false, usage });
+            const prefill: OllamaPrefill | undefined =
+              typeof parsed.prompt_eval_duration === "number"
+                ? {
+                    promptEvalCount: parsed.prompt_eval_count ?? 0,
+                    promptEvalMs: parsed.prompt_eval_duration / 1e6,
+                  }
+                : undefined;
+            resolvePromise({
+              code: 0,
+              stdout: parsed.message?.content || "(sem resposta)",
+              stderr: "",
+              timedOut: false,
+              usage,
+              prefill,
+            });
           } catch {
             resolvePromise({ code: 1, stdout: "", stderr: `resposta inválida do Ollama: ${data.slice(0, 200)}`, timedOut: false });
           }
@@ -425,6 +454,20 @@ export async function handleChat(
         );
         result = oll;
         execUsage = oll.usage;
+        // Etapa 9: prefill do Ollama. Prompt caching / KV cache reaproveitado →
+        // prompt_eval_count e prompt_eval_duration despencam no 2º turno.
+        if (oll.prefill) {
+          emitStep(
+            "ollama",
+            `prefill: ${oll.prefill.promptEvalCount} tokens em ${Math.round(oll.prefill.promptEvalMs)}ms`,
+          );
+          try {
+            ollamaPrefillSeconds.observe(oll.prefill.promptEvalMs / 1000);
+            ollamaPromptEvalTokens.observe(oll.prefill.promptEvalCount);
+          } catch {
+            /* métrica opcional */
+          }
+        }
       } else if (decision.target.provider === "langgraph") {
         emitStep("langgraph", `iniciando execução LangGraph (modo ${langgraphMode ?? "tools"})`);
         const lg = await runLangGraphAgentStream(pool, {

@@ -321,7 +321,13 @@ frágil. Wired só no `POST /souls/:id/chat`.
 
 ---
 
-## Etapa 9 — T3.3 Ordem do montador de prompt
+## Etapa 9 — T3.3 Ordem do montador de prompt  — ✅ feito (PR `refino/etapa-9-skills-split`)
+
+> `renderSkillsPrompt` partido em `renderSkillsIndex` (semi-estático → prefixo) +
+> `renderActiveSkills` (dinâmico → cauda); `buildPrompt` reordenado. Compat
+> mantida (byte-idêntico) para o `langgraph-runner`. Instrumentação de prefill do
+> Ollama: `aos_ollama_prefill_seconds` + `aos_ollama_prompt_eval_tokens` + passo
+> no log. Zen prefix caching = aguardar (Q3). 531 testes verdes.
 
 **Contexto.** Reorder feito (persona no prefixo, sessão/RAG/histórico na cauda).
 Benefício **não medido**. Os tiers que custam (`zen`/`soul`) vão por
@@ -391,5 +397,5 @@ dos caminhos wired.
 | 6 — Cache semântico | ☐ | ☐ | ☐ | — |
 | 7 — Canvas | ☐ | ☐ | ☐ | — |
 | 8 — Escalonamento | ☐ | ☐ | ☐ | — |
-| 9 — Ordem do prompt | ☐ | ☐ | ☐ | — |
+| 9 — Ordem do prompt | ✅ | ✅ 531 verdes | ⏳ no PR (medir prefill em staging) | `refino/etapa-9-skills-split` |
 | 10 — Cobertura integração | ☐ | ☐ | ☐ | — |

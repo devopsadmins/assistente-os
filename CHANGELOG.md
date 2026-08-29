@@ -10,6 +10,27 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Alterado
 
+- **Montador de prompt: índice de skills separado do corpo** (refino, Etapa 9):
+  `renderSkillsPrompt` foi partido em `renderSkillsIndex(available)` (lista
+  nome+descrição — semi-estática por soul, vai no prefixo) e
+  `renderActiveSkills(active, isToolAllowed)` (corpo das skills que casaram —
+  dinâmico por turno, vai na cauda). `buildPrompt` posiciona o índice antes da
+  fronteira volátil e o corpo junto de sessão/RAG/histórico → prefixo estável
+  maior para prompt caching / KV cache do Ollama. `renderSkillsPrompt` continua
+  como compat (saída byte-idêntica) para o `langgraph-runner`. Ref: Etapa 9 de
+  `docs/ARCHITECTURE-REFINEMENT-REVIEW.md` (segue T3.3).
+  Rollback: reverter o commit (refactor puro).
+
+### Adicionado
+
+- **Métricas de prefill do Ollama** (refino, Etapa 9): `aos_ollama_prefill_seconds`
+  (histograma de `prompt_eval_duration`) e `aos_ollama_prompt_eval_tokens`
+  (`prompt_eval_count`) — no 2º turno de uma sessão, com o prefixo estável, os
+  dois despencam quando o KV cache é reaproveitado. `chat.ts` também emite um
+  passo `ollama: prefill: N tokens em Xms` no log de execução. Base para medir o
+  ganho de T3.3/Etapa 9. Ref: Etapa 9 de `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o commit (métrica passiva, sem efeito de comportamento).
+
 - **Gate de compliance no CI** (refino, Etapa 2): removida a regra de label
   `governanca-revisada` — num fluxo enxuto a evidência é a linha no `CHANGELOG.md`.
   Caminho sensível (`config/policy/migrations/manifest.ts`, `prompts/`,
