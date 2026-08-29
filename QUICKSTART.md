@@ -118,6 +118,7 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `RAG_SEMANTIC_CACHE` | `off` | Cache semântico do RAG (`on` liga). `_THRESHOLD` `0.85`, `_TTL` `60`. Ver [docs/RAG-CACHE.md](docs/RAG-CACHE.md) |
 | `REDIS_URL` | — | Se setada, o daemon conecta o cache em camadas ao Redis no boot → cache exato e semântico do RAG **compartilhados entre instâncias**. Sem ela, só memória do processo |
 | `ROUTER_ESCALATION` | `off` | Escalonamento por confiança do roteador (`on` liga). `_MIN_SCORE` `0.55`, `_MIN_CHARS` `40`, `_MAX_PER_SESSION` `1`, `_COOLDOWN_MIN` `10`, `_FAST_ONLY` `1`. Juiz LLM local + tetos por sessão. Ver [docs/ROUTER-ESCALATION.md](docs/ROUTER-ESCALATION.md) |
+| `MCP_ZERO_TRUST` | `off` | `on` liga o enforcement de **autonomia × nível de risco** no gate de tools do MCP e do agente LangGraph (`ask` bloqueia L3 sem confirmação; `suggest` bloqueia L2/L3). Desligado = só a allowlist (comportamento pré-Onda-1). A **allowlist** e o **filtro de tools do LangGraph** valem sempre. Ligar só depois de declarar `autonomy`/`approvalPolicy` nas souls |
 
 ## 4. PostgreSQL (opcional mas recomendado)
 

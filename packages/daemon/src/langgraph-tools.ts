@@ -18,6 +18,10 @@ import {
   getAgendaItems,
   sumCostBySoul,
   recentCalls,
+  resolveAllowedTools,
+  isToolAllowed,
+  authorizeExecution,
+  mcpZeroTrustOn,
   type Pool,
 } from "@assistente-os/core";
 import {
@@ -45,7 +49,17 @@ export function createAgentTools(options: CreateToolsOptions) {
   const { home, pool, soulId } = options;
   const embedder = getEmbedder();
 
-  return [
+  const agentConfig = (() => {
+    try {
+      return getSoul(home, soulId)?.config?.agent;
+    } catch {
+      return undefined;
+    }
+  })();
+  const allowlist = resolveAllowedTools(agentConfig);
+  const strict = mcpZeroTrustOn();
+
+  const all = [
     // ── Memory Tools ──────────────────────────────────────────────
     new DynamicStructuredTool({
       name: "memory_search",
@@ -214,4 +228,33 @@ export function createAgentTools(options: CreateToolsOptions) {
       },
     }),
   ];
+
+  // Zero Trust (Onda 1): o agente LangGraph só recebe as tools que a allowlist
+  // da soul permite — antes ele executava qualquer tool ignorando o snapshot.
+  // Cada `func` ainda passa por `authorizeExecution` (o gate autonomia/aprovação
+  // só morde com MCP_ZERO_TRUST=on; fora disso é só a allowlist + fail-closed).
+  return all
+    .filter((t) => isToolAllowed(allowlist, t.name))
+    .map((t) => {
+      const guarded = new DynamicStructuredTool({
+        name: t.name,
+        description: t.description,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        schema: (t as any).schema,
+        func: async (input: unknown) => {
+          const decision = authorizeExecution({
+            soulId,
+            capability: t.name,
+            agentConfig,
+            enforcePolicyGates: strict,
+          });
+          if (!decision.allow) {
+            return { error: `[Security 42001] ${decision.reason}` };
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (t as any).func(input);
+        },
+      });
+      return guarded;
+    });
 }
