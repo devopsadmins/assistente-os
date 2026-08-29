@@ -3,7 +3,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { loadConfig, getPool, eventStats, listMonitors, listExecutions } from "@assistente-os/core";
+import { loadConfig, getPool, eventStats, listMonitors, listExecutions, getTrace } from "@assistente-os/core";
 import { sendJson, type RequestContext } from "./shared.js";
 
 /** GET /infra/status — snapshot de saúde do daemon (Ollama, Postgres, sistema, RAG, eventos, monitores). */
@@ -15,6 +15,25 @@ export async function handleInfra(
   context: RequestContext,
 ): Promise<boolean> {
   const { home } = context;
+
+  // GET /trace/:id — reconstrói um turno de chat: linha canônica + spans por
+  // estágio, em ordem. "Onde falhou" vira consultável (Onda 2).
+  const traceMatch = path.match(/^\/trace\/([A-Za-z0-9-]{8,64})$/);
+  if (traceMatch && req.method === "GET") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    try {
+      const trace = await getTrace(pool, traceMatch[1]!);
+      if (!trace.execution && trace.spans.length === 0) {
+        sendJson(res, 404, { error: `trace não encontrado: ${traceMatch[1]}` });
+        return true;
+      }
+      sendJson(res, 200, trace);
+    } catch (err) {
+      sendJson(res, 503, { error: `trace indisponível: ${(err as Error).message}` });
+    }
+    return true;
+  }
 
   if (req.method === "GET" && path === "/infra/status") {
     const config = loadConfig({ home });

@@ -190,6 +190,48 @@ test("daemon: chat executa o prompt uma única vez e registra a chamada", async 
   }
 });
 
+test("daemon: chat emite x-trace-id e persiste spans; GET /trace/:id reconstrói o turno (Onda 2)", async () => {
+  const { home, cleanup } = await tempHome();
+  process.env.OLLAMA_URL = "http://127.0.0.1:1";
+  const daemon = await startDaemon({
+    port: 0,
+    home,
+    run: async () => ({ code: 0, stdout: "resposta", stderr: "", timedOut: false }),
+  });
+  try {
+    const base = `http://127.0.0.1:${daemon.port}`;
+    const res = await fetch(`${base}/souls/main/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "oi", timeoutSeconds: 30 }),
+    });
+    assert.equal(res.status, 200);
+    const traceId = res.headers.get("x-trace-id");
+    assert.ok(traceId && traceId.length >= 8, "header x-trace-id presente");
+
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const { rows: exec } = await pool.query("SELECT trace_id, status FROM execution_logs WHERE trace_id = $1", [traceId]);
+    assert.equal(exec.length, 1, "execution_logs tem a linha canônica com o trace_id");
+    const { rows: spans } = await pool.query("SELECT module FROM execution_spans WHERE trace_id = $1 ORDER BY seq", [traceId]);
+    assert.ok(spans.length >= 3, `esperava vários spans, veio ${spans.length}`);
+    assert.equal(spans[0]!.module, "chat", "primeiro span é o 'chat: prompt recebido'");
+
+    const trace = await fetchJson(`${base}/trace/${traceId}`);
+    assert.equal(trace.status, 200);
+    const body = trace.body as { execution: { traceId: string } | null; spans: unknown[] };
+    assert.ok(body.execution);
+    assert.equal(body.execution!.traceId, traceId);
+    assert.equal(body.spans.length, spans.length);
+
+    assert.equal((await fetchJson(`${base}/trace/nao-existe-xxxxxxx`)).status, 404);
+  } finally {
+    delete process.env.OLLAMA_URL;
+    await daemon.close();
+    await cleanup();
+  }
+});
+
 test("daemon: token protege as rotas, exceto /health (público de propósito p/ monitoramento)", async () => {
   const { home, cleanup } = await tempHome();
   const daemon = await startDaemon({ port: 0, home, token: "segredo-de-teste" });
