@@ -10,6 +10,21 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Segurança
 
+- **Onda 1b — rate limit + cap de concorrência no daemon** (roadmap de remediação
+  da análise crítica 2026-08-29; `packages/daemon/src/throttle.ts`):
+  - **Rate limit por cliente** (janela fixa) no `handle()`: default **600 req /
+    60 s** — generoso, pega loop descontrolado sem modelar tráfego. Chave:
+    `X-Client-Id`, senão hash do token, senão IP. Estouro → `429` +
+    `Retry-After`. `/health` e `/metrics` fora. `AOS_RATE_LIMIT=0` desliga.
+  - **Semáforo de execuções caras** (`/souls/:id/chat`, `/api/missions/*`,
+    `/api/pipelines/*`): o slot é segurado pela duração da rota; estouro → `503`
+    imediato (sem fila). Default `AOS_MAX_CONCURRENT_EXEC=8`; `0` desliga.
+  Antes só havia limite de *gasto* (`dailyLimit`) e de *turnos* (`maxTurns`) —
+  nada barrava milhares de `/chat`/min, cada um um subprocesso.
+  Testes: `throttle.test.ts` (novo, 5), `daemon.test.ts` (+2).
+  Rollback: `AOS_RATE_LIMIT=0` + `AOS_MAX_CONCURRENT_EXEC=0` neutralizam; ou
+  reverter o commit.
+
 - **Onda 1 — Zero Trust aplicado no MCP e no agente LangGraph** (roadmap de
   remediação da análise crítica 2026-08-29, Onda 1a; segue a Onda 0 em #11;
   `MCP_ZERO_TRUST`, **default off**):
