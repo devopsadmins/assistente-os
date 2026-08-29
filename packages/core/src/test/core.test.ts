@@ -8,6 +8,7 @@ import { recordCostCall, sumCostBySoul, recentCalls } from "../costs.js";
 import { route, resolveTarget, selectRoute, type RouterProbe } from "../router.js";
 import { createSoul, listSouls, getSoul, setActiveSoul, getActiveSoul, ensureSoulFiles } from "../souls.js";
 import { loadConfig } from "../config.js";
+import { runMigrations } from "../db.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
 function tempHome(t: string) {
@@ -101,6 +102,45 @@ test("agenda: getAgendaItems(soul) escopa à soul (+ itens globais); sem soul li
 
     const forB = await getAgendaItems(testDb.pool, "pending", "soulB");
     assert.equal(forB.some((i) => i.title === "tarefa da A"), false, "soulB não vê a agenda da soulA");
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("migrations (Onda 3b): grava sql_sha256; drift de migração aplicada vira warn, não erro", async () => {
+  const testDb = await createTestSchema();
+  try {
+    // createTestSchema já rodou runMigrations → todas as linhas têm checksum.
+    const semChecksum = await testDb.pool.query("SELECT count(*) c FROM schema_migrations WHERE sql_sha256 IS NULL");
+    assert.equal(Number(semChecksum.rows[0].c), 0, "toda migração aplicada guarda o sql_sha256");
+
+    // Simula uma migração editada-após-aplicada: corrompe o checksum de uma linha.
+    const { rows } = await testDb.pool.query<{ id: string }>("SELECT id FROM schema_migrations ORDER BY id LIMIT 1");
+    const alvo = rows[0]!.id;
+    await testDb.pool.query("UPDATE schema_migrations SET sql_sha256 = 'deadbeef' WHERE id = $1", [alvo]);
+
+    const warns: string[] = [];
+    const orig = console.warn;
+    console.warn = (...a: unknown[]) => warns.push(a.join(" "));
+    try {
+      await assert.doesNotReject(runMigrations(testDb.pool), "drift não derruba o boot");
+    } finally {
+      console.warn = orig;
+    }
+    assert.ok(warns.some((w) => w.includes("DRIFT") && w.includes(alvo)), `esperava warn de DRIFT para ${alvo}`);
+
+    // Linha sem checksum (upgrade de ambiente antigo) é preenchida, sem warn.
+    await testDb.pool.query("UPDATE schema_migrations SET sql_sha256 = NULL WHERE id = $1", [alvo]);
+    warns.length = 0;
+    console.warn = (...a: unknown[]) => warns.push(a.join(" "));
+    try {
+      await runMigrations(testDb.pool);
+    } finally {
+      console.warn = orig;
+    }
+    assert.equal(warns.length, 0, "backfill de checksum não emite warn");
+    const back = await testDb.pool.query("SELECT sql_sha256 FROM schema_migrations WHERE id = $1", [alvo]);
+    assert.match(back.rows[0].sql_sha256, /^[0-9a-f]{64}$/, "checksum recomputado e gravado");
   } finally {
     await testDb.cleanup();
   }
