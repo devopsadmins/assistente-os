@@ -182,7 +182,14 @@ trocar o modelo. `ms-marco-MiniLM-L-6-v2` (default, só-inglês) → hit@1 73,9%
 
 ---
 
-## Etapa 5 — T2.1 Prompt Garden
+## Etapa 5 — T2.1 Prompt Garden  — ✅ feito (PR `refino/etapa-5-prompt-garden`)
+
+> Migrados `agent-react-system` (agent-workflow.ts + agent-state.ts) e `rag-answer`
+> (prompt-templates.ts) — jardim com 9 prompts. Novo campo `outputSchema` (JSON
+> literal fora do `template`, sem `{{ }}`); `spec-grill-analyst`/`entity-extraction`/
+> `guardian-audit` migrados pra ele — render byte-idêntico verificado. Novo
+> `os prompt list` / `os prompt show <id>`. `prompt-templates.ts` monta o
+> `ChatPromptTemplate` a partir de `ragAnswer` + `RAG_ANSWER_SUFFIXES`.
 
 **Contexto.** Migrados 7 prompts de pipeline. **3 buracos:**
 `memory/agent-workflow.ts` + `agent-state.ts` (system prompts do agente ReAct —
@@ -377,10 +384,10 @@ dos caminhos wired.
 |---|---|---|---|---|
 | 0 — Objetivo/ambiente | ✅ | — | ✅ | — |
 | 1 — Poda | ✅ (manter cache+refinar; promover canvas; investir reranker) | — | ✅ | — |
-| 2 — Gate de CI | ✅ | ✅ 13 verdes | ⏳ no PR | `feat/refino-etapa-2` |
+| 2 — Gate de CI | ✅ | ✅ 13 verdes | ✅ PR #1 (+ CI verde no #2: cache + ordenação) | `feat/refino-etapa-2` |
 | 3 — Golden set | ⏳ aguardando reunião | ☐ | ☐ | — |
 | 4 — Reranker | ☐ | ☐ | ☐ | — |
-| 5 — Prompt Garden | ☐ | ☐ | ☐ | — |
+| 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ⏳ no PR (`os prompt list`) | `refino/etapa-5-prompt-garden` |
 | 6 — Cache semântico | ☐ | ☐ | ☐ | — |
 | 7 — Canvas | ☐ | ☐ | ☐ | — |
 | 8 — Escalonamento | ☐ | ☐ | ☐ | — |
