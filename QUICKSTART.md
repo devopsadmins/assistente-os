@@ -123,9 +123,14 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `AOS_MAX_CONCURRENT_EXEC` | `8` | Máx. de execuções caras simultâneas (`/chat`, `/api/missions/*`, `/api/pipelines/*`). Estouro → `503` sem fila. `0` desliga |
 | `RUN_E2E` | — | `1` habilita o teste e2e do caminho dourado (`golden-path.live.ts`, exige Ollama vivo; fora do CI) |
 
-## 4. PostgreSQL (opcional mas recomendado)
+> Um `.env.example` na raiz do repo lista todas as variáveis com valores de
+> exemplo — copie o que precisar para `~/.assistant-os/.env`.
 
-O kernel.db (custos, agenda, eventos) funciona em SQLite nativo. Postgres é necessário para **RAG + Knowledge Graph** (memória vetorial com pgvector).
+## 4. PostgreSQL (obrigatório)
+
+Toda a persistência derivada (RAG + grafo, sessões, custos, agenda, eventos,
+`execution_logs`) vive no PostgreSQL com **pgvector**. O markdown em
+`~/.assistant-os/souls/` é a fonte canônica; o Postgres é reconstruível.
 
 ### Via Docker Compose (recomendado)
 
