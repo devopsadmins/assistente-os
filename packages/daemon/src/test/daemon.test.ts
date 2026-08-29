@@ -35,10 +35,13 @@ test("daemon: health, souls e context respondem", async () => {
     const base = `http://127.0.0.1:${daemon.port}`;
     const health = await fetchJson(`${base}/health`);
     assert.equal(health.status, 200);
-    assert.deepEqual((health.body as { souls: string[] }).souls, ["main"]);
+    assert.equal((health.body as { ok: boolean }).ok, true);
+    // /health é público: NÃO deve vazar a lista de souls (ids `familia_<telefone>` = PII).
+    assert.equal((health.body as { souls?: unknown }).souls, undefined);
 
     const souls = await fetchJson(`${base}/souls`);
     assert.equal((souls.body as unknown[]).length, 1);
+    assert.deepEqual((souls.body as Array<{ id: string }>).map((s) => s.id), ["main"]);
 
     const ctx = await fetchJson(`${base}/souls/main/context`);
     assert.equal(ctx.status, 200);
@@ -536,6 +539,12 @@ test("daemon: POST /agenda cria e despacha em background; GET /agenda lista por 
 
     const pending = await fetch(`${base}/agenda`);
     assert.equal(((await pending.json()) as unknown[]).length, 0);
+
+    // ?soul= escopa a lista; soul inexistente → 404 (não vaza agenda de outras souls).
+    assert.equal((await fetch(`${base}/agenda?soul=nao-existe`)).status, 404);
+    const scoped = await fetch(`${base}/agenda?soul=main&status=all`);
+    assert.equal(scoped.status, 200);
+    assert.ok(((await scoped.json()) as { id: number }[]).some((i) => i.id === item.id));
   } finally {
     await daemon.close();
     await cleanup();
