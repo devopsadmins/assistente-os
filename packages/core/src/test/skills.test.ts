@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSkillFrontmatter, resolveSkillPath, scanSkillDirs, listSkills, matchSkills, skillMatchThreshold, renderSkillsPrompt, type LoadedSkill } from "../skills.js";
+import { parseSkillFrontmatter, resolveSkillPath, scanSkillDirs, listSkills, matchSkills, skillMatchThreshold, renderSkillsPrompt, renderSkillsIndex, renderActiveSkills, type LoadedSkill } from "../skills.js";
 import { createSoulFull } from "../souls.js";
 import type { Soul } from "../souls.js";
 
@@ -191,4 +191,36 @@ test("renderSkillsPrompt: índice sempre; corpo só das ativas; tool indisponív
 
 test("renderSkillsPrompt: sem skills → string vazia", () => {
   assert.equal(renderSkillsPrompt([], [], () => true), "");
+});
+
+test("renderSkillsIndex / renderActiveSkills: split byte-idêntico ao renderSkillsPrompt (Etapa 9)", () => {
+  const a = mk("xx", "faz X");
+  const b = mk("yy", "faz Y");
+  b.tools = ["tool_ok", "tool_no"];
+  const active = [{ skill: b, score: 0.9, lexicalHits: [], usedEmbedding: false }];
+  const allow = (t: string) => t === "tool_ok";
+
+  const idx = renderSkillsIndex([a, b]);
+  const act = renderActiveSkills(active, allow);
+  assert.match(idx, /^## Skills disponíveis/);
+  assert.doesNotMatch(idx, /## Skill ativa/);
+  assert.match(act, /^## Skill ativa: yy/);
+  assert.doesNotMatch(act, /## Skills disponíveis/);
+
+  assert.equal(renderSkillsPrompt([a, b], active, allow), `${idx}\n\n${act}`);
+  assert.equal(renderSkillsIndex([]), "");
+  assert.equal(renderActiveSkills([], allow), "");
+});
+
+test("renderActiveSkills: dois corpos separados por linha em branco", () => {
+  const b = mk("b1", "d");
+  const c = mk("c1", "d");
+  const out = renderActiveSkills(
+    [
+      { skill: b, score: 1, lexicalHits: [], usedEmbedding: false },
+      { skill: c, score: 1, lexicalHits: [], usedEmbedding: false },
+    ],
+    () => true,
+  );
+  assert.match(out, /## Skill ativa: b1\ncorpo b1\n\n## Skill ativa: c1\ncorpo c1/);
 });

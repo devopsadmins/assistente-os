@@ -345,27 +345,54 @@ export async function matchSkills(
  * description) + o corpo completo das ativas. `""` se `available` vazio.
  * `isToolAllowed` marca as `skill.tools` fora da allowlist da soul.
  */
-export function renderSkillsPrompt(
-  available: LoadedSkill[],
+/**
+ * Índice de skills — a lista nome+descrição. **Semi-estático por soul** (só muda
+ * quando a allowlist/os arquivos de skill mudam). Fica no prefixo estável do
+ * prompt para prompt caching (T3.3/Etapa 9).
+ */
+export function renderSkillsIndex(available: LoadedSkill[]): string {
+  if (available.length === 0) return "";
+  return [
+    "## Skills disponíveis (ative mentalmente a que se aplica)",
+    ...available.map((s) => `- ${s.name} — ${s.description}`),
+  ].join("\n");
+}
+
+/**
+ * Corpo das skills que casaram o prompt. **Dinâmico por turno** — vai na cauda
+ * volátil do prompt (junto de RAG e histórico). Blocos separados por linha em branco.
+ */
+export function renderActiveSkills(
   active: SkillMatch[],
   isToolAllowed: (tool: string) => boolean,
 ): string {
-  if (available.length === 0) return "";
-  const parts: string[] = [
-    "## Skills disponíveis (ative mentalmente a que se aplica)",
-    ...available.map((s) => `- ${s.name} — ${s.description}`),
-  ];
+  const blocks: string[] = [];
   for (const m of active) {
     const s = m.skill;
-    parts.push("", `## Skill ativa: ${s.name}`, s.body);
+    const parts = [`## Skill ativa: ${s.name}`, s.body];
     if (s.tools.length > 0) {
       const rendered = s.tools
         .map((t) => (isToolAllowed(t) ? `\`${t}\`` : `\`${t}\` (indisponível para esta soul)`))
         .join(", ");
       parts.push(`Ferramentas relevantes: ${rendered}`);
     }
+    blocks.push(parts.join("\n"));
   }
-  return parts.join("\n");
+  return blocks.join("\n\n");
+}
+
+/**
+ * Compat: índice + corpos numa string só — mesma saída de antes da Etapa 9.
+ * Ainda usado pelo `langgraph-runner` (systemExtra) e pelos testes.
+ */
+export function renderSkillsPrompt(
+  available: LoadedSkill[],
+  active: SkillMatch[],
+  isToolAllowed: (tool: string) => boolean,
+): string {
+  return [renderSkillsIndex(available), renderActiveSkills(active, isToolAllowed)]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // ── Escrita ────────────────────────────────────────────────────────────
