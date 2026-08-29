@@ -8,6 +8,30 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Segurança
+
+- **Onda 0 de contenção** (pós-análise crítica 2026-08-29, `docs/superpowers/`
+  não — plano em `.claude/plans/`):
+  - `GET /health` (rota pública, sem token) **deixa de listar as souls** — os ids
+    incluem `familia_<telefone>` (enumeração não-autenticada de PII). A lista fica
+    em `GET /souls`, que exige o token.
+  - **`agenda` isolada por soul.** `getAgendaItems(pool, doneFilter, soul?)` ganha
+    filtro: chamador escopado (`agenda_list` via MCP com `AGENT_SOUL_ID`, via
+    LangGraph com `soulId`, ou `GET /agenda?soul=`) só enxerga a própria agenda +
+    itens globais (`soul IS NULL`), nunca a de outra soul. Sem `soul` = modo
+    administrativo (todas), atrás do token.
+  - **Transcrições de sessão e `auth.json` saem do versionamento.** `git rm
+    --cached` de `session-ses_*.md` (raiz + `archive/sessions/`), `auth.json` e
+    screenshots de trabalho; `.gitignore` passa a cobrir `session-*.md`,
+    `auth.json`, `.playwright-mcp/`, `.web-shots/`, `/*.png`. (Os valores nesses
+    arquivos eram de teste; sem reescrita de histórico.)
+  - `GET /infra/status` reporta `postgres.ok=false` quando o Postgres está fora,
+    em vez de 500 na query de `pg_database_size` não protegida.
+  - `ADR-PRIV-001 §G3` corrigido: citava `packages/memory/src/reindex.ts`
+    (removido) — o mecanismo real é a poda de órfãos em `indexer.ts`.
+  Rollback: reverter o commit (rotas voltam ao comportamento anterior; os
+  arquivos removidos seguem no disco e no histórico).
+
 ### Alterado
 
 - **Reranker cross-encoder endurecido** (refino, Etapa 4, **default `off`

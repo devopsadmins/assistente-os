@@ -18,3 +18,14 @@ docs/assets/
 
 # Claude Code local settings
 .claude/
+
+# Transcrições de sessão de agente e credenciais locais — nunca versionar
+# (podem conter segredos, PII e prompts). Writeups deliberados vão em docs/.
+session-*.md
+archive/sessions/session-ses_*.md
+auth.json
+
+# Screenshots de trabalho (browser MCP, capturas da UI)
+.playwright-mcp/
+.web-shots/
+/*.png

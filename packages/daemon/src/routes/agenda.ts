@@ -16,9 +16,18 @@ export async function handleAgenda(
   if (req.method === "GET" && path === "/agenda") {
     const filter = url.searchParams.get("status");
     const doneFilter = filter === "done" || filter === "all" ? filter : "pending";
+    // `?soul=` restringe à soul (+ itens globais); sem ele, lista tudo (admin).
+    const soulParam = url.searchParams.get("soul")?.trim() || undefined;
     const config = loadConfig({ home });
+    if (soulParam) {
+      const { getSoul } = await import("@assistente-os/core");
+      if (!getSoul(home, soulParam)) {
+        sendJson(res, 404, { error: `soul não encontrada: ${soulParam}` });
+        return true;
+      }
+    }
     const pool = getPool(config.databaseUrl);
-    sendJson(res, 200, await getAgendaItems(pool, doneFilter));
+    sendJson(res, 200, await getAgendaItems(pool, doneFilter, soulParam));
     return true;
   }
 

@@ -39,23 +39,26 @@ export async function handleInfra(
       ollamaOk = false;
     }
 
-    /* --- Postgres --- */
-    const { rows: sizeRows } = await pool.query<{ bytes: string }>("SELECT pg_database_size(current_database()) AS bytes");
-    const pgKernelBytes = Number(sizeRows[0]?.bytes ?? 0);
+    /* --- Postgres --- (Postgres fora ≠ 500: reporta pgOk=false e segue) */
+    let pgOk = false;
+    let pgKernelBytes = 0;
     let pgVersion = "";
     let pgTables = 0;
     let pgConnections = 0;
     try {
-      const [verRows, tblRows, connRows] = await Promise.all([
+      const [sizeRows, verRows, tblRows, connRows] = await Promise.all([
+        pool.query<{ bytes: string }>("SELECT pg_database_size(current_database()) AS bytes"),
         pool.query<{ version: string }>("SELECT version() AS version"),
         pool.query<{ count: string }>("SELECT count(*) AS count FROM information_schema.tables WHERE table_schema = 'public'"),
         pool.query<{ count: string }>("SELECT count(*) AS count FROM pg_stat_activity WHERE state = 'active'"),
       ]);
+      pgKernelBytes = Number(sizeRows.rows[0]?.bytes ?? 0);
       pgVersion = verRows.rows[0]?.version ?? "";
       pgTables = Number(tblRows.rows[0]?.count ?? 0);
       pgConnections = Number(connRows.rows[0]?.count ?? 0);
+      pgOk = true;
     } catch {
-      /* best-effort */
+      /* Postgres indisponível — pgOk=false */
     }
 
     /* --- memory.db (SQLite fallback file) --- */
@@ -113,7 +116,7 @@ export async function handleInfra(
       souls: { total: souls.length, ids: souls },
       ollama: { ok: ollamaOk, url: config.ollamaUrl, latencyMs: ollamaLatencyMs, models: ollamaModels },
       databases: { kernelBytes: pgKernelBytes, memoryBytes },
-      postgres: { version: pgVersion, tables: pgTables, connections: pgConnections },
+      postgres: { ok: pgOk, version: pgVersion, tables: pgTables, connections: pgConnections },
       system: {
         platform: os.platform(),
         arch: os.arch(),

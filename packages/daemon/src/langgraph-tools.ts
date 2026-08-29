@@ -196,7 +196,8 @@ export function createAgentTools(options: CreateToolsOptions) {
         status: z.enum(["pending", "done", "all"]).default("pending"),
       }),
       func: async ({ status }) => {
-        const items = await getAgendaItems(pool, status);
+        // Escopado à soul do agente — nunca lista a agenda de outra soul.
+        const items = await getAgendaItems(pool, status, soulId);
         return items;
       },
     }),
