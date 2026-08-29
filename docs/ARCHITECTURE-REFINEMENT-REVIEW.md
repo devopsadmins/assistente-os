@@ -434,4 +434,4 @@ que ele liga — não só a função pura.
 | 7 — Canvas | ✅ | ✅ core 9 · cli 12 (534 total) | ✅ PR #7 mergeado | `refino/etapa-7-canvas` |
 | 8 — Escalonamento | ✅ | ✅ 535 verdes (escalation +11) | ✅ PR #8 mergeado (validar c/ Ollama vivo em staging) | `refino/etapa-8-escalation-judge` |
 | 9 — Ordem do prompt | ✅ | ✅ 531 verdes | ✅ PR #5 mergeado (medir prefill em staging) | `refino/etapa-9-skills-split` |
-| 10 — Cobertura integração | ✅ | ⏳ em andamento | ⏳ no PR | `refino/etapa-10-integ-coverage` |
+| 10 — Cobertura integração | ✅ | ✅ 540 verdes (+5 wired) | ✅ PR #9 mergeado | `refino/etapa-10-integ-coverage` |
