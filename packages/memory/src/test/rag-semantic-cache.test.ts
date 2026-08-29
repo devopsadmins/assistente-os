@@ -55,49 +55,49 @@ test("semanticCacheConfig: default off; liga com RAG_SEMANTIC_CACHE=on; clampa t
   });
 });
 
-test("get/set: hit acima do threshold, miss abaixo", () => {
-  __resetRagSemanticCache();
+test("get/set: hit acima do threshold, miss abaixo", async () => {
+  await __resetRagSemanticCache();
   const b = "bucket-A";
-  ragSemanticCacheSet(b, [1, 0, 0], '{"context":"X"}', 60);
+  await ragSemanticCacheSet(b, [1, 0, 0], '{"context":"X"}', 60);
   // vetor quase igual → sim alta
-  const hit = ragSemanticCacheGet(b, [0.99, 0.01, 0], 0.85);
+  const hit = await ragSemanticCacheGet(b, [0.99, 0.01, 0], 0.85);
   assert.ok(hit);
   assert.equal(hit!.payload, '{"context":"X"}');
   assert.ok(hit!.similarity > 0.9);
   // vetor bem diferente → miss
-  assert.equal(ragSemanticCacheGet(b, [0, 1, 0], 0.85), null);
+  assert.equal(await ragSemanticCacheGet(b, [0, 1, 0], 0.85), null);
 });
 
-test("get: buckets isolados", () => {
-  __resetRagSemanticCache();
-  ragSemanticCacheSet("bucket-A", [1, 0], '{"a":1}', 60);
-  assert.equal(ragSemanticCacheGet("bucket-B", [1, 0], 0.5), null);
+test("get: buckets isolados", async () => {
+  await __resetRagSemanticCache();
+  await ragSemanticCacheSet("bucket-A", [1, 0], '{"a":1}', 60);
+  assert.equal(await ragSemanticCacheGet("bucket-B", [1, 0], 0.5), null);
 });
 
-test("get: entrada expirada não retorna", () => {
-  __resetRagSemanticCache();
-  ragSemanticCacheSet("b", [1, 0], '{"a":1}', 0); // ttl 0s → expira imediatamente
-  assert.equal(ragSemanticCacheGet("b", [1, 0], 0.5), null);
+test("get: entrada expirada não retorna (exp por-entrada, mesmo no Map em memória)", async () => {
+  await __resetRagSemanticCache();
+  await ragSemanticCacheSet("b", [1, 0], '{"a":1}', 0); // exp = agora → filtrada no read
+  assert.equal(await ragSemanticCacheGet("b", [1, 0], 0.5), null);
 });
 
-test("get: escolhe a entrada de maior similaridade", () => {
-  __resetRagSemanticCache();
-  ragSemanticCacheSet("b", [1, 0, 0], '{"which":"far"}', 60);
-  ragSemanticCacheSet("b", [0.9, 0.1, 0], '{"which":"near"}', 60);
-  const hit = ragSemanticCacheGet("b", [0.92, 0.08, 0], 0.8);
+test("get: escolhe a entrada de maior similaridade", async () => {
+  await __resetRagSemanticCache();
+  await ragSemanticCacheSet("b", [1, 0, 0], '{"which":"far"}', 60);
+  await ragSemanticCacheSet("b", [0.9, 0.1, 0], '{"which":"near"}', 60);
+  const hit = await ragSemanticCacheGet("b", [0.92, 0.08, 0], 0.8);
   assert.equal(hit!.payload, '{"which":"near"}');
 });
 
-test("set: cap de 64 entradas por bucket (evicta as mais antigas)", () => {
-  __resetRagSemanticCache();
+test("set: cap de 64 entradas por bucket (evicta as mais antigas)", async () => {
+  await __resetRagSemanticCache();
   for (let i = 0; i < 70; i++) {
     // vetores ortogonais o suficiente para não casarem entre si no threshold
     const v = [Math.cos(i), Math.sin(i), i * 0.001];
-    ragSemanticCacheSet("b", v, `{"i":${i}}`, 60);
+    await ragSemanticCacheSet("b", v, `{"i":${i}}`, 60);
   }
   // a entrada 0 já deve ter sido evictada; a 69 continua
-  assert.equal(ragSemanticCacheGet("b", [Math.cos(0), Math.sin(0), 0], 0.999), null);
-  const last = ragSemanticCacheGet("b", [Math.cos(69), Math.sin(69), 0.069], 0.999);
+  assert.equal(await ragSemanticCacheGet("b", [Math.cos(0), Math.sin(0), 0], 0.999), null);
+  const last = await ragSemanticCacheGet("b", [Math.cos(69), Math.sin(69), 0.069], 0.999);
   assert.ok(last, "última entrada preservada");
 });
 
@@ -127,7 +127,7 @@ test("retrieveContext: cache exato marca cacheHit='exact'; default (semantic off
 test("retrieveContext: { semanticCache: false } nunca consulta/preenche o cache semântico", async () => {
   const prev = process.env.RAG_SEMANTIC_CACHE;
   process.env.RAG_SEMANTIC_CACHE = "on";
-  __resetRagSemanticCache();
+  await __resetRagSemanticCache();
   const dir = mkdtempSync(join(tmpdir(), "aos-semcache-off-"));
   const db = await createTestSchema();
   try {
@@ -143,8 +143,17 @@ test("retrieveContext: { semanticCache: false } nunca consulta/preenche o cache 
   } finally {
     if (prev === undefined) delete process.env.RAG_SEMANTIC_CACHE;
     else process.env.RAG_SEMANTIC_CACHE = prev;
-    __resetRagSemanticCache();
+    await __resetRagSemanticCache();
     rmSync(dir, { recursive: true, force: true });
     await db.cleanup();
   }
+});
+
+test("get/set: uma entrada semântica ronda a viagem de serialização via cache", async () => {
+  await __resetRagSemanticCache();
+  const payload = JSON.stringify({ context: "ctx", sources: [], hasRelevantDocs: true });
+  await ragSemanticCacheSet("bkt", [0.6, 0.8], payload, 60);
+  const hit = await ragSemanticCacheGet("bkt", [0.61, 0.79], 0.9);
+  assert.ok(hit);
+  assert.equal(hit!.payload, payload);
 });

@@ -6,7 +6,7 @@ import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
 import { browserShutdown } from "./tools/browser.js";
-import { loadConfig, getPool, runMigrations, addEvent, logger, sweepRetencaoFamilias } from "@assistente-os/core";
+import { loadConfig, getPool, runMigrations, addEvent, logger, sweepRetencaoFamilias, cache } from "@assistente-os/core";
 import { processPendingEvents } from "./events.js";
 import { processDueAgenda } from "./agenda.js";
 import { processEntityExtractionJobs } from "./entityExtraction.js";
@@ -164,6 +164,14 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
   }
   const startupConfig = loadConfig({ home });
   initSentry(); // no-op sem SENTRY_DSN
+
+  // Etapa 6: conecta o cache em camadas ao Redis SE `REDIS_URL` estiver setada —
+  // aí o cache exato e o semântico do RAG passam a ser compartilhados entre
+  // instâncias. Sem `REDIS_URL` fica só o Map em memória do processo (default).
+  // `init()` degrada limpo se o Redis não responder (ver core/cache.ts).
+  if (process.env.REDIS_URL) {
+    await cache.init().catch((err) => logger.warn({ err }, "cache.init falhou — seguindo com memória"));
+  }
 
   // Run migrations with retry logic (non-blocking for web server startup)
   const runMigrationsWithRetry = async (): Promise<void> => {
@@ -371,6 +379,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
         void whatsappChannel?.stop();
         void telegramChannel?.stop();
         void browserShutdown();
+        if (cache.isRedisAvailable()) void cache.close();
         server.close(() => resolve());
       }),
   };
