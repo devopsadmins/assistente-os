@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
 import { MIGRATIONS } from "./migrations.js";
 
@@ -50,7 +51,20 @@ export function query<T extends QueryResultRow = QueryResultRow>(
   return pool.query<T>(text, params);
 }
 
-/** Aplica migrações pendentes (controladas por schema_migrations), em ordem, cada uma em transação própria. */
+const migrationSha = (sql: string): string => createHash("sha256").update(sql).digest("hex");
+
+/**
+ * Aplica migrações pendentes (controladas por `schema_migrations`), em ordem,
+ * cada uma em transação própria.
+ *
+ * Onda 3b: cada linha guarda o `sql_sha256` da migração aplicada. Como o
+ * framework é append-only + `IF NOT EXISTS`, uma migração **editada depois de
+ * aplicada** em algum ambiente não re-roda e não erra — o drift ficava
+ * invisível. Agora, na subida, o checksum atual é comparado com o gravado;
+ * divergência vira `console.warn` (não derruba o boot — é um POC). Linhas
+ * antigas sem checksum são preenchidas com o valor atual (não dá pra detectar
+ * drift retroativo, mas trava o futuro).
+ */
 export async function runMigrations(pool: Pool): Promise<string[]> {
   const client: PoolClient = await pool.connect();
   const applied: string[] = [];
@@ -61,14 +75,32 @@ export async function runMigrations(pool: Pool): Promise<string[]> {
         applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )`,
     );
-    const { rows } = await client.query<{ id: string }>("SELECT id FROM schema_migrations");
-    const done = new Set(rows.map((r) => r.id));
+    await client.query("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS sql_sha256 TEXT");
+
+    const { rows } = await client.query<{ id: string; sql_sha256: string | null }>(
+      "SELECT id, sql_sha256 FROM schema_migrations",
+    );
+    const done = new Map(rows.map((r) => [r.id, r.sql_sha256]));
+
     for (const migration of MIGRATIONS) {
-      if (done.has(migration.id)) continue;
+      const sha = migrationSha(migration.sql);
+      if (done.has(migration.id)) {
+        const stored = done.get(migration.id);
+        if (stored == null) {
+          await client.query("UPDATE schema_migrations SET sql_sha256 = $1 WHERE id = $2", [sha, migration.id]);
+        } else if (stored !== sha) {
+          console.warn(
+            `[migrations] DRIFT: '${migration.id}' foi editada depois de aplicada ` +
+              `(gravado ${stored.slice(0, 12)}, atual ${sha.slice(0, 12)}). ` +
+              `O schema neste ambiente pode não refletir o código.`,
+          );
+        }
+        continue;
+      }
       try {
         await client.query("BEGIN");
         await client.query(migration.sql);
-        await client.query("INSERT INTO schema_migrations (id) VALUES ($1)", [migration.id]);
+        await client.query("INSERT INTO schema_migrations (id, sql_sha256) VALUES ($1, $2)", [migration.id, sha]);
         await client.query("COMMIT");
         applied.push(migration.id);
       } catch (err) {
