@@ -52,13 +52,14 @@ muda o hash do manifesto. Replay: `git checkout <sha>` + re-run.
 4. Ao **mudar** um prompt existente, incrementar `versao`.
 5. `npm test --workspace @assistente-os/core` cobre interpolação, hash e o manifesto.
 
-## Prompts no jardim (9)
+## Prompts no jardim (10)
 
 `concise-output`, `email-ingest-extraction`, `meeting-ingest-extraction`,
 `spec-grill-analyst`, `entity-extraction`, `guardian-audit`, `rag-rerank-scorer`,
 `agent-react-system` (system do agente ReAct — `agent-workflow.ts`/`agent-state.ts`),
 `rag-answer` (resposta da chain RAG — `prompt-templates.ts` monta o
-`ChatPromptTemplate` a partir dele + `RAG_ANSWER_SUFFIXES`).
+`ChatPromptTemplate` a partir dele + `RAG_ANSWER_SUFFIXES`),
+`router-escalation-judge` (juiz SIM/NÃO do escalonamento por confiança — Etapa 8).
 
 ## Fora de escopo
 

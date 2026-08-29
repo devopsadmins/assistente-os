@@ -10,6 +10,19 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Alterado
 
+- **Escalonamento por confiança endurecido** (refino, Etapa 8, **segue desligado
+  por default**): (1) sinal de recusa deixa de ser só regex — quando o RAG foi
+  fraco e nenhum sinal barato decidiu, um **juiz LLM local** dá um SIM/NÃO
+  (`router-escalation-judge` no Prompt Garden — 10 prompts) e o "NÃO" escala
+  (`judge_weak`); (2) tetos por sessão: `ROUTER_ESCALATION_MAX_PER_SESSION` (1) +
+  `ROUTER_ESCALATION_COOLDOWN_MIN` (10) — bloqueios viram
+  `aos_router_escalation_total{reason=session_cap|cooldown}`; (3)
+  `ROUTER_ESCALATION_FAST_ONLY` (1) — por default só escala em `mode=fast`.
+  `escalation.ts` ganha `shouldRunJudge`, `parseJudgeVerdict`,
+  `canEscalateSession`, `recordSessionEscalation`. Ref: Etapa 8 de
+  `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: `ROUTER_ESCALATION` off (default) neutraliza; ou reverter o commit.
+
 - **Canvas por soul endurecido** (refino, Etapa 7): (1) `os soul <id> canvas
   --write` agora **preserva o bloco 9** (decisões humanas) do arquivo existente —
   `mergeCanvasDecisions` regenera só os blocos `· auto`; (2) o gate "agentic"

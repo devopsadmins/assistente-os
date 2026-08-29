@@ -89,8 +89,11 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 # Escalonamento por confiança do roteador (docs/ROUTER-ESCALATION.md) — após a
 # resposta do tier local, sobe um degrau se ela for fraca. Desligado por default.
 # ROUTER_ESCALATION=on
-# ROUTER_ESCALATION_MIN_SCORE=0.55    # score do 1º chunk RAG abaixo do qual é "fraco"
-# ROUTER_ESCALATION_MIN_CHARS=40      # resposta menor que isto (trim) é "fraca"
+# ROUTER_ESCALATION_MIN_SCORE=0.55        # score RAG abaixo do qual aciona o juiz LLM
+# ROUTER_ESCALATION_MIN_CHARS=40          # resposta menor que isto (trim) escala sem juiz
+# ROUTER_ESCALATION_MAX_PER_SESSION=1     # teto de escalonamentos por sessão
+# ROUTER_ESCALATION_COOLDOWN_MIN=10       # cooldown (min) entre escalonamentos da sessão
+# ROUTER_ESCALATION_FAST_ONLY=1           # 0 = também escala em mode=pro
 ```
 
 ### Variáveis de ambiente importantes
@@ -112,7 +115,7 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `RAG_HNSW_EF_SEARCH` | `40` | `ef_search` fixado na busca vetorial HNSW (reprodutibilidade) |
 | `RAG_SEMANTIC_CACHE` | `off` | Cache semântico do RAG (`on` liga). `_THRESHOLD` `0.85`, `_TTL` `60`. Ver [docs/RAG-CACHE.md](docs/RAG-CACHE.md) |
 | `REDIS_URL` | — | Se setada, o daemon conecta o cache em camadas ao Redis no boot → cache exato e semântico do RAG **compartilhados entre instâncias**. Sem ela, só memória do processo |
-| `ROUTER_ESCALATION` | `off` | Escalonamento por confiança do roteador (`on` liga). `_MIN_SCORE` `0.55`, `_MIN_CHARS` `40`. Ver [docs/ROUTER-ESCALATION.md](docs/ROUTER-ESCALATION.md) |
+| `ROUTER_ESCALATION` | `off` | Escalonamento por confiança do roteador (`on` liga). `_MIN_SCORE` `0.55`, `_MIN_CHARS` `40`, `_MAX_PER_SESSION` `1`, `_COOLDOWN_MIN` `10`, `_FAST_ONLY` `1`. Juiz LLM local + tetos por sessão. Ver [docs/ROUTER-ESCALATION.md](docs/ROUTER-ESCALATION.md) |
 
 ## 4. PostgreSQL (opcional mas recomendado)
 
