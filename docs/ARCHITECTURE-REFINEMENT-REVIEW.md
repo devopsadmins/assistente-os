@@ -447,7 +447,7 @@ que ele liga — não só a função pura.
 | 1 — Poda | ✅ (manter cache+refinar; promover canvas; investir reranker) | — | ✅ | — |
 | 2 — Gate de CI | ✅ | ✅ 13 verdes | ✅ PR #1 (+ CI verde no #2: cache + ordenação) | `feat/refino-etapa-2` |
 | 3 — Golden set | ✅ (metade "cliente" tirada do refino) | ✅ mecanismo (Epic C) + fixture sintética no CI | ✅ mecanismo entregue; golden real = tarefa da consultoria | — |
-| 4 — Reranker | ✅ | ⏳ PR aberto (rerank +3, real skip no CI) | ⏳ no PR; medição `off`×`bge-reranker-base` = passo de deployment | `refino/etapa-4-reranker` |
+| 4 — Reranker | ✅ | ✅ rerank +2 (real skip no CI) | ✅ PR #10 mergeado; medição `off`×`bge-reranker-base` = passo de deployment | `refino/etapa-4-reranker` |
 | 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ✅ PR #4 mergeado (`os prompt list`) | `refino/etapa-5-prompt-garden` |
 | 6 — Cache semântico | ✅ | ✅ 532 verdes | ✅ PR #6 mergeado | `refino/etapa-6-semantic-cache-redis` |
 | 7 — Canvas | ✅ | ✅ core 9 · cli 12 (534 total) | ✅ PR #7 mergeado | `refino/etapa-7-canvas` |
