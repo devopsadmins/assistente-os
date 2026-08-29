@@ -24,6 +24,11 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
   - Teste e2e do caminho dourado: `packages/daemon/src/test/golden-path.live.ts`
     (`RUN_E2E=1`, Ollama real, **fora do CI**) — `chat → router → RAG → local →
     resposta` com asserção de todos os spans + veredito + custo.
+  - **Teste de restauração de backup**: `packages/cli/src/test/backup-restore.live.ts`
+    (`RUN_E2E=1`, **fora do CI**) — `createFullBackup` → extrai `database.dump`
+    do ZIP → destrói dados (`DELETE` + `DROP TABLE`) → `pg_restore --clean` no
+    container → confere as contagens. "Backup sem teste de restauração não é
+    suficiente" (revisão externa, prioridade nº5).
   - Testes: `sessions.test.ts` (+1), `daemon.test.ts` (+1).
   Rollback: reverter o commit — a migração só adiciona coluna/tabela (sem
   down-migration; `execution_spans` fica órfã, inofensiva).
