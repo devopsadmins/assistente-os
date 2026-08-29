@@ -4,12 +4,12 @@ Servidores MCP configurados no `opencode.json` global (`~/.config/opencode/openc
 
 ## assistente-os (local)
 
-Exposição do kernel via MCP sobre stdio (`packages/tools`). **54 tools**, todas
+Exposição do kernel via MCP sobre stdio (`packages/tools`). **56 tools**, todas
 protegidas por Zero Trust (só disponíveis para uma soul se estiverem em
 `DEFAULT_ALLOWED_TOOLS` ou no `agent.permissions.tools` do `config.json` da soul)
 e classificadas por nível de risco L1/L2/L3 em `packages/core/src/policy.ts`.
 
-A lista completa e categorizada vive no [README](../README.md#mcp-tools-54-tools)
+A lista completa e categorizada vive no [README](../README.md#mcp-tools-56-tools)
 (fonte da verdade). Resumo por família:
 
 | Família | Tools |

@@ -8,6 +8,23 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Alterado
+
+- **Onda 3a — higiene de docs e config** (roadmap de remediação da análise
+  crítica 2026-08-29):
+  - `docs/ARCHITECTURE.md` **reescrito** para bater com o código atual — descrevia
+    um design SQLite (`memory.db`/`kernel.db`), Windows como plataforma primária e
+    "Stitch MCP" (descontinuado). Agora: Postgres+pgvector, 6 pacotes atuais,
+    Zero Trust, trace, throttle, LangGraph opt-in, deploy PM2.
+  - Contagem de tools MCP reconciliada em **56** (`docs/MCPS.md` dizia 54,
+    `docs/ROADMAP.md` 52, `docs/ARCHITECTURE.md` 16 — `packages/tools` tem 56).
+  - **`ASSISTENTE_OS_ROUTER_TIERS`** passa a ser lido (`config.ts`) — estava
+    documentado no QUICKSTART mas nenhum código consumia. `override` explícito >
+    env > `["local","zen","soul"]`. Teste em `core.test.ts`.
+  - Novo **`.env.example`** na raiz com todas as variáveis e valores de exemplo.
+  - QUICKSTART §4 corrigido ("kernel.db em SQLite" → tudo Postgres).
+  Rollback: reverter o commit (só docs + 1 fallback de env não-destrutivo).
+
 ### Segurança
 
 - **Onda 1b — rate limit + cap de concorrência no daemon** (roadmap de remediação
