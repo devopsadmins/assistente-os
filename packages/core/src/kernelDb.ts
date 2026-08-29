@@ -30,15 +30,31 @@ export async function addAgendaItem(
   return rows[0]!;
 }
 
+/**
+ * Lista itens da agenda.
+ *
+ * `soul` — quando informado, restringe a itens **daquela soul ou globais**
+ * (`soul IS NULL`); um chamador escopado (agente MCP/LangGraph com `AGENT_SOUL_ID`
+ * / `soulId`) nunca enxerga a agenda de outra soul. Omitido = todas as souls
+ * (uso administrativo: `GET /agenda` atrás do token).
+ */
 export async function getAgendaItems(
   pool: Pool,
   doneFilter: "all" | "pending" | "done" = "pending",
+  soul?: string,
 ): Promise<AgendaItem[]> {
-  let where = "";
-  if (doneFilter === "pending") where = "WHERE done = false";
-  if (doneFilter === "done") where = "WHERE done = true";
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (doneFilter === "pending") clauses.push("done = false");
+  if (doneFilter === "done") clauses.push("done = true");
+  if (soul !== undefined) {
+    params.push(soul);
+    clauses.push(`(soul = $${params.length} OR soul IS NULL)`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await pool.query<AgendaItem>(
     `SELECT * FROM agenda ${where} ORDER BY due_at ASC NULLS FIRST, ts ASC`,
+    params,
   );
   return rows;
 }

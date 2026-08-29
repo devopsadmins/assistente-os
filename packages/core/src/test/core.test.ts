@@ -82,6 +82,30 @@ test("agenda: claimDueAgenda reivindica itens vencidos e ignora futuros/já reiv
   }
 });
 
+test("agenda: getAgendaItems(soul) escopa à soul (+ itens globais); sem soul lista tudo", async () => {
+  const testDb = await createTestSchema();
+  try {
+    await addAgendaItem(testDb.pool, "soulA", "tarefa da A", null, null);
+    await addAgendaItem(testDb.pool, "soulB", "tarefa da B", null, null);
+    await addAgendaItem(testDb.pool, null, "tarefa global", null, null);
+
+    const all = await getAgendaItems(testDb.pool, "pending");
+    assert.equal(all.length, 3, "sem soul: todas");
+
+    const forA = await getAgendaItems(testDb.pool, "pending", "soulA");
+    assert.deepEqual(
+      forA.map((i) => i.title).sort(),
+      ["tarefa da A", "tarefa global"],
+      "soulA vê a sua + a global, nunca a da soulB",
+    );
+
+    const forB = await getAgendaItems(testDb.pool, "pending", "soulB");
+    assert.equal(forB.some((i) => i.title === "tarefa da A"), false, "soulB não vê a agenda da soulA");
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
 test("roteador local-first escolhe o primeiro degrau que responde", async () => {
   const testDb = await createTestSchema();
   try {

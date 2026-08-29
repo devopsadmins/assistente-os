@@ -409,11 +409,12 @@ const TOOLS: Tool[] = [
   },
   {
     name: "agenda_list",
-    description: "Lista itens da agenda por status.",
+    description: "Lista itens da agenda por status (escopado à soul do agente; itens globais incluídos).",
     inputSchema: {
       type: "object",
       properties: {
         status: { type: "string", description: "filtro de status", enum: ["pending", "done", "all"], default: "pending" },
+        soul: { type: "string", description: "id da soul (default: AGENT_SOUL_ID do processo)" },
       },
     },
   },
@@ -1295,7 +1296,12 @@ export class McpServer {
       case "agenda_list": {
         const status = args.status === "done" || args.status === "all" ? args.status : "pending";
         const pool = getPool(this.config.databaseUrl);
-        return { items: await getAgendaItems(pool, status) };
+        // Escopo: `soul` do parâmetro, senão AGENT_SOUL_ID do processo. Sem
+        // nenhum dos dois, cai no modo administrativo (todas as souls).
+        const scopeSoul =
+          (typeof args.soul === "string" && args.soul.trim() ? args.soul.trim() : undefined) ??
+          (process.env.AGENT_SOUL_ID || undefined);
+        return { items: await getAgendaItems(pool, status, scopeSoul) };
       }
 
       // Azure DevOps Tools

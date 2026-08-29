@@ -22,7 +22,7 @@
 
 ## 2. Contexto
 
-O gate **G3 do Bloco G** da norma v4.0 está reprovado: a tabela `familias` (migration `0004`, `packages/core/src/migrations.ts`) trata dado pessoal de crianças e adolescentes — `telefone`, `nome_familia`, `nome_crianca` — e dado potencialmente sensível de saúde via `questionnaire_data`/`anamnese_phase` (anamnese infanto-juvenil e psicoterapia familiar), **sem base legal, finalidade ou retenção declaradas**. A retenção existente no projeto cobre apenas sessões da soul (`limparSoul`, `alma.ts`) e embeddings por soul (`packages/memory/src/reindex.ts`), não a tabela `familias`. Gate reprovado bloqueia produção e exige item de roadmap datado com owner.
+O gate **G3 do Bloco G** da norma v4.0 está reprovado: a tabela `familias` (migration `0004`, `packages/core/src/migrations.ts`) trata dado pessoal de crianças e adolescentes — `telefone`, `nome_familia`, `nome_crianca` — e dado potencialmente sensível de saúde via `questionnaire_data`/`anamnese_phase` (anamnese infanto-juvenil e psicoterapia familiar), **sem base legal, finalidade ou retenção declaradas**. A retenção existente no projeto cobre apenas sessões da soul (`limparSoul`, `alma.ts`) e a higiene do índice RAG por soul (remoção de chunks órfãos em `indexDirectory`, `packages/memory/src/indexer.ts`), não a tabela `familias`. Gate reprovado bloqueia produção e exige item de roadmap datado com owner.
 
 Fatos adicionais verificados:
 
