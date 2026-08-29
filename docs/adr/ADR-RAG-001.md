@@ -7,7 +7,7 @@
 | Campo | Valor |
 |---|---|
 | Código | `ADR-RAG-001` |
-| Status | Aceita (2026-08-27) — medição do §6 feita: **manter `off`**; CE corrigido mas o modelo só-inglês degrada o corpus PT-BR |
+| Status | Aceita (2026-08-27; revisada 2026-08-29) — default **`off`** mantido; CE endurecido (orçamento de latência, nome de modelo lido em runtime, teste real). CE multilíngue **`Xenova/bge-reranker-base`** identificado e wired; medição `off`×`bge` no corpus real = passo de deployment (Etapa 4 do refino) |
 | Perfil de conformidade | AI-3 |
 | Módulos normativos aplicáveis | ai-protocols, observability |
 | Owner técnico | agente assistente-os (Claude Code) |
@@ -110,6 +110,42 @@ segue travando o CI do PR contra regressão de encanamento.
 Métricas de latência: `curl :4310/metrics | grep aos_rag_rerank_seconds` (só
 relevante depois que o cross-encoder voltar a funcionar).
 
+### Revisão 2026-08-29 (Etapa 4 do refino — "endurecer")
+
+Sem depender do golden set real (que saiu do escopo do refino — é dado de
+cliente; ver `docs/ARCHITECTURE-REFINEMENT-REVIEW.md` Etapa 3):
+
+1. **CE multilíngue disponível.** `Xenova/bge-reranker-base` (278M params, build
+   ONNX pronto no HF) **carrega e pontua par PT-BR corretamente** — teste real
+   `score("pm2 restart" | query pm2) > score("culinária italiana" | query pm2)`.
+   Passa a ser o `RAG_RERANK_CE_MODEL` **recomendado** para corpora PT-BR.
+   Descartados: `Xenova/mmarco-mMiniLMv2-L12-H384-v1` (401 no HF),
+   `jinaai/jina-reranker-v2-base-multilingual` ("Unsupported model type" no
+   transformers.js 2.x), `mixedbread-ai/mxbai-rerank-xsmall-v1` (idem).
+   Latência observada (`bge-reranker-base`, CPU, load a frio + 2 pares): ~2,2 s
+   steady / ~40 s primeira carga (download 283 MB). Para `RAG_RERANK_TOPN=20` numa
+   máquina limitada, esperar dezenas de segundos/consulta — daí o orçamento.
+2. **Orçamento de latência** — `RAG_RERANK_BUDGET_MS` (default **30 000**; `0`
+   desliga). `rerank()` cronometra a reordenação; estourou → abandona e volta à
+   ordem por score original (mesmo efeito de "modelo indisponível"), com
+   `logger.warn`. O CE roda inferência local não-abortável no meio de um par —
+   sem o orçamento uma consulta podia travar além do teto de UX (~180 s).
+3. **Nome do modelo lido em runtime** — `crossEncoderModel()` em vez de `const`
+   no load do módulo; `RAG_RERANK_CE_MODEL` passa a valer sem reimportar.
+4. **Teste do caminho real** — `packages/memory/src/test/rerank.test.ts`,
+   guardado por `RAG_RERANK_TEST_MODEL` (skip no CI). O doc irrelevante entra em
+   1º com score de busca maior; só um rerank que de fato pontuou o par consegue
+   invertê-lo. Cobre o tokenizer+`AutoModelForSequenceClassification` que não
+   tinha teste (a origem do bug do T1.4). + `__resetRerankState()` para exercitar
+   o fallback.
+
+**Medição pendente (passo de deployment, não CI):** na máquina do deploy, com o
+índice real da soul,
+`RAG_RERANK_CE_MODEL=Xenova/bge-reranker-base os rag eval <soul> --rerank cross-encoder`
+× `--rerank off` lado a lado; colar hit@1/hit@3/MRR/recall@5 e latência aqui.
+Só então decidir flipar o default por `.env` do deploy. Default no código
+**permanece `off`**.
+
 ## 7. Gatilhos de reavaliação
 
 - Troca do modelo de embedding (muda o baseline de relevância).
@@ -123,3 +159,4 @@ relevante depois que o cross-encoder voltar a funcionar).
 | 2026-08-27 | Criada — ativação por env, latência instrumentada, validação por `os rag eval` | Claude Code |
 | 2026-08-27 | §6 medido (T1.3): baseline hit@1 73,9%; cross-encoder == off (bug em `rerank.ts` / `@xenova/transformers` 2.17.2); decisão: manter `off` | Claude Code |
 | 2026-08-27 | T1.4: CE corrigido (tokenizer+model diretos) + env `RAG_RERANK_CE_MODEL`; medido com ms-marco-MiniLM (inglês) → hit@1 56,5% (pior); decisão mantida: `off` | Claude Code |
+| 2026-08-29 | Etapa 4 do refino: `Xenova/bge-reranker-base` identificado como CE multilíngue viável (carrega + pontua PT-BR); `RAG_RERANK_BUDGET_MS` (orçamento de latência); modelo lido em runtime; teste real guardado. Default `off` mantido; medição no corpus real vira passo de deployment (golden set saiu do refino) | Claude Code |

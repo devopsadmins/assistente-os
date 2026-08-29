@@ -18,20 +18,38 @@ export interface RerankConfig {
   mode: RerankMode;
   topN: number;
   topK: number;
+  /**
+   * Orçamento de tempo (ms) para reordenar UMA consulta. Estourou → abandona o
+   * rerank e volta à ordem por score original (mesmo efeito de "modelo
+   * indisponível"). Protege a latência em hardware limitado — o cross-encoder
+   * roda inferência local em CPU e não é abortável no meio de um par.
+   */
+  budgetMs: number;
 }
 
 // Default é um cross-encoder MS MARCO só-inglês — degrada corpora não-ingleses
 // (medido: -17pp de hit@1 no corpus PT-BR de `consultoria_ia`, ADR-RAG-001 §6).
 // Para PT-BR, apontar `RAG_RERANK_CE_MODEL` para um CE multilíngue, ex.:
-// `Xenova/mmarco-mMiniLMv2-L12-H384-v1`.
-const CROSS_ENCODER_MODEL = process.env.RAG_RERANK_CE_MODEL || "Xenova/ms-marco-MiniLM-L-6-v2";
+// `Xenova/bge-reranker-base`. Lido a cada carga do modelo (não no load do
+// módulo) — assim `RAG_RERANK_CE_MODEL` vale sem reimportar e o teste guardado
+// consegue trocar o modelo.
+const DEFAULT_CROSS_ENCODER_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2";
+function crossEncoderModel(): string {
+  return process.env.RAG_RERANK_CE_MODEL || DEFAULT_CROSS_ENCODER_MODEL;
+}
 
 export function rerankConfig(fallbackTopK = 5): RerankConfig {
   const raw = (process.env.RAG_RERANK ?? "off").toLowerCase();
   const mode: RerankMode = raw === "llm" || raw === "cross-encoder" ? raw : "off";
   const topN = Number(process.env.RAG_RERANK_TOPN) || 20;
   const topK = Number(process.env.RAG_RERANK_TOPK) || fallbackTopK;
-  return { mode, topN, topK };
+  // Default 30s: bem abaixo do teto de UX (≈180s/consulta em hardware limitado,
+  // Etapa 4 do refino) mas suficiente p/ TOPN=20 numa máquina folgada (~2,5s medido).
+  // `RAG_RERANK_BUDGET_MS=0` desliga o teto explicitamente.
+  const rawBudget = process.env.RAG_RERANK_BUDGET_MS;
+  const parsedBudget = rawBudget !== undefined ? Number(rawBudget) : NaN;
+  const budgetMs = Number.isFinite(parsedBudget) && parsedBudget >= 0 ? parsedBudget : 30_000;
+  return { mode, topN, topK, budgetMs };
 }
 
 export interface Rerankable {
@@ -58,9 +76,10 @@ async function getCrossEncoderScorer(): Promise<PairScorer | null> {
   if (!ceTokenizer || !ceModel) {
     try {
       const t = await import("@xenova/transformers");
+      const name = crossEncoderModel();
       [ceTokenizer, ceModel] = await Promise.all([
-        t.AutoTokenizer.from_pretrained(CROSS_ENCODER_MODEL),
-        t.AutoModelForSequenceClassification.from_pretrained(CROSS_ENCODER_MODEL),
+        t.AutoTokenizer.from_pretrained(name),
+        t.AutoModelForSequenceClassification.from_pretrained(name),
       ]);
     } catch (err) {
       crossEncoderFailed = true;
@@ -123,8 +142,18 @@ export async function rerank<T extends Rerankable>(
   if (!scorer && cfg.mode === "llm") scorer = await getLlmScorer();
   if (!scorer) return byOriginal();
 
+  const budgetMs = cfg.budgetMs > 0 ? cfg.budgetMs : Infinity;
+  const startedAt = Date.now();
   const scored: Array<{ item: T; s: number }> = [];
   for (const item of pool) {
+    if (Date.now() - startedAt > budgetMs) {
+      // Estourou o orçamento no meio: nada de resultado parcial meio-ordenado —
+      // volta à ordem por score original, previsível (== "modelo indisponível").
+      logger.warn(
+        `[rerank] orçamento de ${cfg.budgetMs}ms estourado após ${scored.length}/${pool.length} pares; ordem por score original`,
+      );
+      return byOriginal();
+    }
     let s: number;
     try {
       s = await scorer(query, item.body);
@@ -136,4 +165,11 @@ export async function rerank<T extends Rerankable>(
   }
   scored.sort((a, b) => b.s - a.s);
   return scored.slice(0, cfg.topK).map((x) => x.item);
+}
+
+/** Só para testes: limpa o cache do modelo cross-encoder e o flag de falha grudada. */
+export function __resetRerankState(): void {
+  ceTokenizer = null;
+  ceModel = null;
+  crossEncoderFailed = false;
 }

@@ -23,10 +23,14 @@ gate em CI ou pré-merge.
 - **Baseline (`--rerank off`):** hit@1 **73,9%** · hit@3 87,0% · hit@5 95,7% ·
   MRR 0,809 · recall@5 84,8%. Números completos e análise: `docs/adr/ADR-RAG-001.md` §6.
 - **`--rerank cross-encoder`:** o scorer em `packages/memory/src/rerank.ts` foi
-  corrigido (T1.4) e roda de fato. Mas o modelo default
+  corrigido (T1.4) e roda de fato. O modelo default
   `Xenova/ms-marco-MiniLM-L-6-v2` é só-inglês e **piora** o corpus PT-BR
-  (hit@1 73,9% → 56,5%). Apontar `RAG_RERANK_CE_MODEL` para um CE multilíngue
-  antes de considerar ativar. Decisão atual: `RAG_RERANK=off`.
+  (hit@1 73,9% → 56,5%). Para PT-BR use
+  `RAG_RERANK_CE_MODEL=Xenova/bge-reranker-base` — CE multilíngue com build ONNX,
+  verificado (Etapa 4 do refino): carrega e pontua par PT-BR corretamente.
+  `RAG_RERANK_BUDGET_MS` (default 30 s) abandona o rerank se a consulta estourar
+  o orçamento. Decisão atual no código: `RAG_RERANK=off` — a medição
+  `off`×`bge-reranker-base` no corpus real (abaixo) é o que autoriza flipar.
 - **Gate:** o CI do PR trava só a fixture sintética (`rag-eval.test.ts`). O eval
   do corpus real é **passo manual** — `os rag eval consultoria_ia --min-hit1 <piso>`
   antes de qualquer release que toque embedder / índice / config de RAG. Cole a
