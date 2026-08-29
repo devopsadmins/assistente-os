@@ -113,7 +113,23 @@ desta jornada). Hoje é peso morto.
 
 ---
 
-## Etapa 3 — T1.3 Golden set do RAG
+## Etapa 3 — T1.3 Golden set do RAG  — ✅ mecanismo feito; golden real fora do refino
+
+> **Decisão (2026-08-29).** O golden set **real** (`~/.assistant-os/rag-golden.jsonl`,
+> 23 casos sobre a hub-kb da Dimastec) é **dado de cliente**, escopado à soul
+> `consultoria_ia`, e já vive **fora do repo**. Crescê-lo, definir os pisos de
+> auditoria a partir do corpus da Dimastec e decidir CI-vs-manual são tarefas da
+> **consultoria**, não do refino. O que é do **projeto** — o *mecanismo* de eval —
+> **já está entregue** (Epic C do plano RAG audit-readiness):
+>
+> - `packages/memory/src/rag-eval.ts` — runner (`runRagEval`, `parseGoldenJsonl`).
+> - `os rag eval [<soul>] [--rerank …] [--min-hit1 …]` — CLI, exit 1 abaixo do piso.
+> - `packages/memory/eval/rag-golden.sample.jsonl` — fixture sintética (`__eval__`,
+>   `LiteralEmbedder`) travando o CI do PR contra regressão de encanamento.
+> - `docs/RAG-EVAL.md` — como um deployment monta o seu golden set real.
+>
+> As 5 perguntas abaixo eram todas da metade "cliente" — respondê-las deixa de ser
+> pré-requisito para fechar o refino.
 
 **Contexto.** 23 casos, escritos por mim lendo os docs, com 3 queries ajustadas
 quando falharam. Cobre só a hub-kb (~13 de 281 arquivos da soul). hit@1 73,9% em
@@ -147,38 +163,41 @@ n=23 tem IC ~±18pp.
 
 ---
 
-## Etapa 4 — T1.4 Reranker cross-encoder
+## Etapa 4 — T1.4 Reranker cross-encoder  — ✅ endurecido (PR `refino/etapa-4-reranker`)
+
+> **Feito (2026-08-29).** Sem depender do golden set real (ver Etapa 3):
+>
+> 1. **CE multilíngue disponível achado.** `Xenova/bge-reranker-base` (278M, ONNX
+>    pronto no HF) **carrega e pontua par PT-BR corretamente** aqui — `rel > irr`
+>    num par pm2 vs. culinária. Vira o `RAG_RERANK_CE_MODEL` recomendado no
+>    `ADR-RAG-001`; `mmarco-mMiniLMv2` segue 401, `jina-reranker-v2` e
+>    `mxbai-rerank-xsmall` não têm build transformers.js-compatível.
+> 2. **Orçamento de latência** (`RAG_RERANK_BUDGET_MS`, default 30 000 — teto de UX
+>    é ≈180 s/consulta em hardware limitado). Estourou no meio da reordenação →
+>    abandona e volta à ordem por score original (`logger.warn`). O CE roda
+>    inferência local não-abortável; sem isso uma consulta podia travar.
+> 3. **Nome do modelo lido preguiçosamente** (`crossEncoderModel()` em vez de
+>    `const` no load) — `RAG_RERANK_CE_MODEL` passa a valer sem reimportar; o teste
+>    guardado consegue trocar o modelo de verdade.
+> 4. **Teste real do caminho tokenizer+model** (`RAG_RERANK_TEST_MODEL`, skip no CI)
+>    — o irrelevante entra em 1º com score de busca maior; só um rerank que de fato
+>    pontuou inverte. Era o buraco que deixou o bug do T1.4 passar.
+> 5. `__resetRerankState()` para os testes exercitarem o fallback de forma
+>    determinística.
+>
+> Default **segue `off`** (Q3: não remover o código — hardware limitado). A medição
+> `off` × `bge-reranker-base` no corpus real é **passo de deployment**, mesma
+> moldura da Etapa 3 — registra-se em `ADR-RAG-001 §6` quando rodar.
 
 **Contexto.** Consertado (era no-op silencioso). `RAG_RERANK_CE_MODEL` permite
 trocar o modelo. `ms-marco-MiniLM-L-6-v2` (default, só-inglês) → hit@1 73,9% → 56,5%.
 `mmarco-mMiniLMv2` não tem build ONNX pronto no HF.
 
-**Depende de:** Etapa 1 Q3 (se "remover", esta etapa não existe) e Etapa 3
-(golden set decente para medir).
-
-**Perguntas**
-1. Se for investir: aceitável **converter** um cross-encoder multilíngue para ONNX
-   localmente (ex.: `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` via
-   `optimum`/`transformers.js` scripts)? Ou só usar algo já publicado como
-   `Xenova/*`?
-   → RESPOSTA: temos que medir a performance e resposta, estou com hardware limitado
-2. Teto de latência aceitável por consulta com rerank ligado (CPU)? O eval com o
-   modelo inglês levou ~58s para 23 casos (~2,5s/caso).
-   → RESPOSTA: 180 segundos, estou com hardware limitado
-3. Se o multilíngue também não superar o baseline `off` de forma clara, o veredito
-   é `off` **permanente** + remover o código?
-   → RESPOSTA: nao devido ao hardware
-
-**Testes unitários**
-- Novo teste (guardado por `RAG_RERANK_TEST_MODEL` env, skip no CI padrão) que
-  carrega o modelo real 1×, pontua 2 pares (relevante vs. irrelevante) e asserta
-  `score(relevante) > score(irrelevante)` — cobre o caminho tokenizer+model que
-  hoje não tem teste.
-
-**Validação com você**
-- `os rag eval consultoria_ia --rerank off` × `--rerank cross-encoder`
-  (`RAG_RERANK_CE_MODEL=<multilíngue>`) lado a lado; você aprova ou não a ativação,
-  registro em `ADR-RAG-001 §6`.
+**Respostas (mantidas para registro)**
+1. CE multilíngue: medir performance/resposta, hardware limitado.
+   → `Xenova/bge-reranker-base` já publicado como `Xenova/*`, sem conversão local.
+2. Teto de latência: 180 s/consulta. → `RAG_RERANK_BUDGET_MS` default 30 s, ajustável.
+3. Se não superar o baseline: **não** remover o código (hardware limitado).
 
 ---
 
@@ -427,8 +446,8 @@ que ele liga — não só a função pura.
 | 0 — Objetivo/ambiente | ✅ | — | ✅ | — |
 | 1 — Poda | ✅ (manter cache+refinar; promover canvas; investir reranker) | — | ✅ | — |
 | 2 — Gate de CI | ✅ | ✅ 13 verdes | ✅ PR #1 (+ CI verde no #2: cache + ordenação) | `feat/refino-etapa-2` |
-| 3 — Golden set | ⏳ aguardando reunião | ☐ | ☐ | — |
-| 4 — Reranker | ☐ | ☐ | ☐ | — |
+| 3 — Golden set | ✅ (metade "cliente" tirada do refino) | ✅ mecanismo (Epic C) + fixture sintética no CI | ✅ mecanismo entregue; golden real = tarefa da consultoria | — |
+| 4 — Reranker | ✅ | ⏳ PR aberto (rerank +3, real skip no CI) | ⏳ no PR; medição `off`×`bge-reranker-base` = passo de deployment | `refino/etapa-4-reranker` |
 | 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ✅ PR #4 mergeado (`os prompt list`) | `refino/etapa-5-prompt-garden` |
 | 6 — Cache semântico | ✅ | ✅ 532 verdes | ✅ PR #6 mergeado | `refino/etapa-6-semantic-cache-redis` |
 | 7 — Canvas | ✅ | ✅ core 9 · cli 12 (534 total) | ✅ PR #7 mergeado | `refino/etapa-7-canvas` |
