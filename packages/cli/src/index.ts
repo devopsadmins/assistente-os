@@ -24,6 +24,7 @@ import {
   rejectRule,
   resendApprovalCode,
   getUsageSummary,
+  getTrace,
   type UsageSummaryFilters,
   buildSoulCanvas,
   mergeCanvasDecisions,
@@ -84,6 +85,7 @@ Uso:
   os graph <soul> list               lista entidades/relações/observações
   os costs                           resumo de custos
   os costs usage [--soul <id>] [--from <date>] [--to <date>]  resumo agregado de uso/tokens
+  os trace <trace-id>                reconstrói um turno de chat (linha canônica + spans por estágio)
   os agenda add <soul> <título> [--due <iso>] [corpo...]
                                      agenda uma tarefa (soul "-" = nenhuma)
   os agenda list [pending|done|all]  lista itens da agenda (padrão: pending)
@@ -411,6 +413,33 @@ async function main(): Promise<void> {
       console.log("últimas chamadas:");
       for (const c of await recentCalls(pool, "main", 5)) {
         console.log(`  ${c.ts} ${c.provider}/${c.model} ${c.inputTokens}+${c.outputTokens}t $${c.cost.toFixed(6)} ${c.status}`);
+      }
+      return;
+    }
+
+    case "trace": {
+      const traceId = args[0];
+      if (!traceId) {
+        console.error("uso: os trace <trace-id>");
+        process.exitCode = 1;
+        return;
+      }
+      const pool = getPool(config.databaseUrl);
+      const { execution, spans } = await getTrace(pool, traceId);
+      if (!execution && spans.length === 0) {
+        console.log(`(trace não encontrado: ${traceId})`);
+        return;
+      }
+      if (execution) {
+        console.log(
+          `turno: soul=${execution.soul} tier=${execution.tier ?? "-"} model=${execution.model ?? "-"} ` +
+            `status=${execution.status} tokens=${execution.tokensIn}+${execution.tokensOut} @ ${execution.ts}`,
+        );
+      }
+      console.log(`spans (${spans.length}):`);
+      for (const s of spans) {
+        const tag = s.level === "err" ? " [ERR]" : "";
+        console.log(`  +${String(s.elapsedMs).padStart(6)}ms  ${s.module.padEnd(14)} ${s.message}${tag}`);
       }
       return;
     }

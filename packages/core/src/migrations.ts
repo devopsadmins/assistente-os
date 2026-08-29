@@ -342,4 +342,29 @@ export const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
     `,
   },
+  {
+    // Onda 2 da remediação: trace de execução unificado. `trace_id` liga a linha
+    // canônica em execution_logs aos spans por estágio (router/rag/ollama/…),
+    // que antes só existiam efêmeros no WS `chat.step`. "Onde falhou" vira
+    // consultável: `os trace <id>` / `GET /trace/:id`.
+    id: "0015_execution_trace",
+    sql: `
+      ALTER TABLE execution_logs ADD COLUMN IF NOT EXISTS trace_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_execution_logs_trace ON execution_logs (trace_id);
+
+      CREATE TABLE IF NOT EXISTS execution_spans (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        trace_id TEXT NOT NULL,
+        soul TEXT NOT NULL,
+        session_id BIGINT,
+        ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+        seq INTEGER NOT NULL,
+        module TEXT NOT NULL,
+        message TEXT NOT NULL,
+        level TEXT NOT NULL DEFAULT 'info',
+        elapsed_ms INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_execution_spans_trace ON execution_spans (trace_id, seq);
+    `,
+  },
 ];

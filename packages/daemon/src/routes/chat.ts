@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import {
   loadConfig,
@@ -15,6 +15,7 @@ import {
   sessionHistoryTurns,
   sessionHistoryMaxChars,
   recordExecution,
+  recordExecutionSpan,
   logger,
   sanitizeUserPrompt,
   sanitizeLLMResponse,
@@ -211,18 +212,43 @@ export async function handleChat(
       sendJson(res, 404, { error: "soul não encontrada" });
       return true;
     }
-    // Passos do pipeline de chat, transmitidos ao vivo pro painel "Log de
-    // execução" da UI (consumido em app.js via WS, evento "chat.step").
+    const config = await loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+
+    // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
+    // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
+    // header `x-trace-id` da resposta. `os trace <id>` / `GET /trace/:id`.
+    const traceId = randomUUID();
+    const traceStartedAt = Date.now();
+    let traceSeq = 0;
+    let traceSessionId: number | null = null;
+    try {
+      res.setHeader("x-trace-id", traceId);
+    } catch {
+      /* headers já enviados — ignora */
+    }
+
+    // Passos do pipeline de chat: ao vivo no WS `chat.step` E persistidos como
+    // spans (diagnóstico — não entram em custo/uso; falha de escrita é ignorada).
     const emitStep = (module: string, message: string, level?: "err") => {
       try {
-        hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level });
+        hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
       } catch {
         /* ws opcional */
       }
+      void recordExecutionSpan(pool, {
+        traceId,
+        soul: soul.id,
+        sessionId: traceSessionId,
+        seq: traceSeq++,
+        module,
+        message,
+        level: level ?? "info",
+        elapsedMs: Date.now() - traceStartedAt,
+      }).catch(() => {
+        /* span é diagnóstico opcional */
+      });
     };
-
-    const config = await loadConfig({ home });
-    const pool = getPool(config.databaseUrl);
     {
       // ---- Limites: teto diário de custo e turnos por sessão ----
       const dailyLimit = soul.config.dailyLimit;
@@ -242,6 +268,7 @@ export async function handleChat(
           ? "tok-" + createHash("sha256").update(authHeader).digest("hex").slice(0, 12)
           : "default");
       const session = await openSession(pool, soul.id, maxTurns, dailyLimit, clientKey);
+      traceSessionId = session.id;
       if (session.promptCount >= session.maxTurns) {
         sendJson(res, 429, { error: "limite de turnos da sessão atingido", maxTurns: session.maxTurns, prompts: session.promptCount });
         return true;
@@ -659,6 +686,7 @@ export async function handleChat(
         verdict: built.verdict == null ? undefined : JSON.stringify(built.verdict),
         status: succeeded ? "ok" : "failed",
         note: `latency_ms=${Date.now() - startedAt}`,
+        traceId,
       });
       // Linha canônica de execução real no router_history (a que getUsageSummary conta).
       // Só em sucesso — falha/timeout deixa apenas as linhas de sonda de route().
