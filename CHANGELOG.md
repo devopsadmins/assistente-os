@@ -8,6 +8,31 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Onda 2 — trace de execução unificado** (roadmap de remediação da análise
+  crítica 2026-08-29; migração `0015_execution_trace`): um `trace_id` (`randomUUID`)
+  por turno de chat, no header de resposta **`x-trace-id`** e na coluna
+  `execution_logs.trace_id`. Nova tabela **`execution_spans`** (`trace_id`, `seq`,
+  `module`, `message`, `level`, `elapsed_ms`) — cada `emitStep` do pipeline
+  (`chat`/`rag`/`router`/`ollama`/`langgraph`/`persistencia`/…), que antes só
+  existia efêmero no WS `chat.step`, agora persiste como span (diagnóstico —
+  não entra em custo/uso; falha de escrita é ignorada).
+  - `getTrace(pool, id)` → `{ execution, spans[] }` reconstrói o turno em ordem.
+  - **`GET /trace/:id`** (com token) e **`os trace <id>`** — "onde falhou" vira
+    consultável.
+  - Teste e2e do caminho dourado: `packages/daemon/src/test/golden-path.live.ts`
+    (`RUN_E2E=1`, Ollama real, **fora do CI**) — `chat → router → RAG → local →
+    resposta` com asserção de todos os spans + veredito + custo.
+  - **Teste de restauração de backup**: `packages/cli/src/test/backup-restore.live.ts`
+    (`RUN_E2E=1`, **fora do CI**) — `createFullBackup` → extrai `database.dump`
+    do ZIP → destrói dados (`DELETE` + `DROP TABLE`) → `pg_restore --clean` no
+    container → confere as contagens. "Backup sem teste de restauração não é
+    suficiente" (revisão externa, prioridade nº5).
+  - Testes: `sessions.test.ts` (+1), `daemon.test.ts` (+1).
+  Rollback: reverter o commit — a migração só adiciona coluna/tabela (sem
+  down-migration; `execution_spans` fica órfã, inofensiva).
+
 ### Alterado
 
 - **Onda 3a — higiene de docs e config** (roadmap de remediação da análise

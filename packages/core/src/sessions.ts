@@ -65,6 +65,7 @@ export interface ExecutionLog {
   verdict: string | null;
   status: string;
   note: string | null;
+  traceId: string | null;
 }
 
 export interface ExecutionLogInput {
@@ -81,6 +82,8 @@ export interface ExecutionLogInput {
   verdict?: string;
   status?: string;
   note?: string;
+  /** Correlaciona esta linha canônica aos spans por estágio (`execution_spans`). */
+  traceId?: string;
 }
 
 /**
@@ -227,8 +230,8 @@ export function sanitizeVerdictForLog(verdict: string | undefined): string | nul
 /** Registra UMA execução (contexto montado + turno disparado) de forma imutável. */
 export async function recordExecution(pool: Pool, input: ExecutionLogInput): Promise<void> {
   await pool.query(
-    `INSERT INTO execution_logs (session_id, soul, ts, kind, prompt_hash, model, tier, files_loaded, tokens_in, tokens_out, context_chars, verdict, status, note)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    `INSERT INTO execution_logs (session_id, soul, ts, kind, prompt_hash, model, tier, files_loaded, tokens_in, tokens_out, context_chars, verdict, status, note, trace_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
     [
       input.sessionId ?? null,
       input.soul,
@@ -244,8 +247,84 @@ export async function recordExecution(pool: Pool, input: ExecutionLogInput): Pro
       sanitizeVerdictForLog(input.verdict),
       input.status ?? "ok",
       input.note ?? null,
+      input.traceId ?? null,
     ],
   );
+}
+
+// ── Spans de execução (trace por estágio — Onda 2) ─────────────────────
+
+export interface ExecutionSpan {
+  id: number;
+  traceId: string;
+  soul: string;
+  sessionId: number | null;
+  ts: string;
+  seq: number;
+  module: string;
+  message: string;
+  level: string;
+  elapsedMs: number;
+}
+
+export interface ExecutionSpanInput {
+  traceId: string;
+  soul: string;
+  sessionId?: number | null;
+  seq: number;
+  module: string;
+  message: string;
+  level?: string;
+  elapsedMs?: number;
+}
+
+/** Grava um span (um estágio do turno). Diagnóstico — não entra em custo/uso. */
+export async function recordExecutionSpan(pool: Pool, input: ExecutionSpanInput): Promise<void> {
+  await pool.query(
+    `INSERT INTO execution_spans (trace_id, soul, session_id, ts, seq, module, message, level, elapsed_ms)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      input.traceId,
+      input.soul,
+      input.sessionId ?? null,
+      nowIso(),
+      input.seq,
+      input.module,
+      input.message.slice(0, 2000),
+      input.level ?? "info",
+      Math.max(0, Math.floor(input.elapsedMs ?? 0)),
+    ],
+  );
+}
+
+function rowToSpan(row: Record<string, unknown>): ExecutionSpan {
+  return {
+    id: Number(row.id),
+    traceId: String(row.trace_id),
+    soul: String(row.soul),
+    sessionId: row.session_id == null ? null : Number(row.session_id),
+    ts: String(row.ts),
+    seq: Number(row.seq),
+    module: String(row.module),
+    message: String(row.message),
+    level: String(row.level),
+    elapsedMs: Number(row.elapsed_ms),
+  };
+}
+
+/** Reconstrói um turno: a linha canônica + os spans por estágio, em ordem. */
+export async function getTrace(
+  pool: Pool,
+  traceId: string,
+): Promise<{ execution: ExecutionLog | null; spans: ExecutionSpan[] }> {
+  const [exec, spans] = await Promise.all([
+    pool.query("SELECT * FROM execution_logs WHERE trace_id = $1 ORDER BY id DESC LIMIT 1", [traceId]),
+    pool.query("SELECT * FROM execution_spans WHERE trace_id = $1 ORDER BY seq ASC", [traceId]),
+  ]);
+  return {
+    execution: exec.rows[0] ? rowToExecution(exec.rows[0]) : null,
+    spans: spans.rows.map(rowToSpan),
+  };
 }
 
 export async function listExecutions(pool: Pool, soul?: string, limit = 20): Promise<ExecutionLog[]> {
@@ -291,5 +370,6 @@ function rowToExecution(row: Record<string, unknown>): ExecutionLog {
     verdict: row.verdict == null ? null : String(row.verdict),
     status: String(row.status),
     note: row.note == null ? null : String(row.note),
+    traceId: row.trace_id == null ? null : String(row.trace_id),
   };
 }

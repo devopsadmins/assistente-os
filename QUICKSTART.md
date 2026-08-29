@@ -121,6 +121,7 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `MCP_ZERO_TRUST` | `off` | `on` liga o enforcement de **autonomia × nível de risco** no gate de tools do MCP e do agente LangGraph (`ask` bloqueia L3 sem confirmação; `suggest` bloqueia L2/L3). Desligado = só a allowlist (comportamento pré-Onda-1). A **allowlist** e o **filtro de tools do LangGraph** valem sempre. Ligar só depois de declarar `autonomy`/`approvalPolicy` nas souls |
 | `AOS_RATE_LIMIT` | `600` | Máx. de requisições por cliente por janela (`X-Client-Id` \| hash do token \| IP). Estouro → `429` + `Retry-After`. `0` desliga. `_WINDOW_SEC` `60` |
 | `AOS_MAX_CONCURRENT_EXEC` | `8` | Máx. de execuções caras simultâneas (`/chat`, `/api/missions/*`, `/api/pipelines/*`). Estouro → `503` sem fila. `0` desliga |
+| `RUN_E2E` | — | `1` habilita o teste e2e do caminho dourado (`golden-path.live.ts`, exige Ollama vivo; fora do CI) |
 
 > Um `.env.example` na raiz do repo lista todas as variáveis com valores de
 > exemplo — copie o que precisar para `~/.assistant-os/.env`.
