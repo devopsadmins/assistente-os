@@ -10,6 +10,16 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Alterado
 
+- **Cache do RAG compartilhado via Redis** (refino, Etapa 6): o cache semântico
+  (`packages/memory/src/rag-semantic-cache.ts`) deixa de usar um `Map` bare e
+  passa a persistir pelo `cache` em camadas do core (`ragSemanticCacheGet/Set`
+  agora `async`; um bucket = um valor JSON `[{v,p,exp}]`, cosseno em Node). O
+  daemon chama `cache.init()` no boot **se `REDIS_URL` estiver setada** → cache
+  exato **e** semântico do RAG compartilhados entre instâncias; sem `REDIS_URL`,
+  só o `Map` em memória (comportamento anterior). `close()` do daemon fecha o
+  socket do Redis. Ref: Etapa 6 de `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o commit (volta ao `Map` por processo).
+
 - **Montador de prompt: índice de skills separado do corpo** (refino, Etapa 9):
   `renderSkillsPrompt` foi partido em `renderSkillsIndex(available)` (lista
   nome+descrição — semi-estática por soul, vai no prefixo) e
