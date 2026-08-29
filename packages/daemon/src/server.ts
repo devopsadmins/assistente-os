@@ -15,6 +15,7 @@ import { VoiceHandler } from "./voice.js";
 import { WhatsAppChannel } from "./channels/whatsapp.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { sendJson, type RequestContext, type RouteHandler } from "./routes/shared.js";
+import { rateLimitHit, tryAcquireExecSlot, releaseExecSlot, execInFlight, isExpensivePath } from "./throttle.js";
 import { handleSouls } from "./routes/souls.js";
 import { handleFamilias } from "./routes/familias.js";
 import { handleChat } from "./routes/chat.js";
@@ -472,12 +473,44 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     return;
   }
 
-  for (const handler of ROUTE_HANDLERS) {
-    if (await handler(req, res, url, path, context)) return;
+  // Rate limit por cliente (Onda 1b). Fora: /health e /metrics (monitoramento).
+  if (path !== "/health" && path !== "/metrics") {
+    const rl = rateLimitHit(clientKeyFor(req, token));
+    if (!rl.ok) {
+      res.setHeader("Retry-After", String(rl.retryAfterSec));
+      sendJson(res, 429, { error: "rate limit excedido", retryAfterSec: rl.retryAfterSec });
+      return;
+    }
   }
 
-  // Fallback original
-  sendJson(res, 404, { error: `rota não encontrada: ${req.method} ${path}` });
+  // Cap de execuções caras simultâneas (chat / missões / pipelines): o slot é
+  // segurado pela duração da rota; estouro → 503 sem enfileirar.
+  const expensive = isExpensivePath(path);
+  if (expensive && !tryAcquireExecSlot()) {
+    res.setHeader("Retry-After", "5");
+    sendJson(res, 503, { error: "servidor ocupado: execuções simultâneas no limite", inFlight: execInFlight() });
+    return;
+  }
+  try {
+    for (const handler of ROUTE_HANDLERS) {
+      if (await handler(req, res, url, path, context)) return;
+    }
+    // Fallback original
+    sendJson(res, 404, { error: `rota não encontrada: ${req.method} ${path}` });
+  } finally {
+    if (expensive) releaseExecSlot();
+  }
+}
+
+/** Chave de rate limit: X-Client-Id, senão hash do token, senão IP do socket. */
+function clientKeyFor(req: IncomingMessage, token?: string): string {
+  const hdr = req.headers["x-client-id"];
+  if (typeof hdr === "string" && hdr.trim()) return "cid:" + hdr.trim().slice(0, 64);
+  if (token) {
+    const auth = req.headers.authorization;
+    if (typeof auth === "string" && auth) return "tok:" + createHash("sha256").update(auth).digest("hex").slice(0, 16);
+  }
+  return "ip:" + (req.socket.remoteAddress ?? "unknown");
 }
 
 /** Resolve packages/daemon/web a partir deste arquivo (funciona em src/ e dist/). */
