@@ -106,6 +106,26 @@ test("agenda: getAgendaItems(soul) escopa à soul (+ itens globais); sem soul li
   }
 });
 
+test("config: ASSISTENTE_OS_ROUTER_TIERS sobrescreve os degraus (antes era documentado mas ignorado)", () => {
+  const prev = process.env.ASSISTENTE_OS_ROUTER_TIERS;
+  try {
+    delete process.env.ASSISTENTE_OS_ROUTER_TIERS;
+    assert.deepEqual(loadConfig({ home: tempHome("rt-default").dir }).routerTiers, ["local", "zen", "soul"]);
+
+    process.env.ASSISTENTE_OS_ROUTER_TIERS = " zen , soul ";
+    assert.deepEqual(loadConfig({ home: tempHome("rt-env").dir }).routerTiers, ["zen", "soul"]);
+
+    // override explícito ainda vence o env
+    assert.deepEqual(
+      loadConfig({ home: tempHome("rt-ovr").dir, routerTiers: ["local"] }).routerTiers,
+      ["local"],
+    );
+  } finally {
+    if (prev === undefined) delete process.env.ASSISTENTE_OS_ROUTER_TIERS;
+    else process.env.ASSISTENTE_OS_ROUTER_TIERS = prev;
+  }
+});
+
 test("roteador local-first escolhe o primeiro degrau que responde", async () => {
   const testDb = await createTestSchema();
   try {

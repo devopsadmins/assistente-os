@@ -116,7 +116,12 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
         ? "recusar"
         : "aviso"),
     ragHnswEfSearch: overrides.ragHnswEfSearch ?? (Number(process.env.RAG_HNSW_EF_SEARCH) || 40),
-    routerTiers: overrides.routerTiers || ["local", "zen", "soul"],
+    routerTiers:
+      overrides.routerTiers ||
+      (process.env.ASSISTENTE_OS_ROUTER_TIERS
+        ? process.env.ASSISTENTE_OS_ROUTER_TIERS.split(",").map((t) => t.trim()).filter(Boolean)
+        : null) ||
+      ["local", "zen", "soul"],
     webhookSecret: overrides.webhookSecret ?? process.env.ASSISTENTE_OS_WEBHOOK_SECRET,
     defaultMaxTurns: overrides.defaultMaxTurns ?? (Number(process.env.ASSISTENTE_OS_MAX_TURNS) || 10),
     adoOrg: overrides.adoOrg ?? process.env.AZURE_DEVOPS_ORG ?? process.env.ADO_ORG,

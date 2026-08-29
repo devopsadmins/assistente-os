@@ -442,7 +442,7 @@ type SoulCreateResult =
 - [x] `soul_create` exige `AGENT_SOUL_ID` + autorização L3 da soul chamadora (`authorizeAgentSoul`).
 - [x] `worktree_list` via MCP e via REST usam a mesma `listWorktrees`.
 - [x] Zero Trust: `soul_create` fora da allowlist → não aparece em `tools/list`.
-- [ ] `docs/MCPS.md` atualizado (52 tools) — README atualizado; MCPS.md pendente.
+- [x] `docs/MCPS.md` atualizado — contagem reconciliada em **56 tools** (Onda 3a da remediação).
 
 Testes: `tools.test.ts` +2 (worktree_list exposta/responde; soul_create dry-run/commit/hash), `worktree-manager.test.ts` +1 (listWorktrees filtra + parse). Suítes: core 218, daemon 101, memory 44, tools 21, cli 2 — verdes.
 
