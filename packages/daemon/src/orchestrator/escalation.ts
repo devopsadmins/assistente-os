@@ -14,6 +14,8 @@
  * SIM/NÃO curta — só quando o RAG foi fraco (senão confia na resposta).
  */
 
+import { routerEscalationJudge } from "@assistente-os/core";
+
 export interface EscalationConfig {
   enabled: boolean;
   /** Abaixo deste score do 1º chunk de RAG, vale acionar o juiz LLM. */
@@ -61,6 +63,59 @@ export function parseJudgeVerdict(text: string): "ok" | "weak" | "unknown" {
   if (/^\s*(sim|yes|s)\b/.test(t) || /\bsim\b/.test(t)) return "ok";
   if (/^\s*(n[ãa]o|no|n)\b/.test(t) || /\bn[ãa]o\b/.test(t)) return "weak";
   return "unknown";
+}
+
+/** Chamada de chat estilo Ollama (`ollamaChat` de `routes/chat.ts`) — injetável p/ teste. */
+export type JudgeChatFn = (
+  baseUrl: string,
+  payload: unknown,
+  timeoutMs: number,
+) => Promise<{ code: number; stdout: string }>;
+
+export interface JudgeDeps {
+  chat: JudgeChatFn;
+  /** `config.ollamaUrl` — o rewrite docker `host.docker.internal` é feito aqui. */
+  ollamaUrl: string;
+  /** `config.ollamaChatModel` — o prefixo `ollama/`|`openai/` é removido aqui. */
+  model: string;
+  timeoutMs: number;
+}
+
+/**
+ * Roda o juiz LLM (`router-escalation-judge` do Prompt Garden): uma chamada
+ * SIM/NÃO ao modelo local. Encapsula o rewrite de URL docker, o strip do prefixo
+ * do modelo, a montagem do prompt e o parse do verdito. Erro / HTTP != 0 /
+ * exceção → `"unknown"` (não escala por isto).
+ */
+export async function judgeAnswer(
+  q: { pergunta: string; contexto: string; resposta: string },
+  deps: JudgeDeps,
+): Promise<"ok" | "weak" | "unknown"> {
+  try {
+    let url = deps.ollamaUrl;
+    if (url.includes("host.docker.internal")) url = url.replace("host.docker.internal", "192.168.65.254");
+    const r = await deps.chat(
+      url,
+      {
+        model: deps.model.replace(/^(ollama|openai)\//, ""),
+        messages: [
+          {
+            role: "user",
+            content: routerEscalationJudge.render({
+              pergunta: q.pergunta.slice(0, 2000),
+              contexto: (q.contexto || "(sem contexto)").slice(0, 4000),
+              resposta: q.resposta.slice(0, 4000),
+            }),
+          },
+        ],
+        stream: false,
+      },
+      deps.timeoutMs,
+    );
+    return r.code === 0 ? parseJudgeVerdict(r.stdout) : "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 export interface EscalationSignals {

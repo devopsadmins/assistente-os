@@ -23,7 +23,6 @@ import {
   logFullAuditEntry,
   estimateTokens,
   nextZenApiKey,
-  routerEscalationJudge,
 } from "@assistente-os/core";
 import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
 import { maxFindingSeverity } from "@assistente-os/memory";
@@ -34,9 +33,9 @@ import {
   escalationConfig,
   shouldEscalate,
   shouldRunJudge,
+  judgeAnswer,
   nextEscalationTier,
   looksLikeRefusal,
-  parseJudgeVerdict,
   canEscalateSession,
   recordSessionEscalation,
 } from "../orchestrator/escalation.js";
@@ -554,32 +553,20 @@ export async function handleChat(
           answerChars < escCfg.minAnswerChars ||
           refusalLike;
         if (!cheapDecides && shouldRunJudge(baseSig, escCfg)) {
-          try {
-            let jUrl = config.ollamaUrl;
-            if (jUrl.includes("host.docker.internal")) jUrl = jUrl.replace("host.docker.internal", "192.168.65.254");
-            const jr = await ollamaChat(
-              jUrl,
-              {
-                model: config.ollamaChatModel.replace(/^(ollama|openai)\//, ""),
-                messages: [
-                  {
-                    role: "user",
-                    content: routerEscalationJudge.render({
-                      pergunta: prompt.slice(0, 2000),
-                      contexto: (built.ragCtx || "(sem contexto)").slice(0, 4000),
-                      resposta: result.stdout.slice(0, 4000),
-                    }),
-                  },
-                ],
-                stream: false,
-              },
-              Math.min(timeoutSeconds, 45) * 1000,
-            );
-            judge = jr.code === 0 ? parseJudgeVerdict(jr.stdout) : "unknown";
-            emitStep("router", `juiz de confiança: ${judge}`);
-          } catch {
-            judge = "unknown";
-          }
+          judge = await judgeAnswer(
+            {
+              pergunta: prompt,
+              contexto: built.ragCtx || "(sem contexto)",
+              resposta: result.stdout,
+            },
+            {
+              chat: ollamaChat,
+              ollamaUrl: config.ollamaUrl,
+              model: config.ollamaChatModel,
+              timeoutMs: Math.min(timeoutSeconds, 45) * 1000,
+            },
+          );
+          emitStep("router", `juiz de confiança: ${judge}`);
         }
 
         const verdict = shouldEscalate({ ...baseSig, judge }, escCfg);

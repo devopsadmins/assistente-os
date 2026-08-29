@@ -400,6 +400,24 @@ executados aqui como uma sub-suíte nomeada.
 **Validação com você:** rodar a suíte estendida e revisar o relatório de cobertura
 dos caminhos wired.
 
+### Feito (PR `refino/etapa-10-integ-coverage`)
+
+Sub-suíte `[wired]` — testes do comportamento montado, não das funções puras:
+
+| Caminho wired | Toggle | Teste | Como fica determinístico |
+|---|---|---|---|
+| **(a)** hit semântico em `retrieveContext` | `RAG_SEMANTIC_CACHE=on` | `packages/memory/src/test/integ-wired-paths.test.ts` — `[wired] … HIT semântico para query parafraseada` | `retrieveContext(opts.embedder)` (refactor mínimo) + `BagOfWordsEmbedder` de teste em 768 dims: duas frases com o mesmo multiconjunto de tokens → cosseno 1.0 → o cache exato erra (sha1 da string), o semântico acerta |
+| **(b)** juiz de confiança do escalonamento | `ROUTER_ESCALATION=on` | `packages/daemon/src/test/escalation.test.ts` — 3 testes `[wired] judgeAnswer` | `judgeAnswer(q, { chat, … })` extraído de `routes/chat.ts` para `orchestrator/escalation.ts` com `chat` injetável (stub no teste); cobre render do prompt do garden, rewrite de URL docker, strip do prefixo do modelo, `SIM`/`NÃO`/erro→`unknown` |
+
+Fora de escopo desta etapa: **(c)** modelo real do cross-encoder (precisa Xenova
+— roda no `os rag eval --rerank cross-encoder` manual, evidência de auditoria) e
+**(d)** gate de CI num PR real (já exercitado a cada PR do refino: `compliance`
+verde no #1, #4–#8).
+
+**Critério de saída atingido:** cada toggle do refino (`RAG_RERANK`,
+`RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`) tem ≥ 1 teste que exercita o caminho
+que ele liga — não só a função pura.
+
 ---
 
 ## Registro de progresso
@@ -411,9 +429,9 @@ dos caminhos wired.
 | 2 — Gate de CI | ✅ | ✅ 13 verdes | ✅ PR #1 (+ CI verde no #2: cache + ordenação) | `feat/refino-etapa-2` |
 | 3 — Golden set | ⏳ aguardando reunião | ☐ | ☐ | — |
 | 4 — Reranker | ☐ | ☐ | ☐ | — |
-| 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ⏳ no PR (`os prompt list`) | `refino/etapa-5-prompt-garden` |
+| 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ✅ PR #4 mergeado (`os prompt list`) | `refino/etapa-5-prompt-garden` |
 | 6 — Cache semântico | ✅ | ✅ 532 verdes | ✅ PR #6 mergeado | `refino/etapa-6-semantic-cache-redis` |
-| 7 — Canvas | ✅ | ✅ core 9 · cli 12 (534 total) | ⏳ no PR | `refino/etapa-7-canvas` |
-| 8 — Escalonamento | ✅ | ✅ 535 verdes (escalation +11) | ⏳ no PR (validar c/ Ollama vivo) | `refino/etapa-8-escalation-judge` |
-| 9 — Ordem do prompt | ✅ | ✅ 531 verdes | ⏳ no PR (medir prefill em staging) | `refino/etapa-9-skills-split` |
-| 10 — Cobertura integração | ☐ | ☐ | ☐ | — |
+| 7 — Canvas | ✅ | ✅ core 9 · cli 12 (534 total) | ✅ PR #7 mergeado | `refino/etapa-7-canvas` |
+| 8 — Escalonamento | ✅ | ✅ 535 verdes (escalation +11) | ✅ PR #8 mergeado (validar c/ Ollama vivo em staging) | `refino/etapa-8-escalation-judge` |
+| 9 — Ordem do prompt | ✅ | ✅ 531 verdes | ✅ PR #5 mergeado (medir prefill em staging) | `refino/etapa-9-skills-split` |
+| 10 — Cobertura integração | ✅ | ⏳ em andamento | ⏳ no PR | `refino/etapa-10-integ-coverage` |
