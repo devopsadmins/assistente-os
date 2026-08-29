@@ -145,7 +145,7 @@ export interface DaemonHandle {
 /**
  * Daemon API-first do Assistente OS.
  * Rotas:
- *   GET  /health                -> status + souls
+ *   GET  /health                -> status (público, sem token; não lista souls)
  *   GET  /souls                 -> lista de souls
  *   GET  /souls/:id             -> detalhe da soul
  *   GET  /souls/:id/context     -> perfil/contexto/licoes/pessoas concatenados

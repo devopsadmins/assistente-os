@@ -17,8 +17,10 @@ export async function handleSouls(
   const { home } = context;
 
   if (req.method === "GET" && path === "/health") {
-    const { listSouls } = await import("@assistente-os/core");
-    sendJson(res, 200, { ok: true, service: "assistente-os", souls: listSouls(home).map((s) => s.id) });
+    // Rota pública (sem token) para liveness/monitoramento. NÃO expõe a lista de
+    // souls: os ids incluem `familia_<telefone>` — enumeração não-autenticada de
+    // PII. A lista fica em `GET /souls`, que exige o token.
+    sendJson(res, 200, { ok: true, service: "assistente-os" });
     return true;
   }
 
