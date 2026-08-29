@@ -164,7 +164,7 @@ export async function retrieveContext(
   soul: string,
   query: string,
   limit = 5,
-  opts: { semanticCache?: boolean } = {},
+  opts: { semanticCache?: boolean; embedder?: Embedder } = {},
 ): Promise<RagContext> {
   // Cache em camadas (E4): dois chats idênticos em janela curta (voz, retries de
   // UI) não repetem embedding + query vetorial. TTL curto — a memória da soul
@@ -182,7 +182,9 @@ export async function retrieveContext(
     /* cache opcional */
   }
 
-  const embedder: Embedder = getEmbedder();
+  // `opts.embedder` só é injetado por testes de integração determinísticos
+  // (cache semântico, screening×rerank); em produção é sempre `getEmbedder()`.
+  const embedder: Embedder = opts.embedder ?? getEmbedder();
 
   // T2.2: cache semântico (desligado por default). Embeda a query uma vez e a
   // reaproveita — hit se um embedding recente do mesmo bucket estiver a
