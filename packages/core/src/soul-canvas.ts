@@ -29,7 +29,12 @@ export interface CanvasSystemFacts {
   ragHnswEfSearch: number;
   /** RAG_SEMANTIC_CACHE ligado? */
   semanticCache: boolean;
+  /** `LANGGRAPH_ENABLED === "true"` — o tier agentic está disponível? */
+  langgraphEnabled: boolean;
 }
+
+/** Marca do bloco de decisão humana (bloco 9) — usada no merge e no drift. */
+const DECISIONS_MARKER = "\n## 9. Decisões";
 
 const LEVEL_RANK: Record<RiskLevel, number> = { L1: 1, L2: 2, L3: 3 };
 
@@ -45,14 +50,60 @@ export function maxLevelForPattern(pattern: string): RiskLevel | undefined {
   return best;
 }
 
-/** Agentic = a allowlist resolvida alcança alguma tool L3 (efeito estrutural/externo). */
-export function isAgenticSoul(soul: Soul): { agentic: boolean; reasons: string[] } {
+/**
+ * Agentic = o tier `langgraph` está habilitado (`LANGGRAPH_ENABLED`) **e** a
+ * allowlist resolvida alcança alguma tool L3 (ou curinga) — só aí a soul roda de
+ * fato um loop de agente que pode agir. Sem `langgraphEnabled`, nenhuma soul é
+ * agentic (o roteador nunca escolhe langgraph sozinho).
+ */
+export function isAgenticSoul(
+  soul: Soul,
+  opts: { langgraphEnabled: boolean } = { langgraphEnabled: false },
+): { agentic: boolean; reasons: string[] } {
   const patterns = resolveAllowedTools(soul.config.agent);
   const l3 = patterns.filter((p) => maxLevelForPattern(p) === "L3");
-  const reasons: string[] = [];
-  if (l3.length > 0) reasons.push(`allowlist alcança tools L3: ${l3.join(", ")}`);
-  if (patterns.includes("*")) reasons.push("allowlist tem curinga total (`*`)");
-  return { agentic: reasons.length > 0, reasons };
+  const hasWildcard = patterns.includes("*");
+  const reachesL3 = l3.length > 0 || hasWildcard;
+  const agentic = opts.langgraphEnabled && reachesL3;
+  const reasons: string[] = agentic
+    ? [`langgraph habilitado + allowlist alcança L3${l3.length ? ": " + l3.join(", ") : " (curinga `*`)"}`]
+    : [!opts.langgraphEnabled ? "LANGGRAPH_ENABLED off" : "allowlist não alcança tools L3"];
+  return { agentic, reasons };
+}
+
+/**
+ * Preserva o bloco 9 (decisões humanas) ao regenerar o canvas: se o arquivo
+ * existente tem o bloco 9 diferente do template fresco (i.e. foi preenchido),
+ * mantém o do arquivo.
+ */
+export function mergeCanvasDecisions(fresh: string, existing: string | null | undefined): string {
+  if (!existing) return fresh;
+  const iFresh = fresh.indexOf(DECISIONS_MARKER);
+  const iExisting = existing.indexOf(DECISIONS_MARKER);
+  if (iFresh < 0 || iExisting < 0) return fresh;
+  const existingBlock9 = existing.slice(iExisting);
+  const freshBlock9 = fresh.slice(iFresh);
+  if (existingBlock9.trim() === freshBlock9.trim()) return fresh; // nada preenchido
+  return fresh.slice(0, iFresh) + existingBlock9;
+}
+
+/**
+ * O canvas está defasado se não existe ou se os blocos `· auto` (tudo antes do
+ * bloco 9) divergem do que seria gerado agora a partir de `config.json` + fatos.
+ */
+export function canvasDrift(
+  soul: Soul,
+  facts: CanvasSystemFacts,
+  existing: string | null | undefined,
+): { stale: boolean; reason: string } {
+  if (!existing) return { stale: true, reason: "ainda não gerado (`os soul <id> canvas --write`)" };
+  const autoOf = (s: string) => {
+    const i = s.indexOf(DECISIONS_MARKER);
+    return (i >= 0 ? s.slice(0, i) : s).trim();
+  };
+  return autoOf(buildSoulCanvas(soul, facts)) === autoOf(existing)
+    ? { stale: false, reason: "atualizado" }
+    : { stale: true, reason: "config.json mudou desde a última geração" };
 }
 
 function bullet(label: string, value: string | number | undefined | null): string {
@@ -69,7 +120,7 @@ export function buildSoulCanvas(soul: Soul, facts: CanvasSystemFacts): string {
   const approval = resolveApprovalPolicy(agent);
   const mem = resolveMemoryPolicy(agent);
   const connectors = resolveConnectors(agent);
-  const { agentic, reasons } = isAgenticSoul(soul);
+  const { agentic, reasons } = isAgenticSoul(soul, { langgraphEnabled: facts.langgraphEnabled });
 
   const toolRows = tools
     .map((p) => {
@@ -87,10 +138,10 @@ export function buildSoulCanvas(soul: Soul, facts: CanvasSystemFacts): string {
       "`config.json` + fatos do sistema; blocos **decisão** ficam em branco para " +
       "você preencher. Ver `docs/ARCHITECTURE-CANVAS-TEMPLATE.md`.",
     "",
-    `**Agentic:** ${agentic ? "sim" : "não"}${reasons.length ? ` (${reasons.join("; ")})` : ""}. ` +
+    `**Agentic:** ${agentic ? "sim" : "não"} (${reasons.join("; ")}). ` +
       (agentic
         ? "O canvas completo se aplica."
-        : "Sem tools L3 nem curinga — o canvas é opcional; os blocos de decisão importam menos."),
+        : "O canvas é opcional; os blocos de decisão importam menos."),
     "",
     "## 1. Identidade  · auto",
     bullet("nome", c.name),

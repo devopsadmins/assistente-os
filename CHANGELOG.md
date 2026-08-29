@@ -10,15 +10,15 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Alterado
 
-- **Cache do RAG compartilhado via Redis** (refino, Etapa 6): o cache semântico
-  (`packages/memory/src/rag-semantic-cache.ts`) deixa de usar um `Map` bare e
-  passa a persistir pelo `cache` em camadas do core (`ragSemanticCacheGet/Set`
-  agora `async`; um bucket = um valor JSON `[{v,p,exp}]`, cosseno em Node). O
-  daemon chama `cache.init()` no boot **se `REDIS_URL` estiver setada** → cache
-  exato **e** semântico do RAG compartilhados entre instâncias; sem `REDIS_URL`,
-  só o `Map` em memória (comportamento anterior). `close()` do daemon fecha o
-  socket do Redis. Ref: Etapa 6 de `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
-  Rollback: reverter o commit (volta ao `Map` por processo).
+- **Canvas por soul endurecido** (refino, Etapa 7): (1) `os soul <id> canvas
+  --write` agora **preserva o bloco 9** (decisões humanas) do arquivo existente —
+  `mergeCanvasDecisions` regenera só os blocos `· auto`; (2) o gate "agentic"
+  ficou estrito: `isAgenticSoul(soul, { langgraphEnabled })` exige
+  `LANGGRAPH_ENABLED` **e** allowlist alcançando L3/curinga (antes era ~sempre
+  verdadeiro); (3) `canvasDrift` + linha `canvas: ⚠️ defasado` em `os soul <id>`
+  quando o `config.json` mudou desde a última geração. `CanvasSystemFacts` ganha
+  `langgraphEnabled`. Ref: Etapa 7 de `docs/ARCHITECTURE-REFINEMENT-REVIEW.md`.
+  Rollback: reverter o commit.
 
 - **Montador de prompt: índice de skills separado do corpo** (refino, Etapa 9):
   `renderSkillsPrompt` foi partido em `renderSkillsIndex(available)` (lista
