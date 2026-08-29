@@ -105,6 +105,13 @@ export const eventsPending = new Gauge({
   registers: [registry],
 });
 
+export const backgroundJobErrors = new Counter({
+  name: "aos_background_job_errors_total",
+  help: "Erros em loops de background do daemon (job: monitors | events | agenda | entity_extraction)",
+  labelNames: ["job"] as const,
+  registers: [registry],
+});
+
 /** Corpo da resposta de `GET /metrics`. */
 export async function renderMetrics(): Promise<{ contentType: string; body: string }> {
   return { contentType: registry.contentType, body: await registry.metrics() };

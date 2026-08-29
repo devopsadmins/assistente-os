@@ -6,11 +6,13 @@ import {
   selectRoute,
   getSoul,
   claimDueAgenda,
+  reapStaleAgenda,
   finishAgendaItem,
   openSession,
   bumpSessionPrompt,
   recordExecution,
   recordSessionMessage,
+  logger,
 } from "@assistente-os/core";
 import { runOpenCode, type OpenCodeRunResult } from "./runner.js";
 import { buildPrompt } from "./context.js";
@@ -32,6 +34,13 @@ export async function processDueAgenda(options: AgendaConsumerOptions): Promise<
   const run = options.run ?? runOpenCode;
   const config = loadConfig({ home });
   const pool = getPool(config.databaseUrl);
+  const reaped = await reapStaleAgenda(pool, {
+    staleMinutes: Number(process.env.AOS_AGENDA_STALE_MINUTES) || 15,
+    maxAttempts: Number(process.env.AOS_AGENDA_MAX_ATTEMPTS) || 3,
+  });
+  if (reaped.retried || reaped.failed) {
+    logger.warn({ ...reaped }, "agenda reaper: itens presos em 'processing' recuperados");
+  }
   const due = await claimDueAgenda(pool, 5);
   let processed = 0;
   for (const item of due) {
