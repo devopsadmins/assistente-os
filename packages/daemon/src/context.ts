@@ -7,7 +7,8 @@ import {
   CONCISE_OUTPUT_DIRECTIVE,
   listSkills,
   matchSkills,
-  renderSkillsPrompt,
+  renderSkillsIndex,
+  renderActiveSkills,
   skillsEnabled,
   resolveAllowedTools,
   isToolAllowed,
@@ -79,8 +80,10 @@ ${licoes ? `--- Lições aprendidas ---\n${licoes}\n` : ""}`.trim();
   // buffer e o consumidor de eventos leem esse campo).
   const almaCtx = [personaCtx, sessaoCtx].filter(Boolean).join("\n\n");
 
-  // ── Skills por soul: índice sempre + corpo das relevantes ──
-  let skillsCtx = "";
+  // ── Skills por soul (Etapa 9): índice (semi-estático → prefixo) separado do
+  //    corpo das que casaram (dinâmico → cauda volátil). ──
+  let skillsIndexCtx = "";
+  let skillsActiveCtx = "";
   let skillsMeta: BuiltPrompt["skills"];
   if (skillsEnabled()) {
     const all = listSkills(home, soul);
@@ -92,7 +95,8 @@ ${licoes ? `--- Lições aprendidas ---\n${licoes}\n` : ""}`.trim();
       };
       const active = await matchSkills(prompt, all, { embed }).catch(() => []);
       const allowed = resolveAllowedTools(soul.config.agent);
-      skillsCtx = renderSkillsPrompt(all, active, (t) => isToolAllowed(allowed, t));
+      skillsIndexCtx = renderSkillsIndex(all);
+      skillsActiveCtx = renderActiveSkills(active, (t) => isToolAllowed(allowed, t));
       skillsMeta = {
         available: all.map((s) => s.name),
         active: active.map((m) => ({ name: m.skill.name, score: m.score, usedEmbedding: m.usedEmbedding })),
@@ -136,18 +140,21 @@ ${history.map((m) => `**${m.role === "user" ? "Usuário" : "Assistente"}:** ${m.
 ${activeRules.map((r) => `- **${r.topic}:** ${r.ruleText}`).join("\n")}`;
   }
 
-  // Ordem do mais estático para o mais volátil (T3.3): maximiza o prefixo de
-  // bytes idêntico entre turnos → prompt caching e reuso de KV cache (Ollama).
+  // Ordem do mais estático para o mais volátil (T3.3 + Etapa 9): maximiza o
+  // prefixo de bytes idêntico entre turnos → prompt caching e reuso de KV cache.
   //   estático  : CONCISE_OUTPUT_DIRECTIVE (const global)
-  //   semi-estát: rulesCtx (golden rules globais), personaCtx (perfil+licoes da soul)
-  //   dinâmico  : skillsCtx (skills que casaram), sessaoCtx (log do dia),
-  //               ragCtx (recuperação), historyCtx (turnos recentes)
+  //   semi-estát: rulesCtx (golden rules globais), personaCtx (perfil+licoes),
+  //               skillsIndexCtx (lista de skills da soul)
+  //   ── fronteira volátil ──
+  //   dinâmico  : skillsActiveCtx (corpo das skills que casaram), sessaoCtx
+  //               (log do dia), ragCtx (recuperação), historyCtx (turnos)
   // CONCISE_OUTPUT_DIRECTIVE fica sempre em 1º (há teste que exige startsWith).
   const prefixParts = [
     CONCISE_OUTPUT_DIRECTIVE,
     rulesCtx,
     personaCtx,
-    skillsCtx,
+    skillsIndexCtx,
+    skillsActiveCtx,
     sessaoCtx,
     ragCtx,
     historyCtx,
