@@ -264,7 +264,12 @@ Risco: threshold 0.85 pode casar paráfrases que querem contexto diferente.
 
 ---
 
-## Etapa 7 — T2.3 Canvas por soul  *(só se sobreviver à Etapa 1)*
+## Etapa 7 — T2.3 Canvas por soul  — ✅ feito (PR `refino/etapa-7-canvas`)
+
+> `--write` preserva o bloco 9 (`mergeCanvasDecisions`). Gate "agentic" estrito:
+> `LANGGRAPH_ENABLED` + allowlist L3/curinga. `canvasDrift` + linha em
+> `os soul <id>`. Fica de fora (sem alvo no CLI): esqueleto no `os soul create`
+> (não existe — criação é MCP `soul_create`). 534 testes verdes.
 
 **Contexto.** `--write` sobrescreve o arquivo inteiro, inclusive o **bloco 9**
 (decisões humanas). Gate "agentic" é ~sempre verdadeiro (DEFAULT_ALLOWED_TOOLS tem
@@ -401,8 +406,8 @@ dos caminhos wired.
 | 3 — Golden set | ⏳ aguardando reunião | ☐ | ☐ | — |
 | 4 — Reranker | ☐ | ☐ | ☐ | — |
 | 5 — Prompt Garden | ✅ | ✅ core 275 · memory 79 · cli 12 | ⏳ no PR (`os prompt list`) | `refino/etapa-5-prompt-garden` |
-| 6 — Cache semântico | ✅ | ✅ 532 verdes | ⏳ no PR (medir hit-rate em staging c/ Redis) | `refino/etapa-6-semantic-cache-redis` |
-| 7 — Canvas | ☐ | ☐ | ☐ | — |
+| 6 — Cache semântico | ✅ | ✅ 532 verdes | ✅ PR #6 mergeado | `refino/etapa-6-semantic-cache-redis` |
+| 7 — Canvas | ✅ | ✅ core 9 · cli 12 (534 total) | ⏳ no PR | `refino/etapa-7-canvas` |
 | 8 — Escalonamento | ☐ | ☐ | ☐ | — |
 | 9 — Ordem do prompt | ✅ | ✅ 531 verdes | ⏳ no PR (medir prefill em staging) | `refino/etapa-9-skills-split` |
 | 10 — Cobertura integração | ☐ | ☐ | ☐ | — |

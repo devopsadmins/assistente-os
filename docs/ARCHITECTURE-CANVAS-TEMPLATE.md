@@ -11,10 +11,11 @@ sempre ligado", HITL via `interrupt()` do LangGraph, `ERR_BUDGET_EXCEEDED`).
 
 ## Quando gerar
 
-O canvas completo só rende para souls **agentic** — a allowlist de tools resolvida
-alcança alguma tool **L3** (efeito estrutural/externo/irreversível) ou tem curinga
-total (`*`). Para souls sem isso, o header diz "Agentic: não" e os blocos de
-decisão importam menos.
+O canvas completo só rende para souls **agentic** — `LANGGRAPH_ENABLED` está ligado
+**e** a allowlist de tools resolvida alcança alguma tool **L3** (efeito
+estrutural/externo/irreversível) ou curinga total (`*`). Sem o tier langgraph
+nenhuma soul é agentic (o roteador nunca escolhe langgraph sozinho). Para souls
+sem isso, o header diz "Agentic: não" e os blocos de decisão importam menos.
 
 ## Os blocos
 
@@ -47,5 +48,6 @@ decisão importam menos.
 ## Manter atualizado
 
 O canvas é **gerado** — não editar os blocos `· auto` à mão; mude o `config.json`
-e regenere. O bloco 9 é a única parte com conteúdo humano; ao rodar com `--write`,
-reconcilie-o antes de sobrescrever `ARCHITECTURE_CANVAS.md`.
+e regenere. `os soul <id> canvas --write` **preserva o bloco 9** do arquivo
+existente (só regenera os blocos `· auto`). `os soul <id>` mostra
+`canvas: ⚠️ defasado` quando o `config.json` mudou desde a última geração.
