@@ -38,6 +38,8 @@ export interface RagChunk {
   snippet: string;
   /** true quando o chunk passou pelo estágio de reranking (E10 / RAG_RERANK != off). */
   reranked?: boolean;
+  /** ISO 8601 — quando o chunk foi (re)sincronizado no índice (E11: freshness / citação). */
+  indexedAt?: string | null;
 }
 
 export interface RagResult {
@@ -99,6 +101,7 @@ function toScreenable(results: Awaited<ReturnType<typeof search>>): ScreenableCh
       score: r.score,
       method: r.method === "vector" ? "semantic" : "literal",
       snippet: r.body.slice(0, 200),
+      indexedAt: r.updatedAt,
     } satisfies RagChunk,
     body: r.body,
   }));
@@ -122,7 +125,7 @@ async function literalSearchFallback(
   limit: number
 ): Promise<ScreenableChunk[]> {
   const { rows } = await pool.query(
-    `SELECT entity_name AS doc, body, ts AS path
+    `SELECT entity_name AS doc, body, ts
      FROM observations
      WHERE soul = $1 AND (entity_name ILIKE $2 OR body ILIKE $2)
      ORDER BY ts DESC LIMIT $3`,
@@ -132,10 +135,11 @@ async function literalSearchFallback(
   return rows.map((r: any): ScreenableChunk => ({
     chunk: {
       doc: r.doc,
-      path: r.path,
+      path: `observations/${r.doc}`,
       score: 0.5,
       method: "literal",
       snippet: r.body?.slice(0, 200) ?? "",
+      indexedAt: r.ts ? new Date(r.ts).toISOString() : null,
     },
     body: r.body ?? "",
   }));

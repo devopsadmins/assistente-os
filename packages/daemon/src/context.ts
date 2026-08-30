@@ -15,7 +15,7 @@ import {
   type AssistenteOsConfig,
   type Soul,
 } from "@assistente-os/core";
-import { retrieveContext, getEmbedder } from "@assistente-os/memory";
+import { retrieveContext, getEmbedder, computeRagConfidence, ragMinConfidence } from "@assistente-os/memory";
 
 export interface BuiltPromptFile {
   path: string;
@@ -115,12 +115,29 @@ ${licoes ? `--- Lições aprendidas ---\n${licoes}\n` : ""}`.trim();
       const injection = res.injectionFindings ?? [];
       const rerank = { mode: res.rerankMode, ms: res.rerankMs };
       const cacheHit = res.cacheHit ?? "miss";
-      if (res.hasRelevantDocs) {
+      // E11: confiança multi-sinal (top-score × concordância × freshness) + modo
+      // "evidência insuficiente" quando abaixo do piso `AOS_RAG_MIN_CONFIDENCE`.
+      const confidence = computeRagConfidence(res.sources);
+      const minConf = ragMinConfidence();
+      if (res.hasRelevantDocs && confidence.score >= minConf) {
+        // Cada linha do contexto cita a fonte: [score · arquivo]. A diretriz de
+        // constrained generation vem antes (o chat monta este bloco no fim, mais
+        // volátil, então ela mora aqui e não nas regras).
         ragCtx = `## Contexto de conhecimento relevante (RAG)
-${res.sources.map((r) => `- [${r.score.toFixed(3)}] ${r.snippet}`).join("\n")}`;
-        verdict = { ok: true, sources: res.sources, injection, rerank, cacheHit };
+Responda usando SÓ o que está abaixo. Cite a fonte entre colchetes (ex.: [${res.sources[0]?.doc ?? "arquivo.md"}]). Se o contexto não cobrir a pergunta, diga que não há evidência suficiente — não complete com conhecimento próprio.
+
+${res.sources
+  .map((r) => `- [${r.doc} · sim ${r.score.toFixed(3)}${r.indexedAt ? ` · ${r.indexedAt.slice(0, 10)}` : ""}] ${r.snippet}`)
+  .join("\n")}`;
+        verdict = { ok: true, sources: res.sources, confidence, injection, rerank, cacheHit };
+      } else if (res.hasRelevantDocs) {
+        // Achou docs, mas a confiança não alcança o piso → não injeta o contexto;
+        // instrui o modelo a admitir a falta de evidência.
+        ragCtx = `## Evidência insuficiente
+A base de conhecimento da soul não cobre esta pergunta com confiança suficiente (confidence ${confidence.score.toFixed(2)} < ${minConf}). Responda dizendo objetivamente que não há evidência suficiente na base; não complete com conhecimento próprio.`;
+        verdict = { ok: false, motivo: "confidence_below_floor", confidence, sources: res.sources, injection, rerank, cacheHit };
       } else {
-        verdict = { ok: false, motivo: "nenhum documento relevante encontrado", injection, rerank, cacheHit };
+        verdict = { ok: false, motivo: "nenhum documento relevante encontrado", confidence, injection, rerank, cacheHit };
       }
     } catch {
       ragCtx = "";
