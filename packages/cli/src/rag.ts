@@ -6,8 +6,15 @@
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getPool, type AssistenteOsConfig } from "@assistente-os/core";
-import { parseGoldenJsonl, runRagEval, formatRagEvalMetrics, scanTextFiles } from "@assistente-os/memory";
+import { getPool, recordRagEvalRun, listRagEvalRuns, type AssistenteOsConfig } from "@assistente-os/core";
+import {
+  parseGoldenJsonl,
+  runRagEval,
+  runFaithfulnessEval,
+  formatRagEvalMetrics,
+  scanTextFiles,
+  type RagGenerate,
+} from "@assistente-os/memory";
 
 /**
  * O índice está defasado se algum .md/.txt da soul tem mtime posterior ao
@@ -38,20 +45,68 @@ function getFlag(args: string[], name: string): string | undefined {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
 }
 
+/** `RagGenerate` via Ollama `/api/chat` (não-streaming). Ancorado no contexto. */
+function ollamaGenerate(config: AssistenteOsConfig): RagGenerate {
+  return async (snippets, question) => {
+    const sys =
+      "Responda à pergunta usando SÓ o contexto abaixo. Se o contexto não cobrir, diga que não há evidência suficiente. Não use conhecimento externo.";
+    const user = `Contexto:\n${snippets.map((s, i) => `[${i + 1}] ${s}`).join("\n")}\n\nPergunta: ${question}`;
+    const url = config.ollamaUrl.replace(/\/$/, "");
+    const r = await fetch(`${url}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      signal: AbortSignal.timeout(60_000),
+      body: JSON.stringify({
+        model: config.ollamaChatModel.replace(/^(ollama|openai)\//, ""),
+        stream: false,
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: user },
+        ],
+      }),
+    });
+    if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+    const data = (await r.json()) as { message?: { content?: string } };
+    return data.message?.content ?? "";
+  };
+}
+
+async function ragHistory(config: AssistenteOsConfig, soul?: string): Promise<number> {
+  const pool = getPool(config.databaseUrl);
+  const runs = await listRagEvalRuns(pool, soul, 30);
+  if (runs.length === 0) {
+    console.log("(nenhum run de rag eval registrado)");
+    return 0;
+  }
+  const pct = (x: number | null) => (x == null ? "  -  " : (x * 100).toFixed(1).padStart(5) + "%");
+  console.log("ts                        soul            kind      n   hit@1  hit@5  MRR    recall refusal faith");
+  for (const r of runs) {
+    console.log(
+      `${r.ts.slice(0, 19)}  ${(r.soul ?? "-").padEnd(14)}  ${r.kind.padEnd(8)}  ${String(r.n).padStart(3)}  ` +
+        `${pct(r.hitAt1)} ${pct(r.hitAt5)} ${(r.mrr ?? 0).toFixed(3)}  ${pct(r.recallAt5)} ${pct(r.adversarialRefusalRate)} ${pct(r.faithfulnessSupported)}`,
+    );
+  }
+  return 0;
+}
+
 export async function runRagCommand(config: AssistenteOsConfig, args: string[]): Promise<number> {
   const sub = args[0];
   if (sub !== "eval") {
     console.log(
-      "uso: os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <path>] [--min-hit1 0.7] [--min-refusal 0.8]",
+      "uso: os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <path>] [--min-hit1 0.7] [--min-refusal 0.8] [--faithfulness] [--record] [--history]",
     );
     return 1;
   }
 
   const soulFilter = args[1] && !args[1].startsWith("--") ? args[1] : undefined;
+  if (args.includes("--history")) return ragHistory(config, soulFilter);
+
   const rerank = getFlag(args, "rerank");
   const fileArg = getFlag(args, "file");
   const minHit1 = Number(getFlag(args, "min-hit1") ?? "0.7");
   const minRefusal = Number(getFlag(args, "min-refusal") ?? "0.8");
+  const withFaithfulness = args.includes("--faithfulness");
+  const record = args.includes("--record");
 
   if (rerank) process.env.RAG_RERANK = rerank;
 
@@ -79,6 +134,35 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
   const pool = getPool(config.databaseUrl);
   const m = await runRagEval(pool, selected, { k: 5 });
   console.log(formatRagEvalMetrics(m));
+
+  let faithSupported: number | null = null;
+  if (withFaithfulness) {
+    try {
+      const f = await runFaithfulnessEval(pool, selected, ollamaGenerate(config), { k: 5 });
+      faithSupported = f.meanSupported;
+      console.log(`\nfidelidade (resposta gerada · Ollama): ${(f.meanSupported * 100).toFixed(1)}% em ${f.evaluated} caso(s)`);
+      for (const l of f.low) console.log(`  - [${l.id}] supported ${l.supported} · não sustentado: ${l.unsupported.join(" | ")}`);
+    } catch (err) {
+      console.error(`\n(fidelidade pulada — Ollama indisponível: ${(err as Error).message})`);
+    }
+  }
+
+  if (record) {
+    await recordRagEvalRun(pool, {
+      soul: soulFilter ?? null,
+      kind: "offline",
+      n: m.n,
+      hitAt1: m.hitAt1,
+      hitAt3: m.hitAt3,
+      hitAt5: m.hitAt5,
+      mrr: m.mrr,
+      recallAt5: m.recallAt5,
+      adversarialRefusalRate: m.nAdversarial > 0 ? m.adversarialRefusalRate : null,
+      faithfulnessSupported: faithSupported,
+      note: `rerank=${process.env.RAG_RERANK ?? "off"}; file=${file}`,
+    });
+    console.log("\n(run registrado em rag_eval_runs — `os rag eval --history` para o histórico)");
+  }
 
   const fails: string[] = [];
   if (m.hitAt1 < minHit1) {

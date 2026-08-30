@@ -10,6 +10,23 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **E12b — RAG: rastreamento contínuo de qualidade** (feature; migração
+  `0017_rag_eval_runs`): 3º pedaço da trilha RAG enterprise-ready.
+  - **`runFaithfulnessEval(pool, cases, generate)`** — para cada caso positivo:
+    `retrieveContext` → prompt ancorado → `generate` (injetável: Ollama real /
+    stub) → `scoreAnswerFaithfulness`. Devolve `meanSupported` + os casos abaixo
+    do piso. `os rag eval --faithfulness` usa Ollama; pula com aviso se indisponível.
+  - **Tabela `rag_eval_runs`** (sem PII — só métricas) + `recordRagEvalRun` /
+    `listRagEvalRuns`. `os rag eval --record` grava o run; `os rag eval --history
+    [<soul>]` imprime a evolução (hit@1 / MRR / recall / refusal / faithfulness).
+  - **Amostragem online no chat**: com `AOS_RAG_FAITHFULNESS_SAMPLE` (0..1,
+    default 0), após um turno com contexto de RAG, com essa probabilidade a
+    resposta é pontuada (heurística, sem LLM) e gravada como
+    `rag_eval_runs(kind='online')` — drift de fidelidade em produção sem custo.
+  - Testes: `rag-eval-runs.test.ts` (novo) + `rag-eval.test.ts` (+1 `runFaithfulnessEval`).
+  Rollback: `AOS_RAG_FAITHFULNESS_SAMPLE=0` (default) desliga a amostragem; a
+  migração só adiciona tabela; reverter o commit tira os comandos.
+
 - **E12a — RAG: métrica de fidelidade + casos adversariais no eval** (feature,
   CI-safe): 2º epic da trilha RAG enterprise-ready.
   - **`scoreAnswerFaithfulness(answer, sources)`** (`packages/memory/src/rag-faithfulness-score.ts`)
