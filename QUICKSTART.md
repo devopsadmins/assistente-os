@@ -13,15 +13,26 @@ Guia completo para configurar e rodar o Assistente OS do zero.
 
 ## 2. Instalação
 
+### Instalador guiado (recomendado numa máquina nova)
+
+```bash
+cd assistente-os
+npm run setup     # scripts/setup.sh — checa pré-requisitos, instala, compila,
+                  # bootstrapa ~/.assistant-os/.env (interativo), sobe o Postgres,
+                  # aplica as migrações e deixa pronto pra `npm run os daemon`.
+```
+
+Flags: `npm run setup -- --yes` (não-interativo) · `--pm2` (sobe via PM2 no fim) ·
+`--skip-build` (re-run rápido). É **idempotente** — faz backup do `.env` antes de
+mexer, nunca apaga dados. Detalhes e protocolo de teste:
+[docs/TESTES-DEPLOY-COMPLETO.md](docs/TESTES-DEPLOY-COMPLETO.md).
+
+### Manual
+
 ```bash
 cd assistente-os
 npm install
 npm run build
-```
-
-Verificar que tudo compila:
-
-```bash
 npm run typecheck
 npm test          # requer PostgreSQL rodando (ver seção 4)
 ```

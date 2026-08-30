@@ -58,14 +58,40 @@ o `.env.example` na raiz do repo tem a lista completa.
 
 ## 3. Deploy do zero (máquina limpa)
 
+### 3.a — Instalador guiado (recomendado)
+
+```bash
+git clone <repo> assistente-os && cd assistente-os
+npm run setup            # scripts/setup.sh — interativo
+```
+
+O `setup.sh` faz tudo da §3.b: checa pré-requisitos (Node ≥ 22.16, Docker,
+Ollama, `pg_dump`), roda `npm ci` + `build` + `typecheck`, monta
+`~/.assistant-os/.env` perguntando o essencial (Postgres compose ou externo,
+`OLLAMA_*`, `AOS_HOST`/porta, **gera um `ASSISTENTE_OS_DAEMON_TOKEN` forte**,
+chaves Zen opcionais, e um pacote de **flags de teste** — `AOS_RAG_MIN_CONFIDENCE=0.4`,
+`AOS_RAG_FAITHFULNESS_SAMPLE=0.3`, `RAG_RERANK=cross-encoder` + `bge-reranker-base`,
+`RAG_SEMANTIC_CACHE=on`, `ROUTER_ESCALATION=on`), sobe o Postgres, aplica as
+migrações (`os status`), oferece indexar a 1ª soul e, opcional, `pm2 start`.
+**Idempotente** — faz backup do `.env` antes de mexer, nunca apaga dados.
+
+- `npm run setup -- --yes` — não-interativo (defaults + `.env` atual).
+- `npm run setup -- --pm2` — sobe via PM2 ao final.
+- `npm run setup -- --skip-build` — re-run rápido (pula `npm ci`/`build`).
+
+> **`MCP_ZERO_TRUST` NÃO é ligado pelo instalador.** Exige `agent.autonomy` nos
+> `config.json` das souls, senão nega toda tool L3. Ligar à mão depois (§4.7).
+
+### 3.b — Manual (o que o instalador faz por baixo)
+
 ```bash
 # 3.1 Pré-requisitos
-#   Node >= 22.5 · Docker (para o Postgres) · Ollama (opcional, mas sem ele o
-#   tier `local` e o --faithfulness não funcionam)
+#   Node >= 22.16 · Docker (Postgres) · Ollama (opcional — sem ele o tier
+#   `local` e o --faithfulness ficam indisponíveis) · pg_dump (backup completo)
 
 # 3.2 Clone + build
 git clone <repo> assistente-os && cd assistente-os
-npm install
+npm ci
 npm run build
 npm run typecheck        # deve passar limpo
 
@@ -80,12 +106,11 @@ cp .env.example ~/.assistant-os/.env
 
 # 3.5 Migrações + smoke
 npm run os status
-#   roda as 17 migrações (0001..0017) e imprime souls/ollama/degraus.
+#   roda as migrações (0001..00NN) e imprime souls/ollama/degraus.
 #   Se aparecer "[migrations] DRIFT" aqui numa instalação limpa, é bug — reportar.
 
 # 3.6 Criar uma soul e indexar  (a criação é via MCP soul_create; sem CLI direto)
-#   Para o teste, use a soul `main` que o status já cria, ou monte uma pasta
-#   ~/.assistant-os/souls/teste/ com perfil.md + sources/*.md e:
+#   monte uma pasta ~/.assistant-os/souls/teste/ com perfil.md + sources/*.md e:
 npm run os memory teste index
 npm run os memory teste status     # confere chunks/files/lastIndexedAt
 

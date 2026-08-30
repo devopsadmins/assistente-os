@@ -5,6 +5,10 @@ Copiloto residente em Node/TS, API-first, local-first. Monorepo npm workspaces c
 ## Quick Start
 
 ```bash
+# instalador guiado numa máquina nova (pré-requisitos, build, .env, Postgres, migrações):
+npm run setup
+
+# ── ou manual ──
 npm install && npm run build
 
 # CLI
