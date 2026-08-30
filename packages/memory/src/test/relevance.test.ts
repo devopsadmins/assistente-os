@@ -4,7 +4,7 @@ import { tokenize, usefulTerms, relevancia, STOPWORDS_PT } from "../relevance.js
 import type { SearchResult } from "../indexer.js";
 
 function result(body: string, score: number): SearchResult {
-  return { docKey: "x::0", path: "/x", title: null, body, score, method: "vector" };
+  return { docKey: "x::0", path: "/x", title: null, body, score, method: "vector", updatedAt: null };
 }
 
 test("tokenize remove pontuação e acentos", () => {

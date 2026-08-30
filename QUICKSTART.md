@@ -8,8 +8,8 @@ Guia completo para configurar e rodar o Assistente OS do zero.
 |-----------|---------------|-------------|
 | Node.js | >= 22.5 | Sim |
 | Ollama | Qualquer | Não (mas sem ele o tier `local` não funciona) |
-| PostgreSQL + pgvector | 17+ | Não (o kernel.db usa SQLite; Postgres é para RAG/grafo) |
-| `postgresql-client` (`pg_dump`) | Qualquer | Não (backup sem dump continua funcionando) |
+| PostgreSQL + pgvector | 17+ | **Sim** — toda a persistência derivada (RAG, grafo, sessões, custos, agenda) |
+| `postgresql-client` (`pg_dump`/`pg_restore`) | Qualquer | Não (backup degrada só p/ arquivos; restore e2e exige) |
 
 ## 2. Instalação
 
@@ -122,6 +122,10 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `AOS_RATE_LIMIT` | `600` | Máx. de requisições por cliente por janela (`X-Client-Id` \| hash do token \| IP). Estouro → `429` + `Retry-After`. `0` desliga. `_WINDOW_SEC` `60` |
 | `AOS_MAX_CONCURRENT_EXEC` | `8` | Máx. de execuções caras simultâneas (`/chat`, `/api/missions/*`, `/api/pipelines/*`). Estouro → `503` sem fila. `0` desliga |
 | `RUN_E2E` | — | `1` habilita o teste e2e do caminho dourado (`golden-path.live.ts`, exige Ollama vivo; fora do CI) |
+| `AOS_RAG_MIN_CONFIDENCE` | `0` | Piso de confiança do RAG (0–1). `0` = desligado. Abaixo → chat entra em "evidência insuficiente" (não injeta o contexto, instrui o modelo a admitir a falta) |
+| `AOS_RAG_CONCORD_FLOOR` | `0.5` | Score mínimo p/ uma fonte contar na concordância do confidence scorer |
+| `AOS_RAG_CONCORD_TARGET` | `3` | Nº de fontes concordantes = sinal de concordância cheio |
+| `AOS_RAG_STALE_DAYS` | `365` | Idade do chunk mais novo em que a penalidade de freshness satura em 1 |
 
 > Um `.env.example` na raiz do repo lista todas as variáveis com valores de
 > exemplo — copie o que precisar para `~/.assistant-os/.env`.
