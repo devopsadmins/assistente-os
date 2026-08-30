@@ -29,6 +29,40 @@ design, contratos/assinaturas, critérios de aceitação, plano de teste, esfor�
 > 3. O restante (FinOps de tokens, scaffolding ORCA, `soul_create`/`worktree_list`,
 >    observabilidade, gates AI-3, LGPD) confere com o README.
 
+---
+
+## Estado 2026-08-30 — remediação da análise crítica + RAG enterprise
+
+Runbook de deploy + protocolo de teste: **[`docs/TESTES-DEPLOY-COMPLETO.md`](TESTES-DEPLOY-COMPLETO.md)**.
+
+**Concluído (PRs #11–#20):**
+
+- **Remediação da análise crítica** — Onda 0 (contenção: `/health` sem PII,
+  `agenda` por soul, higiene de git), Onda 1a (Zero Trust aplicado no MCP e
+  LangGraph, flag `MCP_ZERO_TRUST`), Onda 1b (rate limit + cap de concorrência),
+  Onda 2 (trace `x-trace-id`/`execution_spans` + `os trace` + e2e guardados),
+  Onda 3a (docs sincronizados + `.env.example`), Onda 3b (checksum de migração),
+  Onda 3c (jobs de fundo com log/métrica + reaper de agenda).
+- **RAG enterprise-ready** — E11 (citações + confidence multi-sinal + modo
+  "evidência insuficiente"), E12a (fidelidade heurística + casos adversariais),
+  E12b (`runFaithfulnessEval` + tabela `rag_eval_runs` + `os rag eval
+  --record`/`--history` + amostragem online).
+
+**Aberto:**
+
+| Item | Nota |
+|---|---|
+| **E13** — protocolo "zero → real" (3 fases) | Fase 1/3 = o runbook acima. Fase 2 (volume) e o relatório de prontidão dependem do corpus real do cliente. |
+| **Onda 3d** — centralizar config | ~58 `process.env` soltos → `loadConfig` + schema (zod/envalid); matar pares de alias (`ADO_*`/`AZURE_DEVOPS_*`, `RAG_INJECTION_MODO`/`PROMPT_INJECTION_MODO`). Refactor grande. |
+| **Onda 3e** — quebrar god-objects | `handleChat` (640 l., `routes/chat.ts`) e `tools/src/index.ts` (1859 l.). Refactor grande e arriscado. |
+| **Onda 3f** — multi-tenant sim/não | Decisão de produto. Se sim: tabela de tenants + auth por tenant + FK em `soul`. Se não: remover `X-Client-Id`/`client_key` e o `/home/support/bin/ffmpeg` hardcoded. |
+| **M3** — prompt injection | Screening regex-only e não-bloqueante por default. |
+| **M4** — LGPD famílias | Exclusão não propaga pro backup; `questionnaire_data` (saúde de criança) em texto plano; `temp-vault` nunca faz `purge`. |
+| Toggles OFF a medir em staging | `RAG_RERANK`+`bge-reranker-base`, `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, prefill da Etapa 9. **E12 (`os rag eval --history`) é a ferramenta de medição.** |
+| ADR-PRIV-002 (AI-4 famílias) · service token Cloudflare (E7) | Autoria de doc · ação no dashboard. |
+
+---
+
 ## Sequência de execução
 
 | Onda | Epics | Racional |

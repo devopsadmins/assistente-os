@@ -10,6 +10,13 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **`docs/TESTES-DEPLOY-COMPLETO.md`** — runbook consolidado: o que foi entregue
+  nos PRs #11–#20 (remediação da análise crítica Ondas 0–3 + RAG enterprise
+  E11–E12), a tabela das variáveis de ambiente novas com valores recomendados
+  para teste, o passo a passo de deploy numa máquina limpa, e o protocolo de
+  validação de comportamento (12 checks, um por entrega) + as fases E13. Ligado
+  do README e do `docs/ROADMAP.md` (§ "Estado 2026-08-30").
+
 - **E12b — RAG: rastreamento contínuo de qualidade** (feature; migração
   `0017_rag_eval_runs`): 3º pedaço da trilha RAG enterprise-ready.
   - **`runFaithfulnessEval(pool, cases, generate)`** — para cada caso positivo:

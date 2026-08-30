@@ -400,6 +400,14 @@ soul, escalonamento por confiança, reordenação do montador de prompt.
 `RAG_RERANK` / `RAG_SEMANTIC_CACHE` / `ROUTER_ESCALATION` shipam **desligados**,
 aguardando medição.
 
+**Análise crítica + RAG enterprise (2026-08-29/30)** — remediação em ondas
+(contenção de segurança, Zero Trust aplicado, rate limit, trace unificado,
+higiene de docs/migrations/jobs) + trilha RAG (citações auditáveis, confidence
+multi-sinal, fidelidade medida, `os rag eval --history`). Runbook de deploy do
+zero + protocolo de teste: **[docs/TESTES-DEPLOY-COMPLETO.md](docs/TESTES-DEPLOY-COMPLETO.md)**.
+Aberto: Onda 3d/3e (refactors), decisão multi-tenant, E13 Fase 2 (volume real).
+Ver [docs/ROADMAP.md](docs/ROADMAP.md) § "Estado 2026-08-30".
+
 ## Docs
 
 - [Arquitetura](docs/ARCHITECTURE.md)
@@ -407,6 +415,7 @@ aguardando medição.
 - [MCPs](docs/MCPS.md)
 - [Prompt Garden](docs/PROMPT-GARDEN.md) · [Canvas de Arquitetura por soul](docs/ARCHITECTURE-CANVAS-TEMPLATE.md)
 - [Avaliação de RAG (`os rag eval`)](docs/RAG-EVAL.md) · [Cache do RAG](docs/RAG-CACHE.md)
+- [Deploy do zero + protocolo de teste](docs/TESTES-DEPLOY-COMPLETO.md)
 - [Escalonamento por confiança do roteador](docs/ROUTER-ESCALATION.md)
 - [Providers gratuitos](docs/FREE_PROVIDERS.md)
 - [Roadmap de implementação](docs/ROADMAP.md)
