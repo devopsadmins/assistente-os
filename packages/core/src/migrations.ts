@@ -375,4 +375,28 @@ export const MIGRATIONS: Migration[] = [
     id: "0016_agenda_claimed_at",
     sql: `ALTER TABLE agenda ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;`,
   },
+  {
+    // E12b: histórico de runs de avaliação de RAG (offline `os rag eval` e
+    // amostragem online no chat) — rastreia drift de qualidade ao longo do
+    // tempo, não só uma foto. Sem PII: só métricas e contagens.
+    id: "0017_rag_eval_runs",
+    sql: `
+      CREATE TABLE IF NOT EXISTS rag_eval_runs (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+        soul TEXT,
+        kind TEXT NOT NULL DEFAULT 'offline',
+        n INTEGER NOT NULL DEFAULT 0,
+        hit_at_1 DOUBLE PRECISION,
+        hit_at_3 DOUBLE PRECISION,
+        hit_at_5 DOUBLE PRECISION,
+        mrr DOUBLE PRECISION,
+        recall_at_5 DOUBLE PRECISION,
+        adversarial_refusal_rate DOUBLE PRECISION,
+        faithfulness_supported DOUBLE PRECISION,
+        note TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_rag_eval_runs_soul_ts ON rag_eval_runs (soul, ts);
+    `,
+  },
 ];

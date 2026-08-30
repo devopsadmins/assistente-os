@@ -126,6 +126,8 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `AOS_RAG_CONCORD_FLOOR` | `0.5` | Score mínimo p/ uma fonte contar na concordância do confidence scorer |
 | `AOS_RAG_CONCORD_TARGET` | `3` | Nº de fontes concordantes = sinal de concordância cheio |
 | `AOS_RAG_STALE_DAYS` | `365` | Idade do chunk mais novo em que a penalidade de freshness satura em 1 |
+| `AOS_RAG_FAITHFULNESS_SAMPLE` | `0` | Prob. (0–1) de pontuar a fidelidade da resposta ao contexto de RAG após um turno de chat e gravar em `rag_eval_runs` (heurística, sem LLM, sem PII). `0` = desligado |
+| `AOS_RAG_FAITHFULNESS_MIN_OVERLAP` | `0.35` | Sobreposição frase↔fontes abaixo da qual a frase é "não sustentada pelo contexto" |
 
 > Um `.env.example` na raiz do repo lista todas as variáveis com valores de
 > exemplo — copie o que precisar para `~/.assistant-os/.env`.

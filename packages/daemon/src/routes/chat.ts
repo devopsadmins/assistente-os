@@ -26,7 +26,8 @@ import {
   nextZenApiKey,
 } from "@assistente-os/core";
 import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
-import { maxFindingSeverity } from "@assistente-os/memory";
+import { maxFindingSeverity, scoreAnswerFaithfulness } from "@assistente-os/memory";
+import { recordRagEvalRun } from "@assistente-os/core";
 import { buildPrompt } from "../context.js";
 import { runLangGraphAgentStream } from "../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../orchestrator/router.js";
@@ -740,6 +741,32 @@ export async function handleChat(
         logger.warn(`[content-filter] ${responseSanitized.count} secret(s) detectado(s) na resposta da soul ${soul.id}`);
       }
       const sanitizedStdout = responseSanitized.sanitized;
+
+      // ---- E12b: amostragem online de fidelidade (heurística, sem LLM, sem PII) ----
+      // Com prob = AOS_RAG_FAITHFULNESS_SAMPLE (default 0 = off), pontua o quanto
+      // da resposta o contexto de RAG sustenta e grava só a métrica.
+      const sampleRate = Number(process.env.AOS_RAG_FAITHFULNESS_SAMPLE) || 0;
+      const ragV = built.verdict as { ok?: boolean; sources?: Array<{ snippet?: string }> } | null;
+      if (
+        sampleRate > 0 &&
+        Math.random() < sampleRate &&
+        result.code === 0 &&
+        !result.timedOut &&
+        ragV?.ok &&
+        (ragV.sources?.length ?? 0) > 0
+      ) {
+        const snippets = (ragV.sources ?? []).map((s) => s.snippet ?? "");
+        const f = scoreAnswerFaithfulness(sanitizedStdout, snippets);
+        void recordRagEvalRun(pool, {
+          soul: soul.id,
+          kind: "online",
+          n: snippets.length,
+          faithfulnessSupported: f.supported,
+          note: `trace=${traceId}; tier=${tier}`,
+        }).catch(() => {
+          /* amostragem é best-effort */
+        });
+      }
 
       // ---- Grava o turno na sessão (memória multi-turno) — nunca sobre falha/timeout ----
       if (result.code === 0 && !result.timedOut) {

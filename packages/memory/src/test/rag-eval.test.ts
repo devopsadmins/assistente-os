@@ -13,7 +13,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LiteralEmbedder } from "../embedders.js";
 import { indexDirectory } from "../indexer.js";
-import { parseGoldenJsonl, runRagEval, formatRagEvalMetrics } from "../rag-eval.js";
+import { parseGoldenJsonl, runRagEval, runFaithfulnessEval, formatRagEvalMetrics } from "../rag-eval.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
 const SAMPLE = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "eval", "rag-golden.sample.jsonl");
@@ -63,6 +63,36 @@ test("runRagEval: corpus toy — positivos acertam no rank 1; adversariais decli
     assert.equal(m.nAdversarial, adversarials.length);
     assert.equal(m.adversarialRefusalRate, 1, `adversariais fora de escopo → recuperação declina\n${formatRagEvalMetrics(m)}`);
     assert.deepEqual(m.adversarialLeaks, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    await testDb.cleanup();
+  }
+});
+
+test("runFaithfulnessEval (E12b): pontua a resposta gerada contra as fontes recuperadas", async () => {
+  const { docs, cases } = parseGoldenJsonl(readFileSync(SAMPLE, "utf8"));
+  const dir = mkdtempSync(join(tmpdir(), "aos-faith-"));
+  const testDb = await createTestSchema();
+  try {
+    for (const d of docs) {
+      const p = join(dir, "docs", d.path);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, d.body + "\n");
+    }
+    await indexDirectory(testDb.pool, "__eval__", join(dir, "docs"), new LiteralEmbedder());
+
+    // generate stub: eco fiel do 1º snippet p/ metade dos casos, alucinação p/ o resto.
+    let i = 0;
+    const generate = async (snippets: string[]) =>
+      i++ % 2 === 0
+        ? snippets[0] ?? ""
+        : "Na verdade o sistema exige aprovacao biometrica presencial do diretor financeiro antes de qualquer deploy.";
+
+    const f = await runFaithfulnessEval(testDb.pool, cases, generate, { k: 5, minSupported: 0.7 });
+    assert.ok(f.evaluated >= 4, `esperava vários casos avaliados, veio ${f.evaluated}`);
+    assert.ok(f.meanSupported > 0 && f.meanSupported < 1, `meanSupported=${f.meanSupported}`);
+    assert.ok(f.low.length >= 1, "as respostas alucinadas caem abaixo do piso");
+    assert.ok(f.low[0]!.unsupported.length >= 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     await testDb.cleanup();
