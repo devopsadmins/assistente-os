@@ -16,6 +16,7 @@
 import type { Pool } from "@assistente-os/core";
 import { retrieveContext } from "./rag-chain.js";
 import { computeRagConfidence } from "./rag-confidence.js";
+import { scoreAnswerFaithfulness } from "./rag-faithfulness-score.js";
 
 export interface RagEvalCase {
   id: string;
@@ -158,6 +159,48 @@ export async function runRagEval(
     adversarialRefusalRate: refusals / nAdv,
     adversarialLeaks,
   };
+}
+
+// ── Fidelidade da resposta gerada (E12b) ──────────────────────────────
+
+/** Gera uma resposta a partir do contexto RAG. Injetável (Ollama real / stub). */
+export type RagGenerate = (contextSnippets: string[], question: string) => Promise<string>;
+
+export interface FaithfulnessEvalMetrics {
+  /** Casos em que houve recuperação relevante e a resposta foi pontuada. */
+  evaluated: number;
+  /** Média de `supported` (0..1) — quanto das afirmações da resposta o contexto sustenta. */
+  meanSupported: number;
+  /** Casos abaixo do piso, com as frases não sustentadas. */
+  low: Array<{ id: string; supported: number; unsupported: string[] }>;
+}
+
+export async function runFaithfulnessEval(
+  pool: Pool,
+  cases: RagEvalCase[],
+  generate: RagGenerate,
+  opts: { k?: number; minSupported?: number } = {},
+): Promise<FaithfulnessEvalMetrics> {
+  const k = opts.k ?? 5;
+  const minSupported = opts.minSupported ?? 0.7;
+  let sum = 0;
+  let evaluated = 0;
+  const low: FaithfulnessEvalMetrics["low"] = [];
+
+  for (const c of cases.filter((x) => !x.adversarial)) {
+    const ctx = await retrieveContext(pool, c.soul, c.query, k, { semanticCache: false });
+    if (!ctx.hasRelevantDocs) continue;
+    const snippets = ctx.sources.map((s) => s.snippet);
+    const answer = await generate(snippets, c.query);
+    const f = scoreAnswerFaithfulness(answer, snippets);
+    sum += f.supported;
+    evaluated++;
+    if (f.supported < minSupported) {
+      low.push({ id: c.id, supported: f.supported, unsupported: f.unsupported.map((u) => u.sentence) });
+    }
+  }
+
+  return { evaluated, meanSupported: evaluated ? Number((sum / evaluated).toFixed(3)) : 1, low };
 }
 
 /** Tabela legível para o CLI. */
