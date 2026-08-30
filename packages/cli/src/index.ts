@@ -78,7 +78,8 @@ Uso:
   os memory <soul> index             indexa a pasta da soul (md/txt) no memory.db
   os memory <soul> search <q>        busca RAG (literal se Ollama ausente)
   os memory <soul> status            contagem de chunks e grafo
-  os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <p>] [--min-hit1 0.7]
+  os rag eval [<soul>] [--rerank …] [--min-hit1 0.7] [--min-refusal 0.8] [--faithfulness] [--record]
+  os rag eval [<soul>] --history     evolução dos runs de eval (hit@k / refusal / faithfulness)
                                      avalia recuperação: hit@k / MRR / recall@5
   os prompt list                     lista os prompts do Prompt Garden (id / versão / hash)
   os prompt show <id>                mostra o detalhe de um prompt do garden
