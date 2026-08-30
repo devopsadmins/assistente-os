@@ -10,6 +10,17 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **`scripts/setup.sh` — instalador guiado** (`npm run setup`): sobe o sistema
+  numa máquina limpa. Checa pré-requisitos (Node ≥ 22.16, Docker, Ollama,
+  `pg_dump`), roda `npm ci` + `build` + `typecheck`, pergunta o essencial
+  (`ASSISTENTE_OS_HOME`, Postgres via compose ou externo, `OLLAMA_*`,
+  `AOS_HOST`/porta, **gera `ASSISTENTE_OS_DAEMON_TOKEN`**, chaves Zen opcionais,
+  pacote de flags de teste), sobe o Postgres, aplica as migrações (`os status`),
+  oferece indexar a 1ª soul e, opcional, `pm2 start`. Idempotente; faz backup do
+  `.env` antes de mexer; nunca apaga dados. Flags: `--yes`, `--pm2`, `--skip-build`.
+  **Não** liga `MCP_ZERO_TRUST` (exige `agent.autonomy` nas souls). Ref:
+  `docs/TESTES-DEPLOY-COMPLETO.md` §3. Só adiciona; sem efeito em runtime.
+
 - **`docs/TESTES-DEPLOY-COMPLETO.md`** — runbook consolidado: o que foi entregue
   nos PRs #11–#20 (remediação da análise crítica Ondas 0–3 + RAG enterprise
   E11–E12), a tabela das variáveis de ambiente novas com valores recomendados
