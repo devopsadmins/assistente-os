@@ -8,6 +8,29 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Adicionado
+
+- **E11 — RAG auditável: citações + confidence multi-sinal** (feature; `AOS_RAG_MIN_CONFIDENCE`
+  **default 0 = desligado**):
+  - **Citação na resposta**: `SearchResult`/`RagChunk` propagam `updatedAt`/`indexedAt`
+    (de `chunks.updated_at`). O bloco de contexto do chat (`buildPrompt`) passa a
+    listar `[<doc_key> · sim <score> · <data>] <trecho>` e traz a diretriz de
+    **constrained generation** ("responda usando SÓ o que está abaixo; cite a
+    fonte; se não houver evidência, diga isso") — antes o caminho do chat só
+    injetava `[score] snippet`, sem instrução restritiva (essa vivia só no
+    `ragAnswer` do Prompt Garden, que o chat não usa).
+  - **`computeRagConfidence(sources)`** (`packages/memory/src/rag-confidence.ts`) —
+    heurística sem ML: `0.6·topScore + 0.25·concord + 0.15·(1−freshnessPenalty)`.
+    `concord` = fontes acima de `AOS_RAG_CONCORD_FLOOR` (0.5) satura em
+    `AOS_RAG_CONCORD_TARGET` (3); `freshnessPenalty` = idade do chunk mais novo /
+    `AOS_RAG_STALE_DAYS` (365). `verdict.confidence = { score, level, signals }`.
+  - **Modo "evidência insuficiente"**: `confidence.score < AOS_RAG_MIN_CONFIDENCE`
+    → o contexto **não** é injetado; o prompt instrui o modelo a admitir a falta
+    de evidência em vez de completar com conhecimento paramétrico.
+  - Testes: `rag-confidence.test.ts` (novo, 7) + `rag-citation.test.ts` (novo, 2).
+  Rollback: `AOS_RAG_MIN_CONFIDENCE` fica 0 (default) → só a citação + a diretriz
+  mudam o prompt (mais restritivo, sem quebrar); ou reverter o commit.
+
 ### Alterado
 
 - **Onda 3c — observabilidade dos jobs de background + reaper de agenda** (roadmap

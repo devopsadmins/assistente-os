@@ -130,6 +130,8 @@ export interface SearchResult {
   body: string;
   score: number;
   method: "vector" | "literal";
+  /** ISO 8601 — `chunks.updated_at`: quando o chunk foi (re)sincronizado no índice. */
+  updatedAt: string | null;
 }
 
 /**
@@ -159,12 +161,12 @@ export async function search(
   if (qVec) {
     // SET LOCAL exige transação; conexão dedicada para não vazar o GUC pro pool.
     const client = await pool.connect();
-    let rows: Array<{ doc_key: string; path: string; title: string | null; body: string; score: number }>;
+    let rows: Array<{ doc_key: string; path: string; title: string | null; body: string; score: number; updated_at: string | null }>;
     try {
       await client.query("BEGIN");
       await client.query(`SET LOCAL hnsw.ef_search = ${hnswEfSearch()}`);
       ({ rows } = await client.query(
-        `SELECT doc_key, path, title, body, 1 - (embedding <=> $1::vector) AS score
+        `SELECT doc_key, path, title, body, updated_at, 1 - (embedding <=> $1::vector) AS score
          FROM chunks
          WHERE soul = $2 AND embedding IS NOT NULL
          ORDER BY embedding <=> $1::vector
@@ -186,12 +188,13 @@ export async function search(
         body: r.body,
         score: Number(r.score),
         method: "vector",
+        updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
       }));
     }
   }
 
-  const { rows: lit } = await pool.query<{ doc_key: string; path: string; title: string | null; body: string }>(
-    "SELECT doc_key, path, title, body FROM chunks WHERE soul = $1 AND (body ILIKE $2 OR title ILIKE $2) ORDER BY id LIMIT $3",
+  const { rows: lit } = await pool.query<{ doc_key: string; path: string; title: string | null; body: string; updated_at: string | null }>(
+    "SELECT doc_key, path, title, body, updated_at FROM chunks WHERE soul = $1 AND (body ILIKE $2 OR title ILIKE $2) ORDER BY id LIMIT $3",
     [soul, `%${query}%`, max],
   );
   return lit.map((r) => ({
@@ -201,6 +204,7 @@ export async function search(
     body: r.body,
     score: 1,
     method: "literal",
+    updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
   }));
 }
 
