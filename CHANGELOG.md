@@ -10,6 +10,23 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **E12a — RAG: métrica de fidelidade + casos adversariais no eval** (feature,
+  CI-safe): 2º epic da trilha RAG enterprise-ready.
+  - **`scoreAnswerFaithfulness(answer, sources)`** (`packages/memory/src/rag-faithfulness-score.ts`)
+    — heurística sem ML: cada frase-afirmação da resposta é comparada com o bag
+    de tokens das fontes; abaixo de `AOS_RAG_FAITHFULNESS_MIN_OVERLAP` (0.35) →
+    "não sustentada pelo contexto". `supported = 1 − não-sustentadas/afirmações`.
+    Reusa o tokenizer/stopwords de `relevance.ts` (não duplica).
+  - **Casos adversariais no golden set** — `RagEvalCase.adversarial: true` (query
+    fora de escopo). `runRagEval` reporta `adversarialRefusalRate` (fração que a
+    recuperação corretamente declinou: sem docs relevantes OU confidence <
+    `refusalFloor`) + `adversarialLeaks`. hit@k/MRR/recall passam a ser só sobre
+    os positivos. `os rag eval` ganha `--min-refusal` (default 0.8) como gate.
+  - Fixture `rag-golden.sample.jsonl` +2 casos adversariais.
+  - Testes: `rag-faithfulness-score.test.ts` (novo, 5) + `rag-eval.test.ts` (atualizado).
+  Rollback: reverter o commit (aditivo — sem adversariais no golden set, o
+  comportamento é idêntico ao anterior).
+
 - **E11 — RAG auditável: citações + confidence multi-sinal** (feature; `AOS_RAG_MIN_CONFIDENCE`
   **default 0 = desligado**):
   - **Citação na resposta**: `SearchResult`/`RagChunk` propagam `updatedAt`/`indexedAt`

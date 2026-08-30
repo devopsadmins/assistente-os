@@ -15,6 +15,7 @@
  */
 import type { Pool } from "@assistente-os/core";
 import { retrieveContext } from "./rag-chain.js";
+import { computeRagConfidence } from "./rag-confidence.js";
 
 export interface RagEvalCase {
   id: string;
@@ -24,6 +25,12 @@ export interface RagEvalCase {
   expect_path_substr: string[];
   /** Opcional: exige score mínimo do 1º resultado (senão conta como miss de hit@1). */
   min_top1_score?: number;
+  /**
+   * E12: caso adversarial — a query está FORA do escopo do índice. "Acerta"
+   * quando a recuperação declina (sem docs relevantes OU confidence abaixo do
+   * piso). Não entra em hit@k/MRR/recall (deveria mesmo não achar).
+   */
+  adversarial?: boolean;
 }
 
 export interface RagEvalDoc {
@@ -32,6 +39,7 @@ export interface RagEvalDoc {
 }
 
 export interface RagEvalMetrics {
+  /** Casos positivos (não-adversariais) — base de hit@k/MRR/recall. */
   n: number;
   hitAt1: number;
   hitAt3: number;
@@ -41,6 +49,12 @@ export interface RagEvalMetrics {
   /** Média por caso de |expect casados no top-5| / |expect|. */
   recallAt5: number;
   failures: Array<{ id: string; query: string; got: string[] }>;
+  /** E12: nº de casos adversariais avaliados. */
+  nAdversarial: number;
+  /** E12: fração dos adversariais em que a recuperação corretamente declinou. */
+  adversarialRefusalRate: number;
+  /** E12: adversariais que NÃO declinaram (retornaram contexto confiante — falso positivo). */
+  adversarialLeaks: Array<{ id: string; query: string; got: string[] }>;
 }
 
 /** Divide o `.jsonl` em docs (fixture) e casos. Linhas em branco / `//` são ignoradas. */
@@ -68,6 +82,7 @@ export function parseGoldenJsonl(text: string): { docs: RagEvalDoc[]; cases: Rag
       query: obj.query,
       expect_path_substr: obj.expect_path_substr as string[],
       min_top1_score: typeof obj.min_top1_score === "number" ? obj.min_top1_score : undefined,
+      adversarial: obj.adversarial === true,
     });
   }
   return { docs, cases };
@@ -83,9 +98,10 @@ function firstHitRank(paths: string[], expect: string[]): number {
 export async function runRagEval(
   pool: Pool,
   cases: RagEvalCase[],
-  opts: { k?: number } = {},
+  opts: { k?: number; refusalFloor?: number } = {},
 ): Promise<RagEvalMetrics> {
   const k = opts.k ?? 5;
+  const refusalFloor = opts.refusalFloor ?? 0.5;
   let hit1 = 0;
   let hit3 = 0;
   let hit5 = 0;
@@ -93,7 +109,12 @@ export async function runRagEval(
   let recallSum = 0;
   const failures: RagEvalMetrics["failures"] = [];
 
-  for (const c of cases) {
+  let refusals = 0;
+  const adversarialLeaks: RagEvalMetrics["adversarialLeaks"] = [];
+  const positives = cases.filter((c) => !c.adversarial);
+  const adversarials = cases.filter((c) => c.adversarial);
+
+  for (const c of positives) {
     // Sem cache semântico: cada caso do golden set precisa de recuperação real
     // (dois casos parecidos não podem colidir e corromper a métrica).
     const ctx = await retrieveContext(pool, c.soul, c.query, k, { semanticCache: false });
@@ -115,15 +136,27 @@ export async function runRagEval(
     if (rank === 0) failures.push({ id: c.id, query: c.query, got: paths });
   }
 
-  const n = cases.length || 1;
+  for (const c of adversarials) {
+    const ctx = await retrieveContext(pool, c.soul, c.query, k, { semanticCache: false });
+    const conf = computeRagConfidence(ctx.sources);
+    const declined = !ctx.hasRelevantDocs || conf.score < refusalFloor;
+    if (declined) refusals++;
+    else adversarialLeaks.push({ id: c.id, query: c.query, got: ctx.sources.map((s) => s.path) });
+  }
+
+  const n = positives.length || 1;
+  const nAdv = adversarials.length || 1;
   return {
-    n: cases.length,
+    n: positives.length,
     hitAt1: hit1 / n,
     hitAt3: hit3 / n,
     hitAt5: hit5 / n,
     mrr: rrSum / n,
     recallAt5: recallSum / n,
     failures,
+    nAdversarial: adversarials.length,
+    adversarialRefusalRate: refusals / nAdv,
+    adversarialLeaks,
   };
 }
 
@@ -131,16 +164,23 @@ export async function runRagEval(
 export function formatRagEvalMetrics(m: RagEvalMetrics): string {
   const pct = (x: number) => (x * 100).toFixed(1).padStart(5) + "%";
   const lines = [
-    `casos:      ${m.n}`,
+    `casos positivos:  ${m.n}`,
     `hit@1:     ${pct(m.hitAt1)}`,
     `hit@3:     ${pct(m.hitAt3)}`,
     `hit@5:     ${pct(m.hitAt5)}`,
     `MRR:        ${m.mrr.toFixed(3)}`,
     `recall@5:  ${pct(m.recallAt5)}`,
   ];
+  if (m.nAdversarial > 0) {
+    lines.push(`adversariais:      ${m.nAdversarial}`, `refusal rate:     ${pct(m.adversarialRefusalRate)}`);
+  }
   if (m.failures.length > 0) {
     lines.push("", "falhas (nenhum doc esperado no top-5):");
     for (const f of m.failures) lines.push(`  - [${f.id}] "${f.query}" → ${f.got.join(", ") || "(nada)"}`);
+  }
+  if (m.adversarialLeaks.length > 0) {
+    lines.push("", "vazamentos adversariais (recuperou contexto confiante p/ query fora de escopo):");
+    for (const f of m.adversarialLeaks) lines.push(`  - [${f.id}] "${f.query}" → ${f.got.join(", ") || "(nada)"}`);
   }
   return lines.join("\n");
 }
