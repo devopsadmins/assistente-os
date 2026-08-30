@@ -41,7 +41,9 @@ function getFlag(args: string[], name: string): string | undefined {
 export async function runRagCommand(config: AssistenteOsConfig, args: string[]): Promise<number> {
   const sub = args[0];
   if (sub !== "eval") {
-    console.log("uso: os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <path>] [--min-hit1 0.7]");
+    console.log(
+      "uso: os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <path>] [--min-hit1 0.7] [--min-refusal 0.8]",
+    );
     return 1;
   }
 
@@ -49,6 +51,7 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
   const rerank = getFlag(args, "rerank");
   const fileArg = getFlag(args, "file");
   const minHit1 = Number(getFlag(args, "min-hit1") ?? "0.7");
+  const minRefusal = Number(getFlag(args, "min-refusal") ?? "0.8");
 
   if (rerank) process.env.RAG_RERANK = rerank;
 
@@ -77,10 +80,20 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
   const m = await runRagEval(pool, selected, { k: 5 });
   console.log(formatRagEvalMetrics(m));
 
+  const fails: string[] = [];
   if (m.hitAt1 < minHit1) {
-    console.error(`\n✗ hit@1 ${(m.hitAt1 * 100).toFixed(1)}% < mínimo ${(minHit1 * 100).toFixed(1)}%`);
+    fails.push(`hit@1 ${(m.hitAt1 * 100).toFixed(1)}% < mínimo ${(minHit1 * 100).toFixed(1)}%`);
+  }
+  if (m.nAdversarial > 0 && m.adversarialRefusalRate < minRefusal) {
+    fails.push(
+      `refusal rate ${(m.adversarialRefusalRate * 100).toFixed(1)}% < mínimo ${(minRefusal * 100).toFixed(1)}%`,
+    );
+  }
+  if (fails.length > 0) {
+    for (const f of fails) console.error(`\n✗ ${f}`);
     return 1;
   }
-  console.log(`\n✓ hit@1 ${(m.hitAt1 * 100).toFixed(1)}% >= mínimo ${(minHit1 * 100).toFixed(1)}%`);
+  console.log(`\n✓ hit@1 ${(m.hitAt1 * 100).toFixed(1)}% >= ${(minHit1 * 100).toFixed(1)}%` +
+    (m.nAdversarial > 0 ? ` · refusal ${(m.adversarialRefusalRate * 100).toFixed(1)}% >= ${(minRefusal * 100).toFixed(1)}%` : ""));
   return 0;
 }

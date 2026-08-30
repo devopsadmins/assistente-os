@@ -15,3 +15,5 @@
 {"kind":"case","id":"app-lazy-require","soul":"__eval__","query":"lazy require com cache","expect_path_substr":["app/patterns.md"]}
 {"kind":"case","id":"jooq-recall","soul":"__eval__","query":"JOOQ","expect_path_substr":["api/patterns.md","api/rules.md"]}
 {"kind":"case","id":"trap-instalar","soul":"__eval__","query":"Instalar dependencias","expect_path_substr":["misc/history.md"]}
+{"kind":"case","id":"adv-fora-de-escopo","soul":"__eval__","query":"qual a capital da Mongolia","expect_path_substr":[],"adversarial":true}
+{"kind":"case","id":"adv-termo-inexistente","soul":"__eval__","query":"configuracao de kubernetes ingress nginx TLS","expect_path_substr":[],"adversarial":true}
