@@ -4,6 +4,7 @@ export * from "./embedder-local.js";
 export * from "./embedder-fallback.js";
 export * from "./rag-chain.js";
 export * from "./rag-confidence.js";
+export * from "./rag-faithfulness-score.js";
 export * from "./prompt-templates.js";
 export * from "./agent-state.js";
 export * from "./agent-workflow.js";

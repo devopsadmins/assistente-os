@@ -36,9 +36,12 @@ test("parseGoldenJsonl: caso malformado lança", () => {
   assert.throws(() => parseGoldenJsonl('{"kind":"case","id":"x"}'));
 });
 
-test("runRagEval: no corpus toy da fixture, todo caso acerta no rank 1", async () => {
+test("runRagEval: corpus toy — positivos acertam no rank 1; adversariais declinam (E12)", async () => {
   const { docs, cases } = parseGoldenJsonl(readFileSync(SAMPLE, "utf8"));
-  assert.ok(docs.length >= 5 && cases.length >= 6);
+  assert.ok(docs.length >= 5 && cases.length >= 8);
+  const positives = cases.filter((c) => !c.adversarial);
+  const adversarials = cases.filter((c) => c.adversarial);
+  assert.ok(adversarials.length >= 2, "a fixture tem casos adversariais");
 
   const dir = mkdtempSync(join(tmpdir(), "aos-rageval-"));
   const testDb = await createTestSchema();
@@ -51,11 +54,15 @@ test("runRagEval: no corpus toy da fixture, todo caso acerta no rank 1", async (
     await indexDirectory(testDb.pool, "__eval__", join(dir, "docs"), new LiteralEmbedder());
 
     const m = await runRagEval(testDb.pool, cases, { k: 5 });
-    assert.equal(m.n, cases.length);
-    assert.equal(m.hitAt1, 1, `esperava hit@1=1, obteve ${m.hitAt1}\n${formatRagEvalMetrics(m)}`);
+    assert.equal(m.n, positives.length, "hit@k é só sobre os positivos");
+    assert.equal(m.hitAt1, 1, `esperava hit@1=1\n${formatRagEvalMetrics(m)}`);
     assert.equal(m.mrr, 1);
     assert.equal(m.recallAt5, 1);
     assert.deepEqual(m.failures, []);
+
+    assert.equal(m.nAdversarial, adversarials.length);
+    assert.equal(m.adversarialRefusalRate, 1, `adversariais fora de escopo → recuperação declina\n${formatRagEvalMetrics(m)}`);
+    assert.deepEqual(m.adversarialLeaks, []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     await testDb.cleanup();
