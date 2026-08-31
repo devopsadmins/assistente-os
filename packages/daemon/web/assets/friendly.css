@@ -162,14 +162,16 @@
   inset: 0;
   background: rgba(0,0,0,0.6);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto; /* modal mais alto que a viewport (ex.: configurações) precisa rolar, não cortar */
   z-index: 100;
+  padding: 40px 0;
 }
 .friendly-modal {
   width: 100%;
   max-width: 420px;
-  margin: 20px;
+  margin: 0 20px;
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -191,3 +193,6 @@
 .friendly-modal textarea:focus,
 .friendly-modal input:focus { outline: none; border-color: var(--neon-cyan); }
 .friendly-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.friendly-modal-wide { max-width: 520px; }
+.friendly-modal-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 6px; }
+.friendly-modal-row .friendly-modal-label { margin-top: 0; }
