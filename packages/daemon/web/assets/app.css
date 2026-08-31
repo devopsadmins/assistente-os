@@ -182,6 +182,23 @@ code, pre, .mono { font-family: var(--font-mono); }
 .pill-ok { color: var(--neon-green); border-color: rgba(0,255,157,0.4); box-shadow: inset 0 0 6px rgba(0,255,157,0.08); }
 .pill-err { color: var(--neon-red); border-color: rgba(255,42,42,0.4); box-shadow: inset 0 0 6px rgba(255,42,42,0.08); }
 
+.pill-diag-btn {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--r-sm);
+  border: 1px dashed var(--border-hover);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+.pill-diag-btn:hover { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+/* quando o daemon está offline, o pill fica .pill-err — chama mais atenção pro botão ao lado */
+.pill-err ~ .pill-diag-btn { color: var(--neon-red); border-color: rgba(255,42,42,0.4); border-style: solid; }
+
 .souls-header {
   display: flex;
   flex-direction: column;
