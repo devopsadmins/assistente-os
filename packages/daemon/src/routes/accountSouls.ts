@@ -1,14 +1,20 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   listSouls,
+  getSoul,
+  writeSoulConfig,
   validateSoulSpec,
   resolveSoulSpecDefaults,
   createSoulFromSpec,
   computePlanHash,
   isValidSoulId,
+  resolveEffectiveGuardrails,
   SOUL_SPEC_SCHEMA_VERSION,
   CAPABILITY_CATALOG_VERSION,
   DEFAULT_GLOBAL_GUARDRAILS,
+  DEFAULT_SOUL_SPEC_LIMITS,
   type SoulSpec,
 } from "@assistente-os/core";
 import { sendJson, readJson, type RequestContext } from "./shared.js";
@@ -59,8 +65,14 @@ export async function handleAccountSouls(
   path: string,
   context: RequestContext,
 ): Promise<boolean> {
-  if (path !== "/accounts/me/souls" || req.method !== "POST") return false;
   const { home } = context;
+  const itemMatch = path.match(/^\/accounts\/me\/souls\/([^/]+)$/);
+
+  if (itemMatch && (req.method === "GET" || req.method === "PATCH")) {
+    return handleAccountSoulItem(req, res, home, decodeURIComponent(itemMatch[1]!));
+  }
+
+  if (path !== "/accounts/me/souls" || req.method !== "POST") return false;
 
   const accountId = getRequestAccountId(req);
   if (accountId == null) {
@@ -137,5 +149,108 @@ export async function handleAccountSouls(
     return true;
   }
   sendJson(res, 201, { dry_run: false, created: true, soul_id: newId, plan_hash: planHash });
+  return true;
+}
+
+function readPersonaFile(dir: string, name: string): string {
+  const p = join(dir, name);
+  return existsSync(p) ? readFileSync(p, "utf8") : "";
+}
+
+function soulSettingsView(home: string, id: string): Record<string, unknown> {
+  const soul = getSoul(home, id)!;
+  const eff = resolveEffectiveGuardrails(DEFAULT_GLOBAL_GUARDRAILS, soul.config.agent);
+  return {
+    id: soul.id,
+    description: soul.config.description ?? "",
+    perfilMd: readPersonaFile(soul.dir, "perfil.md"),
+    contextoMd: readPersonaFile(soul.dir, "contexto.md"),
+    guardrails: { maxTurns: eff.maxTurns, maxIterations: eff.maxIterations, ragRelevanceThreshold: eff.ragRelevanceThreshold },
+  };
+}
+
+/**
+ * Configurações escopadas do modo amigável (Fase 3) — GET/PATCH
+ * /accounts/me/souls/:id. Superfície de edição deliberadamente pequena:
+ * description + as duas personas mais usadas (perfil/contexto) + guardrails
+ * numéricos, sempre re-clampados contra o teto global (nunca afrouxa). NÃO dá
+ * pra mudar autonomy/capabilities/connectors/provider/model/ownerAccountId
+ * por aqui — isso ficaria fixo desde a criação (v1), escalar privilégio via
+ * "configurações" seria a mesma classe de bug que o resto do sistema evita.
+ *
+ * writeSoulConfig() não é atômico feito createSoulFull() — aceitável aqui:
+ * é update de uma soul já existente e válida, não criação; pior caso de
+ * falha no meio é tentar de novo, não uma soul pela metade.
+ */
+async function handleAccountSoulItem(
+  req: IncomingMessage,
+  res: ServerResponse,
+  home: string,
+  id: string,
+): Promise<boolean> {
+  const accountId = getRequestAccountId(req);
+  if (accountId == null) {
+    sendJson(res, 401, { error: "requer sessão de conta (faça login)" });
+    return true;
+  }
+  const soul = getSoul(home, id);
+  if (!soul || soul.config.ownerAccountId !== accountId) {
+    sendJson(res, 403, { error: "soul não pertence a esta conta" });
+    return true;
+  }
+
+  if (req.method === "GET") {
+    sendJson(res, 200, soulSettingsView(home, id));
+    return true;
+  }
+
+  // PATCH
+  const parsed = await readJson(req);
+  if (parsed.error === "too_large") {
+    sendJson(res, 413, { error: "body excede 1 MB" });
+    return true;
+  }
+  if (parsed.error === "invalid") {
+    sendJson(res, 400, { error: "JSON inválido" });
+    return true;
+  }
+  const body = parsed.body ?? {};
+  const limit = DEFAULT_SOUL_SPEC_LIMITS.maxFileBytes;
+
+  const description = typeof body.description === "string" ? body.description : soul.config.description;
+  const perfilMd = typeof body.perfilMd === "string" ? body.perfilMd : undefined;
+  const contextoMd = typeof body.contextoMd === "string" ? body.contextoMd : undefined;
+  for (const [field, value] of [["description", description], ["perfilMd", perfilMd], ["contextoMd", contextoMd]] as const) {
+    if (typeof value === "string" && Buffer.byteLength(value, "utf8") > limit) {
+      sendJson(res, 400, { error: `${field} excede ${limit} bytes`, code: "E_VALIDATION" });
+      return true;
+    }
+  }
+
+  const g = (body.guardrails ?? {}) as Record<string, unknown>;
+  const currentGuardrails = soul.config.agent?.guardrails;
+  const eff = resolveEffectiveGuardrails(DEFAULT_GLOBAL_GUARDRAILS, {
+    permissions: soul.config.agent?.permissions ?? { tools: [] },
+    guardrails: {
+      maxTurns: typeof g.maxTurns === "number" ? g.maxTurns : currentGuardrails?.maxTurns,
+      maxIterations: typeof g.maxIterations === "number" ? g.maxIterations : currentGuardrails?.maxIterations,
+      ragRelevanceThreshold: typeof g.ragRelevanceThreshold === "number" ? g.ragRelevanceThreshold : currentGuardrails?.ragRelevanceThreshold,
+    },
+  });
+
+  writeSoulConfig(soul.dir, {
+    ...soul.config,
+    description,
+    agent: {
+      ...soul.config.agent,
+      permissions: soul.config.agent?.permissions ?? { tools: [] },
+      autonomy: soul.config.agent?.autonomy ?? "ask",
+      guardrails: { maxTurns: eff.maxTurns, maxIterations: eff.maxIterations, ragRelevanceThreshold: eff.ragRelevanceThreshold },
+    },
+  });
+  if (perfilMd !== undefined) writeFileSync(join(soul.dir, "perfil.md"), perfilMd, "utf8");
+  if (contextoMd !== undefined) writeFileSync(join(soul.dir, "contexto.md"), contextoMd, "utf8");
+
+  sendJson(res, 200, soulSettingsView(home, id));
   return true;
 }

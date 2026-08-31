@@ -133,16 +133,19 @@ function renderSouls() {
   const empty = $("#friendly-empty");
   const askForm = $("#friendly-ask-form");
   const createBtn = $("#friendly-create-btn");
+  const settingsBtn = $("#friendly-settings-btn");
   if (!state.souls.length) {
     box.innerHTML = "";
     empty.hidden = false;
     askForm.hidden = true;
     createBtn.hidden = true;
+    settingsBtn.hidden = true;
     return;
   }
   empty.hidden = true;
   askForm.hidden = false;
   createBtn.hidden = false;
+  settingsBtn.hidden = false;
   if (!state.activeSoulId) state.activeSoulId = state.souls[0].id;
   box.innerHTML = state.souls
     .map((s) => {
@@ -247,6 +250,66 @@ $("#friendly-create-confirm").addEventListener("click", async () => {
     await loadSouls();
   } catch (err) {
     showCreateError(err.message || "não foi possível criar esse assistente agora — tenta de novo");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ---------- configurações escopadas (Fase 3) ---------- */
+
+function showSettingsError(msg) {
+  const el = $("#friendly-settings-error");
+  el.textContent = msg;
+  el.hidden = !msg;
+}
+function closeSettingsModal() {
+  $("#friendly-settings-overlay").hidden = true;
+}
+
+$("#friendly-settings-btn").addEventListener("click", async () => {
+  if (!state.activeSoulId) return;
+  showSettingsError("");
+  try {
+    const s = await api(`/accounts/me/souls/${encodeURIComponent(state.activeSoulId)}`);
+    $("#friendly-settings-description").value = s.description || "";
+    $("#friendly-settings-perfil").value = s.perfilMd || "";
+    $("#friendly-settings-contexto").value = s.contextoMd || "";
+    $("#friendly-settings-max-turns").value = s.guardrails.maxTurns;
+    $("#friendly-settings-max-iter").value = s.guardrails.maxIterations;
+    $("#friendly-settings-rag-threshold").value = s.guardrails.ragRelevanceThreshold;
+    $("#friendly-settings-overlay").hidden = false;
+  } catch {
+    showSettingsError("não deu pra carregar as configurações agora — tenta de novo");
+  }
+});
+$("#friendly-settings-cancel").addEventListener("click", closeSettingsModal);
+$("#friendly-settings-overlay").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeSettingsModal();
+});
+
+$("#friendly-settings-save").addEventListener("click", async () => {
+  const btn = $("#friendly-settings-save");
+  btn.disabled = true;
+  showSettingsError("");
+  try {
+    const numOrUndef = (el) => (el.value === "" ? undefined : Number(el.value));
+    await api(`/accounts/me/souls/${encodeURIComponent(state.activeSoulId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        description: $("#friendly-settings-description").value,
+        perfilMd: $("#friendly-settings-perfil").value,
+        contextoMd: $("#friendly-settings-contexto").value,
+        guardrails: {
+          maxTurns: numOrUndef($("#friendly-settings-max-turns")),
+          maxIterations: numOrUndef($("#friendly-settings-max-iter")),
+          ragRelevanceThreshold: numOrUndef($("#friendly-settings-rag-threshold")),
+        },
+      }),
+    });
+    closeSettingsModal();
+    await loadSouls(); // descrição pode ter mudado — atualiza o chip
+  } catch (err) {
+    showSettingsError(err.message || "não foi possível salvar agora — tenta de novo");
   } finally {
     btn.disabled = false;
   }

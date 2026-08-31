@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Assistente OS</title>
   <link rel="stylesheet" href="/assets/app.css" />
-  <link rel="stylesheet" href="/assets/friendly.css?v=20260831d" />
+  <link rel="stylesheet" href="/assets/friendly.css?v=20260831f" />
 </head>
 <body class="friendly-body">
 
@@ -14,6 +14,7 @@
     <span class="friendly-title">Assistente OS</span>
     <div id="friendly-account-bar" class="friendly-account-bar" hidden>
       <span id="friendly-account-email"></span>
+      <button id="friendly-settings-btn" class="icon-btn" title="Configurações do assistente" hidden>⚙️</button>
       <button id="friendly-logout-btn" class="wa-btn">sair</button>
     </div>
   </header>
@@ -71,6 +72,43 @@
         </div>
       </div>
 
+      <!-- ---------- Configurações escopadas (Fase 3) ---------- -->
+      <div id="friendly-settings-overlay" class="friendly-modal-overlay" hidden>
+        <div class="friendly-modal friendly-modal-wide box">
+          <h3>Configurações do assistente</h3>
+
+          <label class="friendly-modal-label" for="friendly-settings-description">Descrição (o que ele ajuda)</label>
+          <input id="friendly-settings-description" type="text" />
+
+          <label class="friendly-modal-label" for="friendly-settings-perfil">Persona / instruções (perfil.md)</label>
+          <textarea id="friendly-settings-perfil" rows="5"></textarea>
+
+          <label class="friendly-modal-label" for="friendly-settings-contexto">Contexto adicional (contexto.md)</label>
+          <textarea id="friendly-settings-contexto" rows="4"></textarea>
+
+          <div class="friendly-modal-row">
+            <div>
+              <label class="friendly-modal-label" for="friendly-settings-max-turns">Turnos por sessão</label>
+              <input id="friendly-settings-max-turns" type="number" min="1" />
+            </div>
+            <div>
+              <label class="friendly-modal-label" for="friendly-settings-max-iter">Passos por resposta</label>
+              <input id="friendly-settings-max-iter" type="number" min="1" />
+            </div>
+            <div>
+              <label class="friendly-modal-label" for="friendly-settings-rag-threshold">Rigor da busca (0-1)</label>
+              <input id="friendly-settings-rag-threshold" type="number" min="0" max="1" step="0.05" />
+            </div>
+          </div>
+
+          <div id="friendly-settings-error" class="friendly-auth-error" hidden></div>
+          <div class="friendly-modal-actions">
+            <button id="friendly-settings-cancel" type="button" class="wa-btn">cancelar</button>
+            <button id="friendly-settings-save" type="button" class="wa-btn wa-btn-primary">Salvar</button>
+          </div>
+        </div>
+      </div>
+
       <form id="friendly-ask-form" class="friendly-ask-form" hidden>
         <input id="friendly-ask-input" type="text" placeholder="Pergunte alguma coisa…" autocomplete="off" />
         <button type="submit" class="wa-btn wa-btn-primary">Perguntar</button>
@@ -83,6 +121,6 @@
   </main>
 
   <script src="/assets/citations.js?v=20260831"></script>
-  <script src="/assets/friendly.js?v=20260831d"></script>
+  <script src="/assets/friendly.js?v=20260831e"></script>
 </body>
 </html>
