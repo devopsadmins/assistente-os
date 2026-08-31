@@ -20,6 +20,16 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
   `.env` antes de mexer; nunca apaga dados. Flags: `--yes`, `--pm2`, `--skip-build`.
   **Não** liga `MCP_ZERO_TRUST` (exige `agent.autonomy` nas souls). Ref:
   `docs/TESTES-DEPLOY-COMPLETO.md` §3. Só adiciona; sem efeito em runtime.
+  **Atualização:** novo passo "Ollama" — detecta um Ollama/modelos já
+  existentes e oferece usá-los; se ausente, pergunta antes de instalar
+  (`curl\|sh` no Linux, `brew` no macOS, `winget` no Windows/Git Bash, ou
+  aguarda instalação manual), sobe `ollama serve` se preciso e baixa só os
+  modelos configurados que faltarem (cada download também é confirmado). O
+  passo Postgres externo agora roda `CREATE EXTENSION IF NOT EXISTS vector`
+  na hora do teste de conexão em vez de só avisar. Todo passo alimenta um
+  relatório final ("Resumo": ✓ feito / ! pendente) — nada trava a instalação
+  por causa de um item opcional; sob `--yes`, instalação de sistema é sempre
+  pulada (vira pendência) para nunca rodar instalador sem confirmação.
 
 - **`docs/TESTES-DEPLOY-COMPLETO.md`** — runbook consolidado: o que foi entregue
   nos PRs #11–#20 (remediação da análise crítica Ondas 0–3 + RAG enterprise
