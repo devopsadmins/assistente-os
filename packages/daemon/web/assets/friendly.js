@@ -150,8 +150,11 @@ function renderSouls() {
   box.innerHTML = state.souls
     .map((s) => {
       const active = s.id === state.activeSoulId ? " active" : "";
-      const desc = s.config?.description || s.id;
-      const name = s.config?.name || s.id;
+      // config.name é sempre o slug/id (invariante forçada no core) — nunca é
+      // um nome amigável de exibição. displayName é o campo editável nas
+      // configurações; description é o fallback natural antes de renomear.
+      const name = s.config?.displayName || s.config?.description || s.id;
+      const desc = s.id;
       return `<button type="button" class="friendly-soul-chip${active}" data-soul="${esc(s.id)}">
         <span class="friendly-soul-name">${esc(name)}</span>
         <span class="friendly-soul-desc">${esc(desc)}</span>
@@ -270,6 +273,7 @@ function renderKnowledgeUsage(knowledge) {
 }
 async function refreshSettingsView() {
   const s = await api(`/accounts/me/souls/${encodeURIComponent(state.activeSoulId)}`);
+  $("#friendly-settings-display-name").value = s.displayName || "";
   $("#friendly-settings-description").value = s.description || "";
   $("#friendly-settings-perfil").value = s.perfilMd || "";
   $("#friendly-settings-contexto").value = s.contextoMd || "";
@@ -305,6 +309,7 @@ $("#friendly-settings-save").addEventListener("click", async () => {
     await api(`/accounts/me/souls/${encodeURIComponent(state.activeSoulId)}`, {
       method: "PATCH",
       body: JSON.stringify({
+        displayName: $("#friendly-settings-display-name").value,
         description: $("#friendly-settings-description").value,
         perfilMd: $("#friendly-settings-perfil").value,
         contextoMd: $("#friendly-settings-contexto").value,

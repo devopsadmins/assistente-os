@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Assistente OS</title>
   <link rel="stylesheet" href="/assets/app.css" />
-  <link rel="stylesheet" href="/assets/friendly.css?v=20260831g" />
+  <link rel="stylesheet" href="/assets/friendly.css?v=20260831h" />
 </head>
 <body class="friendly-body">
 
@@ -62,7 +62,7 @@
           <h3>Criar um assistente</h3>
           <label class="friendly-modal-label" for="friendly-create-purpose">No que você quer que ele te ajude?</label>
           <textarea id="friendly-create-purpose" rows="2" placeholder="ex.: tirar dúvidas sobre nossos contratos e políticas internas"></textarea>
-          <label class="friendly-modal-label" for="friendly-create-id">Nome (opcional, sugerimos um)</label>
+          <label class="friendly-modal-label" for="friendly-create-id">Identificador técnico (opcional, sugerimos um — dá pra renomear o nome de exibição depois, nas configurações)</label>
           <input id="friendly-create-id" type="text" placeholder="gerado automaticamente" />
           <div id="friendly-create-error" class="friendly-auth-error" hidden></div>
           <div class="friendly-modal-actions">
@@ -76,6 +76,9 @@
       <div id="friendly-settings-overlay" class="friendly-modal-overlay" hidden>
         <div class="friendly-modal friendly-modal-wide box">
           <h3>Configurações do assistente</h3>
+
+          <label class="friendly-modal-label" for="friendly-settings-display-name">Nome</label>
+          <input id="friendly-settings-display-name" type="text" placeholder="como você quer chamar esse assistente" />
 
           <label class="friendly-modal-label" for="friendly-settings-description">Descrição (o que ele ajuda)</label>
           <input id="friendly-settings-description" type="text" />
@@ -129,6 +132,6 @@
   </main>
 
   <script src="/assets/citations.js?v=20260831"></script>
-  <script src="/assets/friendly.js?v=20260831g"></script>
+  <script src="/assets/friendly.js?v=20260831h"></script>
 </body>
 </html>

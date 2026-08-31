@@ -58,25 +58,36 @@ test("settings: GET devolve description/personas/guardrails; PATCH atualiza e pe
     const before = await fetchJson(`${base}/accounts/me/souls/${soulId}`, { headers });
     assert.equal(before.status, 200);
     assert.equal(before.body.description, "ajudar com pedidos");
+    assert.equal(before.body.displayName, "");
     assert.equal(before.body.perfilMd, "");
 
     const patch = await fetchJson(`${base}/accounts/me/souls/${soulId}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify({
+        displayName: "Atendimento Loja",
         description: "ajudar com pedidos e devoluções",
         perfilMd: "# Persona\nSeja gentil.",
         guardrails: { maxTurns: 5 },
       }),
     });
     assert.equal(patch.status, 200, JSON.stringify(patch.body));
+    assert.equal(patch.body.displayName, "Atendimento Loja");
     assert.equal(patch.body.description, "ajudar com pedidos e devoluções");
     assert.equal(patch.body.perfilMd, "# Persona\nSeja gentil.");
     assert.equal(patch.body.guardrails.maxTurns, 5);
 
     const after = await fetchJson(`${base}/accounts/me/souls/${soulId}`, { headers });
+    assert.equal(after.body.displayName, "Atendimento Loja");
     assert.equal(after.body.description, "ajudar com pedidos e devoluções");
     assert.equal(after.body.perfilMd, "# Persona\nSeja gentil.");
+
+    // GET /souls (fonte da listagem/chips) também precisa refletir o rename —
+    // é o dado que a UI usa pra desenhar o chip, não só a view de settings.
+    const souls = await fetchJson(`${base}/souls`, { headers });
+    const soul = souls.body.find((s: any) => s.id === soulId);
+    assert.equal(soul.config.displayName, "Atendimento Loja");
+    assert.equal(soul.config.name, soulId, "config.name continua o slug/id — invariante do core não muda");
   } finally {
     await daemon.close();
     await cleanup();

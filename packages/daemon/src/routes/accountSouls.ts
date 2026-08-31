@@ -168,6 +168,7 @@ function soulSettingsView(home: string, id: string): Record<string, unknown> {
   const usedKb = Math.round((directoryTotalBytes(join(soul.dir, "sources", "uploads")) / 1024) * 10) / 10;
   return {
     id: soul.id,
+    displayName: soul.config.displayName ?? "",
     description: soul.config.description ?? "",
     perfilMd: readPersonaFile(soul.dir, "perfil.md"),
     contextoMd: readPersonaFile(soul.dir, "contexto.md"),
@@ -224,10 +225,11 @@ async function handleAccountSoulItem(
   const body = parsed.body ?? {};
   const limit = DEFAULT_SOUL_SPEC_LIMITS.maxFileBytes;
 
+  const displayName = typeof body.displayName === "string" ? body.displayName.trim() : soul.config.displayName;
   const description = typeof body.description === "string" ? body.description : soul.config.description;
   const perfilMd = typeof body.perfilMd === "string" ? body.perfilMd : undefined;
   const contextoMd = typeof body.contextoMd === "string" ? body.contextoMd : undefined;
-  for (const [field, value] of [["description", description], ["perfilMd", perfilMd], ["contextoMd", contextoMd]] as const) {
+  for (const [field, value] of [["displayName", displayName], ["description", description], ["perfilMd", perfilMd], ["contextoMd", contextoMd]] as const) {
     if (typeof value === "string" && Buffer.byteLength(value, "utf8") > limit) {
       sendJson(res, 400, { error: `${field} excede ${limit} bytes`, code: "E_VALIDATION" });
       return true;
@@ -247,6 +249,7 @@ async function handleAccountSoulItem(
 
   writeSoulConfig(soul.dir, {
     ...soul.config,
+    displayName,
     description,
     agent: {
       ...soul.config.agent,
