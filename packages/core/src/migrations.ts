@@ -399,4 +399,29 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_rag_eval_runs_soul_ts ON rag_eval_runs (soul, ts);
     `,
   },
+  {
+    // Fase 0 do modo amigável multi-tenant: contas de cliente self-service,
+    // paralelas ao token admin único (ASSISTENTE_OS_DAEMON_TOKEN) — não o
+    // substitui. Nome "account_sessions" (não "sessions") porque a tabela
+    // `sessions` já existe pra sessão de chat por soul (ver 0002); são
+    // conceitos diferentes. token_hash guarda sha256 do token de sessão —
+    // nunca o token em claro, igual ao padrão de clientKeyFor() no daemon.
+    id: "0018_accounts",
+    sql: `
+      CREATE TABLE IF NOT EXISTS accounts (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS account_sessions (
+        token_hash TEXT PRIMARY KEY,
+        account_id BIGINT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_account_sessions_account ON account_sessions (account_id);
+    `,
+  },
 ];

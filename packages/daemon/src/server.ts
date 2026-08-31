@@ -36,6 +36,7 @@ import { handleManifest } from "./routes/manifest.js";
 import { initSentry, captureError } from "./observability/sentry.js";
 import { backgroundJobErrors } from "./observability/metrics.js";
 import { handleCosts } from "./routes/costs.js";
+import { handleAuth } from "./routes/auth.js";
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
@@ -456,6 +457,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleMetrics,
   handleManifest,
   handleCosts,
+  handleAuth,
 ];
 
 /** Handler de erro para os loops de background: loga + incrementa a métrica (nunca lança). */
@@ -480,8 +482,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
   if (serveStatic(req, res, webDir)) return;
 
   // Exige Bearer token quando ASSISTENTE_OS_DAEMON_TOKEN está configurado.
-  // /health fica público (infra/monitoramento); demais rotas exigem o token.
-  if (token && path !== "/health" && !isAuthorized(req, token, path)) {
+  // /health fica público (infra/monitoramento); /auth/* tem autenticação
+  // própria (conta de cliente self-service, ver routes/auth.ts) — signup e
+  // login precisam ser alcançáveis por quem ainda não tem token nenhum, e
+  // logout/me se autenticam por sessão de conta, não pelo token admin.
+  if (token && path !== "/health" && !path.startsWith("/auth/") && !isAuthorized(req, token, path)) {
     sendJson(res, 401, { error: "não autorizado" });
     return;
   }
