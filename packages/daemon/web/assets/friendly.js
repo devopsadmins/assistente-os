@@ -265,18 +265,27 @@ function showSettingsError(msg) {
 function closeSettingsModal() {
   $("#friendly-settings-overlay").hidden = true;
 }
+function renderKnowledgeUsage(knowledge) {
+  $("#friendly-settings-knowledge-usage").textContent = `${knowledge.usedKb} KB de ${knowledge.limitKb} KB usados`;
+}
+async function refreshSettingsView() {
+  const s = await api(`/accounts/me/souls/${encodeURIComponent(state.activeSoulId)}`);
+  $("#friendly-settings-description").value = s.description || "";
+  $("#friendly-settings-perfil").value = s.perfilMd || "";
+  $("#friendly-settings-contexto").value = s.contextoMd || "";
+  $("#friendly-settings-max-turns").value = s.guardrails.maxTurns;
+  $("#friendly-settings-max-iter").value = s.guardrails.maxIterations;
+  $("#friendly-settings-rag-threshold").value = s.guardrails.ragRelevanceThreshold;
+  renderKnowledgeUsage(s.knowledge);
+}
 
 $("#friendly-settings-btn").addEventListener("click", async () => {
   if (!state.activeSoulId) return;
   showSettingsError("");
+  $("#friendly-settings-upload-result").innerHTML = "";
+  $("#friendly-settings-upload-input").value = "";
   try {
-    const s = await api(`/accounts/me/souls/${encodeURIComponent(state.activeSoulId)}`);
-    $("#friendly-settings-description").value = s.description || "";
-    $("#friendly-settings-perfil").value = s.perfilMd || "";
-    $("#friendly-settings-contexto").value = s.contextoMd || "";
-    $("#friendly-settings-max-turns").value = s.guardrails.maxTurns;
-    $("#friendly-settings-max-iter").value = s.guardrails.maxIterations;
-    $("#friendly-settings-rag-threshold").value = s.guardrails.ragRelevanceThreshold;
+    await refreshSettingsView();
     $("#friendly-settings-overlay").hidden = false;
   } catch {
     showSettingsError("não deu pra carregar as configurações agora — tenta de novo");
@@ -310,6 +319,42 @@ $("#friendly-settings-save").addEventListener("click", async () => {
     await loadSouls(); // descrição pode ter mudado — atualiza o chip
   } catch (err) {
     showSettingsError(err.message || "não foi possível salvar agora — tenta de novo");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("#friendly-settings-upload-btn").addEventListener("click", async () => {
+  const input = $("#friendly-settings-upload-input");
+  const result = $("#friendly-settings-upload-result");
+  const files = input.files;
+  if (!files || files.length === 0) {
+    result.innerHTML = `<span class="friendly-upload-err">escolhe ao menos um arquivo</span>`;
+    return;
+  }
+  const form = new FormData();
+  for (const f of files) form.append("files", f);
+  result.textContent = `enviando ${files.length} arquivo(s)…`;
+  const btn = $("#friendly-settings-upload-btn");
+  btn.disabled = true;
+  try {
+    // fetch direto, não api(): FormData define o boundary do multipart
+    // sozinho — api() força content-type: application/json.
+    const res = await fetch(`/souls/${encodeURIComponent(state.activeSoulId)}/upload`, {
+      method: "POST",
+      headers: state.token ? { authorization: `Bearer ${state.token}` } : {},
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const savedCount = (data.saved ?? []).length;
+    const rejected = data.rejected ?? [];
+    const rejectedHtml = rejected.map((r) => `<div class="friendly-upload-err">✗ ${esc(r.name)}: ${esc(r.reason)}</div>`).join("");
+    result.innerHTML = `${savedCount ? `<div>✓ ${savedCount} arquivo(s) enviado(s)${data.indexing ? " — indexando…" : ""}</div>` : ""}${rejectedHtml}`;
+    input.value = "";
+    await refreshSettingsView(); // atualiza "X de Y KB usados"
+  } catch (err) {
+    result.innerHTML = `<span class="friendly-upload-err">${esc(err.message || "não foi possível enviar agora")}</span>`;
   } finally {
     btn.disabled = false;
   }

@@ -196,3 +196,13 @@
 .friendly-modal-wide { max-width: 520px; }
 .friendly-modal-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 6px; }
 .friendly-modal-row .friendly-modal-label { margin-top: 0; }
+
+.friendly-knowledge-usage { font-size: 0.75rem; }
+.friendly-upload-row { display: flex; gap: 8px; margin-top: 4px; }
+.friendly-upload-row input[type="file"] {
+  flex: 1;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+.friendly-upload-result { font-size: 0.72rem; margin-top: 6px; }
+.friendly-upload-result .friendly-upload-err { color: var(--neon-red); }
