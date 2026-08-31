@@ -132,14 +132,17 @@ function renderSouls() {
   const box = $("#friendly-souls");
   const empty = $("#friendly-empty");
   const askForm = $("#friendly-ask-form");
+  const createBtn = $("#friendly-create-btn");
   if (!state.souls.length) {
     box.innerHTML = "";
     empty.hidden = false;
     askForm.hidden = true;
+    createBtn.hidden = true;
     return;
   }
   empty.hidden = true;
   askForm.hidden = false;
+  createBtn.hidden = false;
   if (!state.activeSoulId) state.activeSoulId = state.souls[0].id;
   box.innerHTML = state.souls
     .map((s) => {
@@ -188,6 +191,64 @@ $("#friendly-ask-form").addEventListener("submit", async (e) => {
   } finally {
     input.disabled = false;
     input.focus();
+  }
+});
+
+/* ---------- criação de soul (wizard, Fase 2) ---------- */
+
+function openCreateModal() {
+  $("#friendly-create-purpose").value = "";
+  $("#friendly-create-id").value = "";
+  showCreateError("");
+  $("#friendly-create-overlay").hidden = false;
+  $("#friendly-create-purpose").focus();
+}
+function closeCreateModal() {
+  $("#friendly-create-overlay").hidden = true;
+}
+function showCreateError(msg) {
+  const el = $("#friendly-create-error");
+  el.textContent = msg;
+  el.hidden = !msg;
+}
+
+$("#friendly-create-btn-empty").addEventListener("click", openCreateModal);
+$("#friendly-create-btn").addEventListener("click", openCreateModal);
+$("#friendly-create-cancel").addEventListener("click", closeCreateModal);
+$("#friendly-create-overlay").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeCreateModal(); // clique fora do card fecha
+});
+
+$("#friendly-create-confirm").addEventListener("click", async () => {
+  const purpose = $("#friendly-create-purpose").value.trim();
+  const id = $("#friendly-create-id").value.trim();
+  if (!purpose) {
+    showCreateError("descreve no que ele vai ajudar antes de continuar");
+    return;
+  }
+  showCreateError("");
+  const btn = $("#friendly-create-confirm");
+  btn.disabled = true;
+  try {
+    // dry_run (valida + gera plan_hash) seguido de commit imediato — o usuário
+    // amigável não precisa ver a etapa de confirmação técnica, ela é uma
+    // garantia de contrato da API, não uma decisão que ele precisa tomar.
+    const dry = await api("/accounts/me/souls", { method: "POST", body: JSON.stringify({ purpose, id: id || undefined }) });
+    if (!dry.ok) {
+      showCreateError((dry.issues && dry.issues[0] && dry.issues[0].message) || "não foi possível criar esse assistente");
+      return;
+    }
+    const commit = await api("/accounts/me/souls", {
+      method: "POST",
+      body: JSON.stringify({ purpose, id: id || undefined, dry_run: false, plan_hash: dry.plan_hash }),
+    });
+    state.activeSoulId = commit.soul_id;
+    closeCreateModal();
+    await loadSouls();
+  } catch (err) {
+    showCreateError(err.message || "não foi possível criar esse assistente agora — tenta de novo");
+  } finally {
+    btn.disabled = false;
   }
 });
 

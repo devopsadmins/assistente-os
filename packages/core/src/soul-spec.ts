@@ -59,6 +59,8 @@ export interface SoulSpec {
   model?: string;
   indexMemory?: boolean;
   setActive?: boolean;
+  /** Dono no modo amigável self-service (id de accounts) — ausente = soul do operador. */
+  ownerAccountId?: number;
 }
 
 // ── Limites (docs/PLANO-CRIACAO-SOULS.md §6) ─────────────────────────────
@@ -290,6 +292,7 @@ export function createSoulFromSpec(configHome: string, spec: SoulSpec): CreateSo
     models: spec.model ? { chat: spec.model } : undefined,
     maxTurns: spec.guardrails?.maxTurns,
     agent,
+    ownerAccountId: spec.ownerAccountId,
   };
   const files: Partial<Record<SoulFileName, string>> = {
     "perfil.md": spec.perfilMd ?? "",
