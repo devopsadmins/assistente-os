@@ -112,6 +112,12 @@ $("#tabs").addEventListener("click", (e) => {
   if (btn.dataset.tab === "telegram") loadTelegramMessages();
 });
 
+// botão "ver logs e status": pula direto pra aba Telemetria (usa o mesmo
+// caminho de um clique manual, pra herdar o loadObservability() etc.)
+$("#status-diag-btn")?.addEventListener("click", () => {
+  $('.tab[data-tab="observability"]')?.click();
+});
+
 /* ---------- websocket ---------- */
 let _ws = null;
 let _wsReconnectDelay = 1000;
@@ -1083,7 +1089,9 @@ async function refreshStatus() {
     const pill = $("#status-pill");
     pill.textContent = "online";
     pill.className = "pill pill-ok";
-    $("#daemon-info").textContent = `daemon: ${health.service} · ${health.souls.length} souls`;
+    // /health não traz mais a lista de souls (removida por segurança — ids podem
+    // conter telefone/PII, ver PR Onda 0); usa state.souls (de GET /souls, autenticado).
+    $("#daemon-info").textContent = `daemon: ${health.service} · ${state.souls.length} souls`;
   } catch {
     const pill = $("#status-pill");
     pill.textContent = "offline";
@@ -1179,6 +1187,7 @@ function showVoiceTranscript(text, kind = "user") {
 async function boot() {
   connectWs();
   refreshStatus();
+  setInterval(refreshStatus, 15000);
   try {
     await loadSouls();
     if (state.souls.length && !state.active) selectSoul(state.souls[0].id);

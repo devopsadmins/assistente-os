@@ -79,6 +79,19 @@ ollama_model_present() {
   ollama_models "$1" | grep -qxF "$want"
 }
 
+# is_wsl — true se rodando dentro do WSL (WSL1 ou WSL2)
+is_wsl() {
+  [ -n "${WSL_DISTRO_NAME:-}" ] && return 0
+  grep -qi microsoft /proc/version 2>/dev/null
+}
+# wsl_host_ip — IP do host Windows visto de dentro do WSL2 (gateway da rede NAT).
+# Vazio se não for WSL ou não conseguir descobrir. Esse IP pode mudar a cada
+# reboot do Windows/WSL (a menos que networkingMode=mirrored esteja ligado no
+# .wslconfig, aí 'localhost' já basta e este helper nem é chamado).
+wsl_host_ip() {
+  ip route show default 2>/dev/null | awk '{print $3; exit}'
+}
+
 # ask "pergunta" "default"  → ecoa a resposta (default se --yes ou ENTER)
 ask() {
   local q="$1" def="${2:-}" ans
@@ -175,8 +188,22 @@ OLLAMA_URL_DEFAULT="${OLLAMA_URL:-http://localhost:11434}"
 if curl -fsS --max-time 3 "$OLLAMA_URL_DEFAULT/api/tags" >/dev/null 2>&1; then
   models="$(ollama_models "$OLLAMA_URL_DEFAULT" | tr '\n' ',' | sed 's/,$//')"
   ok "Ollama vivo em $OLLAMA_URL_DEFAULT  — modelos: ${models:-(nenhum modelo baixado)}"
+elif is_wsl && [ -z "${OLLAMA_URL:-}" ] && host_ip="$(wsl_host_ip)" && [ -n "$host_ip" ] \
+     && curl -fsS --max-time 3 "http://$host_ip:11434/api/tags" >/dev/null 2>&1; then
+  # WSL: localhost não chega no Ollama do Windows, mas o gateway da rede NAT chega
+  # — e ele respondeu. Usa como default em vez do localhost pro resto do setup.
+  OLLAMA_URL_DEFAULT="http://$host_ip:11434"
+  models="$(ollama_models "$OLLAMA_URL_DEFAULT" | tr '\n' ',' | sed 's/,$//')"
+  ok "Ollama do Windows encontrado via WSL em $OLLAMA_URL_DEFAULT  — modelos: ${models:-(nenhum modelo baixado)}"
+  info "isso é o IP do host Windows visto do WSL (\`ip route show default\`) — pode mudar após reboot;"
+  info "se o Ollama parar de responder depois de reiniciar, rode esse comando de novo e atualize OLLAMA_URL no .env."
+  mark_done "Ollama: detectado no host Windows via WSL ($OLLAMA_URL_DEFAULT)"
 else
   warn "Ollama não respondeu em $OLLAMA_URL_DEFAULT — o tier 'local' e o --faithfulness ficam indisponíveis (o sistema degrada pra 'zen'/literal)."
+  if is_wsl; then
+    info "você está no WSL: se o Ollama roda no Windows, confira se 'Expose Ollama to the network' está ligado"
+    info "(app do Ollama → Settings) e tente de novo — este setup detecta o IP do host automaticamente."
+  fi
   info "este setup pode instalar e subir o Ollama pra você mais adiante (passo 'Ollama')."
   mark_pending "Ollama não respondia em $OLLAMA_URL_DEFAULT no início do setup"
 fi
