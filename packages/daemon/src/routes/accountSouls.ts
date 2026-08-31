@@ -19,6 +19,7 @@ import {
 } from "@assistente-os/core";
 import { sendJson, readJson, type RequestContext } from "./shared.js";
 import { getRequestAccountId } from "./accountAuth.js";
+import { directoryTotalBytes, friendlyUploadKbLimit } from "../upload.js";
 
 /** Quantas souls uma conta self-service pode ter (env ASSISTENTE_OS_MAX_SOULS_PER_ACCOUNT, default 2). */
 function maxSoulsPerAccount(): number {
@@ -160,12 +161,18 @@ function readPersonaFile(dir: string, name: string): string {
 function soulSettingsView(home: string, id: string): Record<string, unknown> {
   const soul = getSoul(home, id)!;
   const eff = resolveEffectiveGuardrails(DEFAULT_GLOBAL_GUARDRAILS, soul.config.agent);
+  const limitKb = friendlyUploadKbLimit();
+  // 1 casa decimal, não arredondado pro inteiro mais próximo — um upload de
+  // poucas dezenas de bytes (comum em teste/documento curto) virava "0 KB"
+  // com Math.round, parecendo que o envio não fez nada.
+  const usedKb = Math.round((directoryTotalBytes(join(soul.dir, "sources", "uploads")) / 1024) * 10) / 10;
   return {
     id: soul.id,
     description: soul.config.description ?? "",
     perfilMd: readPersonaFile(soul.dir, "perfil.md"),
     contextoMd: readPersonaFile(soul.dir, "contexto.md"),
     guardrails: { maxTurns: eff.maxTurns, maxIterations: eff.maxIterations, ragRelevanceThreshold: eff.ragRelevanceThreshold },
+    knowledge: { usedKb, limitKb },
   };
 }
 

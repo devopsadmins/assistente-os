@@ -1,11 +1,35 @@
 import type { IncomingMessage } from "node:http";
-import { createWriteStream, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, normalize, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import Busboy from "busboy";
 import AdmZip from "adm-zip";
+
+/**
+ * Teto de conhecimento por conta no modo amigável self-service, em KB — não em
+ * chunks (decisão registrada em memória de projeto): o tamanho já é conhecido
+ * no momento do upload, antes de indexar, enquanto o número de chunks só
+ * existe depois. env ASSISTENTE_OS_FRIENDLY_UPLOAD_KB_LIMIT, default 10240
+ * (10MB). Só se aplica a sessão de conta — o token admin (modo especialista)
+ * segue só com MAX_FILE_BYTES/MAX_FILES abaixo.
+ */
+export function friendlyUploadKbLimit(): number {
+  const n = Number(process.env.ASSISTENTE_OS_FRIENDLY_UPLOAD_KB_LIMIT);
+  return Number.isFinite(n) && n > 0 ? n : 10240;
+}
+
+/** Soma recursiva do tamanho de todo arquivo sob `dir` (0 se o dir não existe). Usado pro teto de KB por conta no modo amigável. */
+export function directoryTotalBytes(dir: string): number {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    total += entry.isDirectory() ? directoryTotalBytes(p) : statSync(p).size;
+  }
+  return total;
+}
 
 export interface UploadedFileResult {
   name: string;

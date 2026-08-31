@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { loadConfig, getPool, getSoul, anotar, registrarLicao, decidir, logger } from "@assistente-os/core";
 import { indexFile, indexStats, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder } from "@assistente-os/memory";
-import { handleUpload } from "../upload.js";
+import { handleUpload, directoryTotalBytes, friendlyUploadKbLimit } from "../upload.js";
 import { relevanceRule } from "../relevance.js";
 import { sendJson, readJson, type RequestContext } from "./shared.js";
 import { getRequestAccountId } from "./accountAuth.js";
@@ -104,6 +104,27 @@ export async function handleMemory(
       return true;
     }
     const uploadsDir = join(soul.dir, "sources", "uploads");
+
+    // Teto de KB só pra sessão de conta (modo amigável) — pré-checagem via
+    // Content-Length: rejeita cedo, antes de gastar disco/CPU processando um
+    // upload que já sabemos que estoura o teto (aproximado — overhead do
+    // multipart deixa a estimativa levemente pra cima, é intencionalmente
+    // conservador).
+    if (getRequestAccountId(req) != null) {
+      const limitBytes = friendlyUploadKbLimit() * 1024;
+      const usedBytes = directoryTotalBytes(uploadsDir);
+      const incomingBytes = Number(req.headers["content-length"] ?? 0);
+      if (usedBytes + incomingBytes > limitBytes) {
+        sendJson(res, 400, {
+          error: `limite de conhecimento (${friendlyUploadKbLimit()} KB) atingido ou excedido por este upload`,
+          code: "E_ACCOUNT_LIMIT",
+          usedKb: Math.round(usedBytes / 1024),
+          limitKb: friendlyUploadKbLimit(),
+        });
+        return true;
+      }
+    }
+
     let result;
     try {
       result = await handleUpload(req, uploadsDir);
