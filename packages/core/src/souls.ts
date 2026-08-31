@@ -26,6 +26,13 @@ export interface SoulConfig {
   maxTurns?: number;
   /** Configuração de agente: permissões de tools, skills e guardrails. */
   agent?: AgentConfig;
+  /**
+   * Dono da soul no modo amigável self-service (id de `accounts`, ver
+   * packages/core/src/accounts.ts). Ausente = soul do operador (modo
+   * especialista) ou criada antes das contas existirem — nunca listada/
+   * acessível por sessão de conta, só pelo token admin.
+   */
+  ownerAccountId?: number;
 }
 
 export interface Soul {

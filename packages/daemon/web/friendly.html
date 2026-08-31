@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Assistente OS</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+  <link rel="stylesheet" href="/assets/friendly.css?v=20260831c" />
+</head>
+<body class="friendly-body">
+
+  <header class="friendly-header">
+    <img class="friendly-logo" src="/assets/logo.png" alt="" />
+    <span class="friendly-title">Assistente OS</span>
+    <div id="friendly-account-bar" class="friendly-account-bar" hidden>
+      <span id="friendly-account-email"></span>
+      <button id="friendly-logout-btn" class="wa-btn">sair</button>
+    </div>
+  </header>
+
+  <main class="friendly-main">
+
+    <!-- ---------- Tela de autenticação ---------- -->
+    <section id="friendly-auth" class="friendly-auth box">
+      <div class="friendly-auth-tabs">
+        <button id="friendly-tab-login" class="friendly-auth-tab active" type="button">Entrar</button>
+        <button id="friendly-tab-signup" class="friendly-auth-tab" type="button">Criar conta</button>
+      </div>
+
+      <form id="friendly-login-form" class="friendly-auth-form">
+        <input id="friendly-login-email" type="email" placeholder="seu e-mail" required autocomplete="username" />
+        <input id="friendly-login-password" type="password" placeholder="senha" required autocomplete="current-password" />
+        <button type="submit" class="wa-btn wa-btn-primary">Entrar</button>
+      </form>
+
+      <form id="friendly-signup-form" class="friendly-auth-form" hidden>
+        <input id="friendly-signup-email" type="email" placeholder="seu e-mail" required autocomplete="username" />
+        <input id="friendly-signup-password" type="password" placeholder="crie uma senha (mín. 8 caracteres)" required autocomplete="new-password" minlength="8" />
+        <button type="submit" class="wa-btn wa-btn-primary">Criar conta</button>
+      </form>
+
+      <div id="friendly-auth-error" class="friendly-auth-error" hidden></div>
+    </section>
+
+    <!-- ---------- Tela principal ---------- -->
+    <section id="friendly-app" class="friendly-app" hidden>
+
+      <div id="friendly-empty" class="friendly-empty" hidden>
+        <p>Você ainda não tem nenhum assistente configurado.</p>
+        <p class="muted">Em breve você vai poder criar um por aqui.</p>
+      </div>
+
+      <div id="friendly-souls" class="friendly-souls"></div>
+
+      <form id="friendly-ask-form" class="friendly-ask-form" hidden>
+        <input id="friendly-ask-input" type="text" placeholder="Pergunte alguma coisa…" autocomplete="off" />
+        <button type="submit" class="wa-btn wa-btn-primary">Perguntar</button>
+      </form>
+
+      <div id="friendly-answer" class="friendly-answer"></div>
+
+    </section>
+
+  </main>
+
+  <script src="/assets/citations.js?v=20260831"></script>
+  <script src="/assets/friendly.js?v=20260831c"></script>
+</body>
+</html>

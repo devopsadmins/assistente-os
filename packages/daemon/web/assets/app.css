@@ -453,6 +453,20 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); }
 .muted { color: var(--text-muted); font-style: italic; }
 .mono { font-family: var(--font-mono); }
 
+/* ---------- Citações de RAG (compartilhado app.js / friendly.js) ---------- */
+.citations { margin-top: 8px; font-size: 0.72rem; }
+.citations-label { color: var(--text-muted); margin-right: 4px; }
+.citation-chip {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-hover);
+  color: var(--neon-cyan);
+  background: var(--bg-card);
+  margin: 1px 3px 1px 0;
+}
+.citations-unsure { color: var(--text-muted); font-style: italic; }
+
 /* ---------- Chat ---------- */
 .chat-head {
   display: flex;
