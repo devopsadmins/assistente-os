@@ -37,6 +37,7 @@ import { initSentry, captureError } from "./observability/sentry.js";
 import { backgroundJobErrors } from "./observability/metrics.js";
 import { handleCosts } from "./routes/costs.js";
 import { handleAuth } from "./routes/auth.js";
+import { handleAccountSouls } from "./routes/accountSouls.js";
 import { setRequestAccountId, bearerToken, resolveAccountBearer } from "./routes/accountAuth.js";
 
 /**
@@ -466,6 +467,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleManifest,
   handleCosts,
   handleAuth,
+  handleAccountSouls,
 ];
 
 /** Handler de erro para os loops de background: loga + incrementa a métrica (nunca lança). */
@@ -509,6 +511,23 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
       return;
     }
     setRequestAccountId(req, accountId);
+
+    // Guarda de posse CENTRALIZADA: sessão de conta só acessa /souls/<id>/* das
+    // próprias souls. Checar isso rota por rota (como fiz em chat.ts/memory.ts
+    // na Fase 1) deixa buraco em toda rota nova que esquecer o guard — upload,
+    // contexto, grafo, buffer, etc. já eram alcançáveis por qualquer conta pra
+    // qualquer soul antes desta checagem. Aqui cobre TODO /souls/:id/*, atual e
+    // futuro, num lugar só. GET /souls (sem id) fica de fora — já se
+    // autoescopa em souls.ts pela mesma razão de listar em vez de acessar uma.
+    const soulPathMatch = path.match(/^\/souls\/([^/]+)\//);
+    if (soulPathMatch) {
+      const { getSoul } = await import("@assistente-os/core");
+      const targetSoul = getSoul(context.home, decodeURIComponent(soulPathMatch[1]!));
+      if (!targetSoul || targetSoul.config.ownerAccountId !== accountId) {
+        sendJson(res, 403, { error: "soul não pertence a esta conta" });
+        return;
+      }
+    }
   }
 
   // Rate limit por cliente (Onda 1b). Fora: /health e /metrics (monitoramento).

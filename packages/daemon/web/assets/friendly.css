@@ -110,7 +110,14 @@
 }
 .friendly-soul-chip:hover { border-color: var(--border-hover); }
 .friendly-soul-chip.active { border-color: var(--neon-cyan); box-shadow: var(--glow-cyan); }
-.friendly-soul-name { font-weight: 700; font-size: 0.85rem; }
+.friendly-soul-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .friendly-soul-desc { font-size: 0.72rem; color: var(--text-muted); }
 
 .friendly-ask-form {
@@ -146,3 +153,41 @@
   border-radius: var(--r-md);
 }
 .friendly-answer-err { color: var(--neon-red); }
+
+/* ---------- criação de soul (wizard, Fase 2) ---------- */
+.friendly-create-row { display: flex; justify-content: center; margin-bottom: 24px; }
+
+.friendly-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.friendly-modal {
+  width: 100%;
+  max-width: 420px;
+  margin: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.friendly-modal h3 { margin: 0 0 6px; color: var(--neon-cyan); font-size: 0.95rem; }
+.friendly-modal-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 8px; }
+.friendly-modal textarea,
+.friendly-modal input {
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-sm);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: var(--font-ui);
+  resize: vertical;
+}
+.friendly-modal textarea:focus,
+.friendly-modal input:focus { outline: none; border-color: var(--neon-cyan); }
+.friendly-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }

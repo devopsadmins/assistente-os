@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Assistente OS</title>
   <link rel="stylesheet" href="/assets/app.css" />
-  <link rel="stylesheet" href="/assets/friendly.css?v=20260831c" />
+  <link rel="stylesheet" href="/assets/friendly.css?v=20260831d" />
 </head>
 <body class="friendly-body">
 
@@ -47,10 +47,29 @@
 
       <div id="friendly-empty" class="friendly-empty" hidden>
         <p>Você ainda não tem nenhum assistente configurado.</p>
-        <p class="muted">Em breve você vai poder criar um por aqui.</p>
+        <button id="friendly-create-btn-empty" type="button" class="wa-btn wa-btn-primary">Criar meu primeiro assistente</button>
       </div>
 
       <div id="friendly-souls" class="friendly-souls"></div>
+      <div class="friendly-create-row">
+        <button id="friendly-create-btn" type="button" class="wa-btn" hidden>+ novo assistente</button>
+      </div>
+
+      <!-- ---------- Wizard de criação (Fase 2) ---------- -->
+      <div id="friendly-create-overlay" class="friendly-modal-overlay" hidden>
+        <div class="friendly-modal box">
+          <h3>Criar um assistente</h3>
+          <label class="friendly-modal-label" for="friendly-create-purpose">No que você quer que ele te ajude?</label>
+          <textarea id="friendly-create-purpose" rows="2" placeholder="ex.: tirar dúvidas sobre nossos contratos e políticas internas"></textarea>
+          <label class="friendly-modal-label" for="friendly-create-id">Nome (opcional, sugerimos um)</label>
+          <input id="friendly-create-id" type="text" placeholder="gerado automaticamente" />
+          <div id="friendly-create-error" class="friendly-auth-error" hidden></div>
+          <div class="friendly-modal-actions">
+            <button id="friendly-create-cancel" type="button" class="wa-btn">cancelar</button>
+            <button id="friendly-create-confirm" type="button" class="wa-btn wa-btn-primary">Criar</button>
+          </div>
+        </div>
+      </div>
 
       <form id="friendly-ask-form" class="friendly-ask-form" hidden>
         <input id="friendly-ask-input" type="text" placeholder="Pergunte alguma coisa…" autocomplete="off" />
@@ -64,6 +83,6 @@
   </main>
 
   <script src="/assets/citations.js?v=20260831"></script>
-  <script src="/assets/friendly.js?v=20260831c"></script>
+  <script src="/assets/friendly.js?v=20260831d"></script>
 </body>
 </html>
