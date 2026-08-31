@@ -33,6 +33,13 @@ export interface SoulConfig {
    * acessível por sessão de conta, só pelo token admin.
    */
   ownerAccountId?: number;
+  /**
+   * Nome amigável editável pelo dono, distinto de `name` (que é sempre o
+   * slug/id — forçado em createSoul/createSoulFull/listSouls/getSoul, nunca
+   * mude essa invariante). Só o modo amigável usa este campo; ausente =
+   * mostra `description` ou o id como fallback.
+   */
+  displayName?: string;
 }
 
 export interface Soul {
