@@ -151,7 +151,7 @@ const doc = new Document({
             columnWidths: l,
             rows: [
               linhaCabecalho(["Item", "Descrição", "Responsável"], l),
-              linha(["Ambiente preparado", "Instância/demo do assistente com RAG carregada (ADRs, políticas, código do Saturno)", "Everton"], l),
+              linha(["Ambiente preparado", "Instância/demo do assistente com RAG carregada (ADRs, políticas, código do Saturno) — sobe via instalador guiado (npm run setup)", "Everton"], l),
               linha(["Cenário definido", "3 perguntas demonstrativas relevantes para o CTO (ex: “qual o padrão de ORM do piloto?”)", "Everton + Natanael"], l),
               linha(["Guardrails configurados", "Kit de limites: proibido escrever, proibido dados de produção, sempre citar fonte", "Everton"], l),
               linha(["Eval de exemplo", "1 golden test pronto mostrando respostas esperadas x obtidas", "Everton"], l),
@@ -276,7 +276,7 @@ const doc = new Document({
         new Paragraph({ children: [new TextRun({ text: "O assistente precisa " }), new TextRun({ text: "lembrar do contexto do projeto", bold: true }), new TextRun({ text: " sem ter tudo no prompt a cada vez. Para isso, indexar ADRs, políticas e código em uma base vetorial e guardar o histórico da conversa." })] }),
         new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Indexar documentos aprovados (allowlist): ADRs do Saturno, políticas (ISO 27001/LGPD/POL-IA-001) e trechos de código sanitizados — sem dados de produção." })] }),
         new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Hispersistir o histórico por thread/sessão para conversas contínuas." })] }),
-        new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Referência (assistente-os): " }), new TextRun({ text: "RAG com embeddings + re-rank opcional, cache semântico e limiar de relevância; quando não acha nada, o agente responde “sem contexto” em vez de inventar.", italic: true })] }),
+        new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Referência (assistente-os): " }), new TextRun({ text: "RAG com embeddings + re-rank multilíngue opcional; cada resposta cita a fonte no formato [doc · similaridade · data] com um score de confiança multi-sinal calculado a partir do RAG; abaixo do limiar, o agente responde “evidência insuficiente” em vez de inventar.", italic: true })] }),
 
         new Paragraph({ spacing: { before: 160 } }),
 
@@ -306,9 +306,9 @@ const doc = new Document({
         new Paragraph({ spacing: { before: 60 } }),
         new Paragraph({ children: [new TextRun({ text: "Sem eval não há como provar que o assistente " }), new TextRun({ text: "melhora", bold: true }), new TextRun({ text: " ao longo do tempo. Criar um " }), new TextRun({ text: "golden set", bold: true }), new TextRun({ text: " de perguntas com respostas esperadas." })] }),
         new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Montar golden set real do Saturno: ex. “qual o padrão de DAO multi-tenant?” → espera-se citar o ADR/pattern do hub; “todo endpoint precisa de @Secured?” → sim, pelos rules." })] }),
-        new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Medir recuperação: " }), new TextRun({ text: "hit@1 (o doc certo aparece em 1º?), MRR, recall@5", italic: true }), new TextRun({ text: " — e fidelidade da resposta ao contexto (não alucinar)." })] }),
+        new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Medir recuperação: " }), new TextRun({ text: "hit@1 (o doc certo aparece em 1º?), MRR, recall@5", italic: true }), new TextRun({ text: " — fidelidade da resposta ao contexto (não alucinar) e taxa de recusa em perguntas adversariais/fora de escopo." })] }),
         new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Gate no CI: " }), new TextRun({ text: "uma pergunta que não atingir o piso (ex: hit@1 ≥ 0.7) bloqueia o release antes de piorar em produção.", bold: true })] }),
-        new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Referência (assistente-os): " }), new TextRun({ text: "comando de avaliação de RAG com golden set, medindo hit@1/MRR/recall e saindo com código de erro se o piso não for atingido (a Dimastec já tem um golden set com 23 casos no hub — é o ponto de partida).", italic: true })] }),
+        new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: "Referência (assistente-os): " }), new TextRun({ text: "comando de avaliação de RAG com golden set, medindo hit@1/MRR/recall + taxa de recusa adversarial, com histórico de execuções registrado; sai com código de erro se o piso não for atingido. Já preparamos um golden set inicial com 23 casos a partir da documentação do hub — ponto de partida a expandir com o time.", italic: true })] }),
 
         new Paragraph({ spacing: { before: 200 } }),
 

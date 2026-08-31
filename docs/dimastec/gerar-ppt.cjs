@@ -309,8 +309,8 @@ function stepSlide(slide, opts) {
       "Quando o RAG não acha nada, responder “sem contexto” em vez de inventar.",
     ],
     refs: [
-      "RAG com embeddings + re-rank opcional e cache semântico.",
-      "Limiar de relevância: sem doc relevante, responde sem contexto.",
+      "RAG com embeddings + re-rank multilíngue opcional e cache semântico.",
+      "Cita a fonte no formato [doc · similaridade · data] com score de confiança; abaixo do limiar, responde “evidência insuficiente”.",
       "Política de memória impede indexar dados sensíveis.",
     ],
   });
@@ -364,13 +364,13 @@ function stepSlide(slide, opts) {
     claude: [
       "Sem eval não há como provar que o assistente melhora ao longo do tempo.",
       "Monte um golden set real do Saturno: ex. “qual o padrão de DAO multi-tenant?” → citar o ADR/pattern; “todo endpoint precisa de @Secured?” → sim, pelos rules.",
-      "Meça hit@1 (doc certo em 1º?), MRR e recall@5 + fidelidade ao contexto (não alucinar).",
+      "Meça hit@1 (doc certo em 1º?), MRR e recall@5 + fidelidade ao contexto (não alucinar) e taxa de recusa em perguntas adversariais.",
       "Gate no CI: pergunta abaixo do piso (ex.: hit@1 ≥ 0.7) bloqueia o release.",
     ],
     refs: [
-      "Comando de avaliação de RAG com golden set (hit@1/MRR/recall).",
+      "Comando de avaliação de RAG com golden set (hit@1/MRR/recall + taxa de recusa adversarial), com histórico de execuções.",
       "Sai com erro se o piso não for atingido — gate em CI.",
-      "A Dimastec já tem golden set com 23 casos no hub — ponto de partida.",
+      "Já preparamos um golden set inicial com 23 casos a partir da documentação do hub — ponto de partida a expandir.",
     ],
   });
 }
