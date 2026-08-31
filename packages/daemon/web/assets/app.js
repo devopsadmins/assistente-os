@@ -418,6 +418,9 @@ async function sendChat(prompt) {
         soulHtml += `<div class="tool-calls"><div class="tool-calls-header">Tools executadas (${body.toolCalls.length})</div>${toolsHtml}</div>`;
       }
       soulHtml += esc(body.stdout || "(sem saída)");
+      // Gap conhecido corrigido: ragVerdict já vinha na resposta, mas nunca era
+      // renderizado — as citações ficavam invisíveis mesmo no modo especialista.
+      soulHtml += window.renderCitationsHtml(body.ragVerdict);
       addMsg("soul", `<div class="meta-row">${esc(meta)}</div>${soulHtml}`);
     } else {
       addMsg("soul", `<div class="meta-row">${esc(meta)}</div><pre class="mono" style="white-space:pre-wrap">${esc(body.stderr || body.stdout || "falha sem detalhes")}</pre>`);

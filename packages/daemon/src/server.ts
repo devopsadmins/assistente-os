@@ -37,6 +37,7 @@ import { initSentry, captureError } from "./observability/sentry.js";
 import { backgroundJobErrors } from "./observability/metrics.js";
 import { handleCosts } from "./routes/costs.js";
 import { handleAuth } from "./routes/auth.js";
+import { setRequestAccountId, bearerToken, resolveAccountBearer } from "./routes/accountAuth.js";
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
@@ -405,7 +406,10 @@ const MIME: Record<string, string> = {
 // Arquivos estáticos na raiz que o browser busca sozinho (sem header Authorization
 // customizado) — precisam ficar fora do middleware de Bearer token, senão o
 // manifest e o service worker nunca carregam e a instalação como PWA quebra.
-const PUBLIC_ROOT_FILES = new Set(["/manifest.json", "/sw.js"]);
+// /friendly.html entra pelo mesmo motivo: é a página do modo amigável
+// (self-service), tem que carregar pra QUALQUER visitante sem token — a
+// própria página que pede login/signup depois, via API (auth.ts).
+const PUBLIC_ROOT_FILES = new Set(["/manifest.json", "/sw.js", "/friendly.html"]);
 
 /** Serve arquivo estático da interface web (index.html em /, assets sob /assets). */
 function serveStatic(req: IncomingMessage, res: ServerResponse, webDir: string): boolean {
@@ -429,7 +433,11 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, webDir: string):
   res.writeHead(200, {
     "content-type": type,
     "content-length": body.length,
-    "cache-control": pathname === "/" ? "no-cache" : "public, max-age=3600",
+    // HTML de entrada nunca cacheado — senão os '?v=' de cache-busting dos
+    // assets referenciados dentro dele ficam presos numa versão velha (só o
+    // HTML muda de conteúdo sem mudar de URL; os assets mudam de URL a cada
+    // edição, então esses sim podem ficar com cache longo).
+    "cache-control": pathname === "/" || pathname === "/friendly.html" ? "no-cache" : "public, max-age=3600",
   });
   if (req.method === "HEAD") res.end();
   else res.end(body);
@@ -486,9 +494,21 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
   // própria (conta de cliente self-service, ver routes/auth.ts) — signup e
   // login precisam ser alcançáveis por quem ainda não tem token nenhum, e
   // logout/me se autenticam por sessão de conta, não pelo token admin.
+  //
+  // Segunda credencial aceita além do token admin: sessão de conta (modo
+  // amigável self-service, Fase 1). Se o Bearer não bate com o token admin,
+  // tenta resolver como sessão de conta antes de recusar — o accountId
+  // resolvido fica disponível pras rotas via getRequestAccountId(req), que
+  // escopam listagem/acesso à(s) soul(s) daquela conta (souls.ts, chat.ts,
+  // memory.ts). Token admin nunca perde acesso a nada — só quando ele NÃO
+  // bate é que se tenta o caminho de conta.
   if (token && path !== "/health" && !path.startsWith("/auth/") && !isAuthorized(req, token, path)) {
-    sendJson(res, 401, { error: "não autorizado" });
-    return;
+    const accountId = await resolveAccountBearer(bearerToken(req), context.home);
+    if (accountId == null) {
+      sendJson(res, 401, { error: "não autorizado" });
+      return;
+    }
+    setRequestAccountId(req, accountId);
   }
 
   // Rate limit por cliente (Onda 1b). Fora: /health e /metrics (monitoramento).

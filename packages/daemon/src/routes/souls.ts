@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getPool, sumCostBySoul } from "@assistente-os/core";
 import { sendJson, type RequestContext } from "./shared.js";
+import { getRequestAccountId } from "./accountAuth.js";
 
 /**
  * Rotas de identidade/consulta de souls e métricas de custo/sessão:
@@ -26,7 +27,12 @@ export async function handleSouls(
 
   if (req.method === "GET" && path === "/souls") {
     const { listSouls } = await import("@assistente-os/core");
-    sendJson(res, 200, listSouls(home).map((s) => ({ id: s.id, config: s.config })));
+    const accountId = getRequestAccountId(req);
+    // accountId presente = autenticado por sessão de conta (modo amigável),
+    // não pelo token admin — escopa à(s) soul(s) daquela conta. Ausente =
+    // token admin, comportamento de sempre (lista tudo).
+    const souls = accountId == null ? listSouls(home) : listSouls(home).filter((s) => s.config.ownerAccountId === accountId);
+    sendJson(res, 200, souls.map((s) => ({ id: s.id, config: s.config })));
     return true;
   }
 

@@ -42,6 +42,7 @@ import {
   recordSessionEscalation,
 } from "../orchestrator/escalation.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
+import { getRequestAccountId } from "./accountAuth.js";
 import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents, routerEscalation, ollamaPrefillSeconds, ollamaPromptEvalTokens } from "../observability/metrics.js";
 
 /**
@@ -211,6 +212,11 @@ export async function handleChat(
     const soul = getSoul(home, decodeURIComponent(chatMatch[1]!));
     if (!soul) {
       sendJson(res, 404, { error: "soul não encontrada" });
+      return true;
+    }
+    const accountId = getRequestAccountId(req);
+    if (accountId != null && soul.config.ownerAccountId !== accountId) {
+      sendJson(res, 403, { error: "soul não pertence a esta conta" });
       return true;
     }
     const config = await loadConfig({ home });

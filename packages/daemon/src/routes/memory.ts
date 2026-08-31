@@ -5,6 +5,7 @@ import { indexFile, indexStats, searchWithVerdict, graphStats, listEntities, lis
 import { handleUpload } from "../upload.js";
 import { relevanceRule } from "../relevance.js";
 import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { getRequestAccountId } from "./accountAuth.js";
 
 /**
  * Memória por soul: status/busca RAG, upload de fontes, escrita de memória
@@ -39,6 +40,11 @@ export async function handleMemory(
     const soul = getSoulDyn(home, decodeURIComponent(memorySearchMatch[1]!));
     if (!soul) {
       sendJson(res, 404, { error: "soul não encontrada" });
+      return true;
+    }
+    const accountId = getRequestAccountId(req);
+    if (accountId != null && soul.config.ownerAccountId !== accountId) {
+      sendJson(res, 403, { error: "soul não pertence a esta conta" });
       return true;
     }
     const parsed = await readJson(req);

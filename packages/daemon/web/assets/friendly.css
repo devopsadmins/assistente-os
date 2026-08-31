@@ -1,0 +1,148 @@
+/* Modo amigável — reaproveita os tokens (cores/fontes) de app.css, layout próprio. */
+
+/* app.css não define isso, e regras de display abaixo (flex/flex/block) têm a
+   mesma especificidade do [hidden] da UA stylesheet — sem isso, a última regra
+   declarada vence e elementos "hidden" continuam visíveis. */
+[hidden] { display: none !important; }
+
+.friendly-body {
+  overflow: auto; /* app.css trava overflow:hidden pro shell fixo do modo especialista */
+  min-height: 100vh;
+}
+
+.friendly-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-base);
+}
+.friendly-logo { width: 28px; height: 28px; border-radius: var(--r-sm); }
+.friendly-title {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+.friendly-account-bar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.friendly-main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 60px 20px 40px;
+}
+
+/* ---------- auth ---------- */
+.friendly-auth {
+  max-width: 360px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.friendly-auth-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.friendly-auth-tab {
+  flex: 1;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--border-base);
+  color: var(--text-secondary);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.friendly-auth-tab.active { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+.friendly-auth-form { display: flex; flex-direction: column; gap: 10px; }
+.friendly-auth-form input {
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-sm);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+.friendly-auth-form input:focus { outline: none; border-color: var(--neon-cyan); }
+.friendly-auth-form button { padding: 10px; margin-top: 4px; }
+.friendly-auth-error {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255,42,42,0.4);
+  color: var(--neon-red);
+  font-size: 0.78rem;
+}
+
+/* ---------- app ---------- */
+.friendly-empty {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--text-muted);
+}
+
+.friendly-souls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+.friendly-soul-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  max-width: 220px;
+}
+.friendly-soul-chip:hover { border-color: var(--border-hover); }
+.friendly-soul-chip.active { border-color: var(--neon-cyan); box-shadow: var(--glow-cyan); }
+.friendly-soul-name { font-weight: 700; font-size: 0.85rem; }
+.friendly-soul-desc { font-size: 0.72rem; color: var(--text-muted); }
+
+.friendly-ask-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 30px;
+}
+.friendly-ask-form input {
+  flex: 1;
+  padding: 14px 18px;
+  font-size: 1rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-base);
+  border-radius: 999px;
+  color: var(--text-primary);
+}
+.friendly-ask-form input:focus { outline: none; border-color: var(--neon-cyan); }
+.friendly-ask-form button { border-radius: 999px; padding: 0 20px; }
+
+.friendly-answer { min-height: 20px; }
+.friendly-question {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+.friendly-thinking { color: var(--text-muted); font-style: italic; }
+.friendly-answer-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-md);
+}
+.friendly-answer-err { color: var(--neon-red); }
