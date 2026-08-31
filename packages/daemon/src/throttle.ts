@@ -91,8 +91,13 @@ export function __resetExecSlots(): void {
   inFlight = 0;
 }
 
-/** Rotas que seguram um slot do semáforo pela duração da execução. */
-const EXPENSIVE_RE = /^\/souls\/[^/]+\/chat$|^\/api\/missions\/|^\/api\/pipelines\//;
+/**
+ * Rotas que seguram um slot do semáforo pela duração da execução.
+ * /auth/signup e /auth/login entram porque scrypt é deliberadamente pesado
+ * de CPU (custo do hash) — sem o cap, um flood de tentativas concorrentes
+ * vira negação de serviço via exaustão de CPU, não só de banda.
+ */
+const EXPENSIVE_RE = /^\/souls\/[^/]+\/chat$|^\/api\/missions\/|^\/api\/pipelines\/|^\/auth\/(signup|login)$/;
 
 export function isExpensivePath(path: string): boolean {
   return EXPENSIVE_RE.test(path);
