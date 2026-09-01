@@ -1,0 +1,116 @@
+/*
+ * @assistente-os/ui — default product theme.
+ * Colors are OKLCH components "L C H"; the Tailwind preset wraps them as
+ * oklch(var(--x) / <alpha-value>). deriveTheme() overrides only the 8 keys in
+ * the "derived (white-label) defaults" block below.
+ */
+:root {
+  /* ── primitive: brand ramp (default seed ≈ indigo #4f46e5) ── */
+  --brand-50: 0.97 0.02 264;
+  --brand-100: 0.94 0.04 264;
+  --brand-200: 0.88 0.07 264;
+  --brand-300: 0.8 0.1 264;
+  --brand-400: 0.7 0.14 264;
+  --brand-500: 0.62 0.17 264;
+  --brand-600: 0.55 0.17 264;
+  --brand-700: 0.47 0.15 264;
+  --brand-800: 0.4 0.12 264;
+  --brand-900: 0.34 0.09 264;
+  --brand-950: 0.25 0.06 264;
+
+  /* ── primitive: neutral grey ── */
+  --gray-50: 0.985 0 0;
+  --gray-100: 0.97 0 0;
+  --gray-200: 0.92 0 0;
+  --gray-300: 0.87 0 0;
+  --gray-400: 0.71 0 0;
+  --gray-500: 0.56 0 0;
+  --gray-600: 0.44 0 0;
+  --gray-700: 0.37 0 0;
+  --gray-800: 0.27 0 0;
+  --gray-900: 0.2 0 0;
+  --gray-950: 0.14 0 0;
+
+  /* ── primitive: status ── */
+  --success: 0.62 0.17 150;
+  --success-foreground: 0.99 0 0;
+  --warning: 0.75 0.15 80;
+  --warning-foreground: 0.24 0.03 80;
+  --danger: 0.58 0.22 25;
+  --danger-foreground: 0.99 0 0;
+  --info: 0.6 0.14 240;
+  --info-foreground: 0.99 0 0;
+
+  /* ── primitive: typography (size / paired line-height) ── */
+  --text-xs: 0.75rem;   --leading-xs: 1rem;
+  --text-sm: 0.875rem;  --leading-sm: 1.25rem;
+  --text-base: 1rem;    --leading-base: 1.5rem;
+  --text-lg: 1.125rem;  --leading-lg: 1.75rem;
+  --text-xl: 1.25rem;   --leading-xl: 1.75rem;
+  --text-2xl: 1.5rem;   --leading-2xl: 2rem;
+  --text-3xl: 1.875rem; --leading-3xl: 2.25rem;
+  --text-4xl: 2.25rem;  --leading-4xl: 2.5rem;
+
+  /* ── primitive: spacing (4px base) ── */
+  --space-0: 0;      --space-1: 0.25rem; --space-2: 0.5rem;  --space-3: 0.75rem;
+  --space-4: 1rem;   --space-6: 1.5rem;  --space-8: 2rem;    --space-12: 3rem;
+  --space-16: 4rem;  --space-24: 6rem;
+
+  /* ── primitive: radius / shadow / motion ── */
+  --radius-sm: 0.25rem; --radius-md: 0.5rem; --radius-lg: 0.75rem;
+  --radius-xl: 1rem;    --radius-full: 9999px;
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms;
+
+  /* ── semantic: shadcn roles ── */
+  --background: 1 0 0;
+  --foreground: 0.2 0 0;
+  --card: 1 0 0;
+  --card-foreground: 0.2 0 0;
+  --popover: 1 0 0;
+  --popover-foreground: 0.2 0 0;
+  --primary: 0.55 0.17 264;
+  --primary-foreground: 0.99 0 0;
+  --secondary: 0.97 0 0;
+  --secondary-foreground: 0.27 0 0;
+  --muted: 0.97 0 0;
+  --muted-foreground: 0.5 0 0;
+  --accent: 0.96 0.02 264;
+  --accent-foreground: 0.32 0.05 264;
+  --destructive: 0.58 0.22 25;
+  --destructive-foreground: 0.99 0 0;
+  --border: 0.92 0 0;
+  --input: 0.92 0 0;
+  --ring: 0.55 0.1 264;
+  --radius: 0.5rem;
+
+  /* ── semantic: product roles ── */
+  --primary-hover: 0.48 0.17 264;
+  --chat-user-bubble: 0.94 0.03 264;
+  --chat-user-bubble-foreground: 0.28 0.04 264;
+  --chat-assistant-bubble: 0.97 0 0;
+  --chat-assistant-bubble-foreground: 0.2 0 0;
+  --citation: 0.9 0.05 264;
+  --citation-foreground: 0.3 0.06 264;
+  --code-bg: 0.16 0 0;
+  --code-fg: 0.92 0 0;
+  --sidebar: 0.985 0 0;
+  --sidebar-foreground: 0.2 0 0;
+  --sidebar-accent: 0.95 0.01 264;
+
+  /* ── derived (white-label) defaults — MUST equal DEFAULT_DERIVED in theme/derive.ts ── */
+  --primary: 0.55 0.17 264;
+  --primary-foreground: 0.99 0 0;
+  --primary-hover: 0.48 0.17 264;
+  --ring: 0.55 0.1 264;
+  --accent: 0.96 0.02 264;
+  --accent-foreground: 0.32 0.05 264;
+  --chat-user-bubble: 0.94 0.03 264;
+  --chat-user-bubble-foreground: 0.28 0.04 264;
+}
