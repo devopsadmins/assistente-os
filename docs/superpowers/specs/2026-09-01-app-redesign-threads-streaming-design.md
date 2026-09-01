@@ -309,10 +309,36 @@ scaffold do front-end começar a valer.
 
 ## Questões em aberto
 
-- Formato exato do heartbeat/keep-alive do stream em conexões longas (comentário
-  SSE `: ping\n\n` periódico) — decidir na implementação, não muda o contrato.
 - Se o `AOS_RATE_LIMIT` existente cobre bem o endpoint de stream (conexões
   mais longas que uma request normal) — validar no plano de implementação.
 - Boundary de erro do `ThemeProvider` fica como TODO explícito no código
   (não bloqueia o v1, já que `brand={null}` nunca lança) — D deve resolver
   isso quando ligar branding de verdade.
+
+## Decisão: heartbeat do `/stream` (resolvida durante a revisão da spec)
+
+Cogitou-se reaproveitar o hub WS existente (`server.ts`'s `WsHub` +
+`chat.ts`'s `hub.broadcast({type:"chat.step"|"graph.step"|"chat.done"})`)
+como heartbeat do stream. Descartado por dois motivos concretos, achados ao
+ler o código:
+1. **É uma conexão TCP separada** da do `fetch()+ReadableStream` do
+   `/stream` — o WS ficar vivo não prova que a conexão do stream em si
+   segue viva (proxy, timeout, aba em background podem matá-la sem o WS
+   notar).
+2. **O hub faz broadcast sem escopo** — o próprio código documenta:
+   *"qualquer cliente que alcançasse a porta recebia todos os broadcasts"*.
+   `graph.step` já inclui `lastContent` (texto parcial da resposta) e vai
+   pra **todo cliente conectado, de qualquer conta**. Rotear o texto do
+   `/stream` por esse canal herdaria esse vazamento entre contas — inaceitável
+   pra uma superfície multi-tenant.
+
+**Decisão:** heartbeat é um comentário SSE (`: ping\n\n`) periódico **na
+própria conexão do `/stream`** — mantém viva e permite detectar a morte
+exatamente da conexão que importa, sem tocar no hub existente.
+
+**Observação separada (fora do escopo do B):** o hub WS de fato faz
+broadcast sem isolamento por conta hoje — `chat.step`/`graph.step`/`chat.done`
+vazam pra qualquer cliente WS conectado. Isso já existe independente do B;
+vale registrar como item de backlog de segurança (relacionado ao MCP_ZERO_TRUST
+e à revisão de isolamento multi-tenant já levantada), não é algo que o B
+introduz nem precisa corrigir pra fechar sua própria spec.
