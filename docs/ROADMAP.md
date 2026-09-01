@@ -60,6 +60,7 @@ Runbook de deploy + protocolo de teste: **[`docs/TESTES-DEPLOY-COMPLETO.md`](TES
 | **M4** — LGPD famílias | Exclusão não propaga pro backup; `questionnaire_data` (saúde de criança) em texto plano; `temp-vault` nunca faz `purge`. |
 | Toggles OFF a medir em staging | `RAG_RERANK`+`bge-reranker-base`, `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, prefill da Etapa 9. **E12 (`os rag eval --history`) é a ferramenta de medição.** |
 | ADR-PRIV-002 (AI-4 famílias) · service token Cloudflare (E7) | Autoria de doc · ação no dashboard. |
+| **Spike BitNet (`bitnet.cpp`)** para o tier barato do router | Inferência 1.58-bit CPU-first da Microsoft. Motivação: "Ollama CPU lento" na máquina de deploy. Rodar `bitnet.cpp` em **paralelo** ao Ollama (server OpenAI-compatible, porta própria — Ollama não tem os kernels/quant `I2_S`/`TL1`/`TL2`), apontar **só o tier mais barato** do router (classificação/roteamento/rascunho curto) pro `BitNet-b1.58-2B-4T`; Ollama fica com embeddings + qualidade. Medir com `os rag eval --history` + métricas de escalonamento do router; manter só se o 2B segurar o tier com latência bem menor. Ecossistema magro (≈1 modelo nativo bom). Não substitui Ollama. Reverter = tirar o provider do config. Esforço: **S–M**. |
 
 ---
 
