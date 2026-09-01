@@ -16,3 +16,8 @@ export { ThemeProvider, useBrand, DEFAULT_BRAND_CONTEXT } from "./theme/context"
 
 export { Button, buttonVariants, type ButtonProps } from "./components/button";
 export { expectNoA11yViolations } from "./test/axe";
+
+export { Label } from "./components/label";
+export { Input } from "./components/input";
+export { Textarea } from "./components/textarea";
+export { Field, type FieldProps } from "./components/field";
