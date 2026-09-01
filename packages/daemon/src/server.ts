@@ -38,6 +38,7 @@ import { backgroundJobErrors } from "./observability/metrics.js";
 import { handleCosts } from "./routes/costs.js";
 import { handleAuth } from "./routes/auth.js";
 import { handleAccountSouls } from "./routes/accountSouls.js";
+import { handleFriendlyAdmin } from "./routes/friendlyAdmin.js";
 import { setRequestAccountId, bearerToken, resolveAccountBearer } from "./routes/accountAuth.js";
 
 /**
@@ -468,6 +469,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleCosts,
   handleAuth,
   handleAccountSouls,
+  handleFriendlyAdmin,
 ];
 
 /** Handler de erro para os loops de background: loga + incrementa a métrica (nunca lança). */

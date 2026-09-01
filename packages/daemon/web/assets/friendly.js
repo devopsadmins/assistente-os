@@ -200,12 +200,46 @@ $("#friendly-ask-form").addEventListener("submit", async (e) => {
   }
 });
 
+/* ---------- picker de capabilities/skills liberadas pelo admin ---------- */
+
+let availableCapabilitiesCache = null;
+async function fetchAvailableCapabilities() {
+  if (availableCapabilitiesCache) return availableCapabilitiesCache;
+  try {
+    availableCapabilitiesCache = await api("/accounts/me/available-capabilities");
+  } catch {
+    availableCapabilitiesCache = { capabilities: [], skills: [] };
+  }
+  return availableCapabilitiesCache;
+}
+function renderCapabilitiesPicker(container, available, checkedPatterns) {
+  const checked = new Set(checkedPatterns || []);
+  const capsHtml = available.capabilities
+    .map((c) => `<label><input type="checkbox" data-kind="capability" value="${esc(c.pattern)}" ${checked.has(c.pattern) ? "checked" : ""} /><span class="mono">${esc(c.pattern)}</span>${c.description ? ` — <span class="muted">${esc(c.description)}</span>` : ""}</label>`)
+    .join("");
+  const skillsHtml = available.skills
+    .map((s) => `<label><input type="checkbox" data-kind="skill" value="${esc(s.name)}" ${checked.has(s.name) ? "checked" : ""} /><span class="mono">skill: ${esc(s.name)}</span></label>`)
+    .join("");
+  container.innerHTML = capsHtml + skillsHtml;
+}
+function collectCapabilitiesPicker(container, kind) {
+  return [...container.querySelectorAll(`input[data-kind="${kind}"]:checked`)].map((el) => el.value);
+}
+
 /* ---------- criação de soul (wizard, Fase 2) ---------- */
 
-function openCreateModal() {
+async function openCreateModal() {
   $("#friendly-create-purpose").value = "";
   $("#friendly-create-id").value = "";
   showCreateError("");
+  const available = await fetchAvailableCapabilities();
+  const wrap = $("#friendly-create-capabilities-wrap");
+  if (available.capabilities.length || available.skills.length) {
+    renderCapabilitiesPicker($("#friendly-create-capabilities"), available, []);
+    wrap.hidden = false;
+  } else {
+    wrap.hidden = true;
+  }
   $("#friendly-create-overlay").hidden = false;
   $("#friendly-create-purpose").focus();
 }
@@ -236,17 +270,20 @@ $("#friendly-create-confirm").addEventListener("click", async () => {
   const btn = $("#friendly-create-confirm");
   btn.disabled = true;
   try {
+    const capPicker = $("#friendly-create-capabilities");
+    const capabilities = collectCapabilitiesPicker(capPicker, "capability");
+    const skills = collectCapabilitiesPicker(capPicker, "skill");
     // dry_run (valida + gera plan_hash) seguido de commit imediato — o usuário
     // amigável não precisa ver a etapa de confirmação técnica, ela é uma
     // garantia de contrato da API, não uma decisão que ele precisa tomar.
-    const dry = await api("/accounts/me/souls", { method: "POST", body: JSON.stringify({ purpose, id: id || undefined }) });
+    const dry = await api("/accounts/me/souls", { method: "POST", body: JSON.stringify({ purpose, id: id || undefined, capabilities, skills }) });
     if (!dry.ok) {
       showCreateError((dry.issues && dry.issues[0] && dry.issues[0].message) || "não foi possível criar esse assistente");
       return;
     }
     const commit = await api("/accounts/me/souls", {
       method: "POST",
-      body: JSON.stringify({ purpose, id: id || undefined, dry_run: false, plan_hash: dry.plan_hash }),
+      body: JSON.stringify({ purpose, id: id || undefined, capabilities, skills, dry_run: false, plan_hash: dry.plan_hash }),
     });
     state.activeSoulId = commit.soul_id;
     closeCreateModal();
@@ -281,6 +318,15 @@ async function refreshSettingsView() {
   $("#friendly-settings-max-iter").value = s.guardrails.maxIterations;
   $("#friendly-settings-rag-threshold").value = s.guardrails.ragRelevanceThreshold;
   renderKnowledgeUsage(s.knowledge);
+
+  const available = await fetchAvailableCapabilities();
+  const wrap = $("#friendly-settings-capabilities-wrap");
+  if (available.capabilities.length || available.skills.length) {
+    renderCapabilitiesPicker($("#friendly-settings-capabilities"), available, [...s.capabilities, ...s.skills]);
+    wrap.hidden = false;
+  } else {
+    wrap.hidden = true;
+  }
 }
 
 $("#friendly-settings-btn").addEventListener("click", async () => {
@@ -306,6 +352,8 @@ $("#friendly-settings-save").addEventListener("click", async () => {
   showSettingsError("");
   try {
     const numOrUndef = (el) => (el.value === "" ? undefined : Number(el.value));
+    const capabilitiesShown = !$("#friendly-settings-capabilities-wrap").hidden;
+    const capPicker = $("#friendly-settings-capabilities");
     await api(`/accounts/me/souls/${encodeURIComponent(state.activeSoulId)}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -318,6 +366,9 @@ $("#friendly-settings-save").addEventListener("click", async () => {
           maxIterations: numOrUndef($("#friendly-settings-max-iter")),
           ragRelevanceThreshold: numOrUndef($("#friendly-settings-rag-threshold")),
         },
+        // só manda capabilities/skills se o picker estava visível — ausente
+        // no body = PATCH mantém o que já tinha (ver accountSouls.ts).
+        ...(capabilitiesShown ? { capabilities: collectCapabilitiesPicker(capPicker, "capability"), skills: collectCapabilitiesPicker(capPicker, "skill") } : {}),
       }),
     });
     closeSettingsModal();

@@ -105,6 +105,7 @@ $("#tabs").addEventListener("click", (e) => {
   if (btn.dataset.tab === "graph" && state.active) loadGraph();
   if (btn.dataset.tab === "langgraph" && state.active) loadLangGraph();
   if (btn.dataset.tab === "observability") loadObservability();
+  if (btn.dataset.tab === "friendly-admin") loadFriendlyAdmin();
   if (btn.dataset.tab === "buffer") loadBuffer();
   if (btn.dataset.tab === "llm") loadLlm();
   if (btn.dataset.tab === "mcp") loadMcp();
@@ -1185,6 +1186,60 @@ function showVoiceTranscript(text, kind = "user") {
     el.innerHTML = `<span style="color: var(--neon-green);">Resposta:</span> ${esc(text)}`;
   }
 }
+
+/* ---------- modo amigável: allowlist admin ---------- */
+async function loadFriendlyAdmin() {
+  const status = $("#friendly-admin-status");
+  status.textContent = "";
+  let data;
+  try {
+    data = await api("/admin/friendly-allowlist");
+  } catch (err) {
+    $("#friendly-admin-capabilities").innerHTML = "";
+    $("#friendly-admin-skills").innerHTML = "";
+    status.textContent = `erro ao carregar: ${esc(err.message)}`;
+    return;
+  }
+  const byLevel = { L1: [], L2: [], L3: [] };
+  for (const c of data.capabilities) byLevel[c.level].push(c);
+  const levelLabel = { L1: "L1 — leitura local", L2: "L2 — escrita local reversível", L3: "L3 — efeito externo / alto privilégio" };
+  $("#friendly-admin-capabilities").innerHTML = ["L1", "L2", "L3"]
+    .map((level) => `
+      <div style="margin-bottom:10px">
+        <div class="chip ${level === "L3" ? "fail" : level === "L2" ? "" : "ok"}" style="margin-bottom:6px">${esc(levelLabel[level])}</div>
+        ${byLevel[level]
+          .map((c) => `
+            <label style="display:block;margin:4px 0;font-size:12px">
+              <input type="checkbox" class="friendly-admin-cap-cb" value="${esc(c.pattern)}" ${c.allowed ? "checked" : ""} />
+              <span class="mono">${esc(c.pattern)}</span>${c.description ? ` <span class="muted">— ${esc(c.description)}</span>` : ""}
+            </label>`)
+          .join("")}
+      </div>`)
+    .join("");
+
+  $("#friendly-admin-skills").innerHTML = data.skills.length
+    ? data.skills
+        .map((s) => `
+          <label style="display:block;margin:4px 0;font-size:12px">
+            <input type="checkbox" class="friendly-admin-skill-cb" value="${esc(s.name)}" ${s.allowed ? "checked" : ""} />
+            <span class="mono">${esc(s.name)}</span>
+          </label>`)
+        .join("")
+    : `<span class="muted">Nenhuma skill global encontrada.</span>`;
+}
+
+$("#friendly-admin-save")?.addEventListener("click", async () => {
+  const status = $("#friendly-admin-status");
+  const capabilities = [...document.querySelectorAll(".friendly-admin-cap-cb:checked")].map((el) => el.value);
+  const skills = [...document.querySelectorAll(".friendly-admin-skill-cb:checked")].map((el) => el.value);
+  status.textContent = "salvando…";
+  try {
+    await api("/admin/friendly-allowlist", { method: "PUT", body: JSON.stringify({ capabilities, skills }) });
+    status.textContent = `salvo — ${capabilities.length} capability(ies), ${skills.length} skill(s) liberadas pro self-service`;
+  } catch (err) {
+    status.textContent = `erro ao salvar: ${esc(err.message)}`;
+  }
+});
 
 /* ---------- boot ---------- */
 async function boot() {

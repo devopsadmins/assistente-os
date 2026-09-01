@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Assistente OS</title>
-  <link rel="stylesheet" href="/assets/app.css" />
-  <link rel="stylesheet" href="/assets/friendly.css?v=20260831h" />
+  <link rel="stylesheet" href="/assets/app.css?v=20260831b" />
+  <link rel="stylesheet" href="/assets/friendly.css?v=20260831i" />
 </head>
 <body class="friendly-body">
 
@@ -64,6 +64,12 @@
           <textarea id="friendly-create-purpose" rows="2" placeholder="ex.: tirar dúvidas sobre nossos contratos e políticas internas"></textarea>
           <label class="friendly-modal-label" for="friendly-create-id">Identificador técnico (opcional, sugerimos um — dá pra renomear o nome de exibição depois, nas configurações)</label>
           <input id="friendly-create-id" type="text" placeholder="gerado automaticamente" />
+
+          <div id="friendly-create-capabilities-wrap" hidden>
+            <label class="friendly-modal-label">O que ele pode fazer, além de responder</label>
+            <div id="friendly-create-capabilities" class="friendly-capabilities-list"></div>
+          </div>
+
           <div id="friendly-create-error" class="friendly-auth-error" hidden></div>
           <div class="friendly-modal-actions">
             <button id="friendly-create-cancel" type="button" class="wa-btn">cancelar</button>
@@ -104,6 +110,11 @@
             </div>
           </div>
 
+          <div id="friendly-settings-capabilities-wrap" hidden>
+            <label class="friendly-modal-label">O que ele pode fazer, além de responder</label>
+            <div id="friendly-settings-capabilities" class="friendly-capabilities-list"></div>
+          </div>
+
           <label class="friendly-modal-label">Conhecimento (documentos que ele consulta)</label>
           <div id="friendly-settings-knowledge-usage" class="friendly-knowledge-usage muted"></div>
           <div class="friendly-upload-row">
@@ -132,6 +143,6 @@
   </main>
 
   <script src="/assets/citations.js?v=20260831"></script>
-  <script src="/assets/friendly.js?v=20260831h"></script>
+  <script src="/assets/friendly.js?v=20260831i"></script>
 </body>
 </html>

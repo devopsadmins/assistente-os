@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Assistente OS" />
-<link rel="stylesheet" href="/assets/app.css" />
+<link rel="stylesheet" href="/assets/app.css?v=20260831b" />
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
 </head>
 <body>
@@ -114,6 +114,7 @@
       <button class="tab" data-tab="whatsapp"><svg class="ic"><use href="#i-chat"/></svg>WhatsApp</button>
       <button class="tab" data-tab="telegram"><svg class="ic"><use href="#i-message"/></svg>Telegram</button>
       <button class="tab" data-tab="observability"><svg class="ic"><use href="#i-pulse"/></svg>Telemetria</button>
+      <button class="tab" data-tab="friendly-admin"><svg class="ic"><use href="#i-pulse"/></svg>Modo Amigável</button>
     </nav>
 
     <section id="tab-dashboard" class="panel active">
@@ -450,10 +451,26 @@
       </div>
       <div id="monitors-box" class="box"></div>
     </section>
+
+    <section id="tab-friendly-admin" class="panel">
+      <h2>Modo Amigável — capabilities/skills liberadas pro self-service</h2>
+      <div class="muted" style="margin-bottom:10px">
+        Contas self-service (modo amigável) nascem sem nenhuma tool. Marque abaixo o que elas podem escolher usar —
+        na criação e depois nas próprias configurações. Nada marcado aqui nunca é concedido, mesmo que o cliente peça.
+      </div>
+      <h2>Capabilities</h2>
+      <div id="friendly-admin-capabilities" class="box"></div>
+      <h2>Skills globais</h2>
+      <div id="friendly-admin-skills" class="box"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button id="friendly-admin-save" type="button"><svg class="ic"><use href="#i-send"/></svg>Salvar allowlist</button>
+      </div>
+      <div id="friendly-admin-status" class="muted" style="margin-top:8px"></div>
+    </section>
   </main>
 </div>
 <script src="/assets/citations.js?v=20260831"></script>
-<script src="/assets/app.js?v=20260831"></script>
+<script src="/assets/app.js?v=20260831i"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js')

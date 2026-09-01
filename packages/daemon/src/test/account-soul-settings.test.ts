@@ -140,7 +140,7 @@ test("settings: guardrail além do teto global é clampado, nunca afrouxa", asyn
   }
 });
 
-test("settings: PATCH nunca expõe nem altera autonomy/capabilities (superfície fixa)", async () => {
+test("settings: PATCH nunca expõe nem altera autonomy (superfície fixa); capabilities fora da allowlist é rejeitada, não ignorada em silêncio", async () => {
   const { home, cleanup } = await tempHome();
   const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
   try {
@@ -148,18 +148,30 @@ test("settings: PATCH nunca expõe nem altera autonomy/capabilities (superfície
     const { token, soulId } = await signupAndCreateSoul(base, "settings-fixed@exemplo.com", "algo");
     const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
 
-    const patch = await fetchJson(`${base}/accounts/me/souls/${soulId}`, {
+    // autonomy não está na whitelist de campos lidos — tenta injetar, é
+    // simplesmente ignorado (nem chega a validar contra nada).
+    const patchAutonomy = await fetchJson(`${base}/accounts/me/souls/${soulId}`, {
       method: "PATCH", headers,
-      // tenta injetar campos fora da whitelist — devem ser ignorados silenciosamente.
-      body: JSON.stringify({ description: "x", autonomy: "auto", capabilities: ["browser_navigate"] }),
+      body: JSON.stringify({ description: "x", autonomy: "auto" }),
     });
-    assert.equal(patch.status, 200);
-    assert.equal(patch.body.autonomy, undefined); // nem aparece na view de settings
+    assert.equal(patchAutonomy.status, 200);
+    assert.equal(patchAutonomy.body.autonomy, undefined); // nem aparece na view de settings
+
+    // capabilities agora É editável (feature nova, ver friendly-allowlist.
+    // test.ts) — mas sem allowlist configurada pelo admin (vazia por
+    // padrão), qualquer capability pedida é REJEITADA (400), nunca aceita
+    // nem silenciosamente descartada — silenciar dava a ilusão de que foi
+    // concedida quando não foi.
+    const patchCap = await fetchJson(`${base}/accounts/me/souls/${soulId}`, {
+      method: "PATCH", headers, body: JSON.stringify({ capabilities: ["browser_navigate"] }),
+    });
+    assert.equal(patchCap.status, 400);
+    assert.equal(patchCap.body.code, "E_VALIDATION");
 
     const soulsAsAdmin = await fetchJson(`${base}/souls`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
     const soul = soulsAsAdmin.body.find((s: any) => s.id === soulId);
     assert.equal(soul.config.agent.autonomy, "ask"); // continua o default da criação
-    assert.deepEqual(soul.config.agent.permissions.tools, []); // continua zero capabilities
+    assert.deepEqual(soul.config.agent.permissions.tools, []); // rejeitado, continua zero capabilities
   } finally {
     await daemon.close();
     await cleanup();
