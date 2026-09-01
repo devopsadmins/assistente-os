@@ -11,3 +11,5 @@ export {
 } from "./theme/types";
 
 export { deriveTheme, DEFAULT_DERIVED } from "./theme/derive";
+
+export { ThemeProvider, useBrand, DEFAULT_BRAND_CONTEXT } from "./theme/context";
