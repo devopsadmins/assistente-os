@@ -21,3 +21,9 @@ export { Label } from "./components/label";
 export { Input } from "./components/input";
 export { Textarea } from "./components/textarea";
 export { Field, type FieldProps } from "./components/field";
+
+export { Separator } from "./components/separator";
+export { Skeleton } from "./components/skeleton";
+export { Badge, badgeVariants, type BadgeProps } from "./components/badge";
+export { Avatar, AvatarImage, AvatarFallback } from "./components/avatar";
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "./components/card";
