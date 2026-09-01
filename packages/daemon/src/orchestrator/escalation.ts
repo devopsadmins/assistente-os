@@ -47,8 +47,12 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
+// "evidência (in)suficiente" é a frase que o próprio system prompt instrui o
+// modelo a usar quando o RAG está abaixo do piso de confiança (context.ts,
+// AOS_RAG_MIN_CONFIDENCE) — sem esse pedaço, uma recusa seguindo exatamente
+// a instrução que demos não era reconhecida como recusa aqui.
 const REFUSAL_RE =
-  /\b(n[ãa]o sei|n[ãa]o tenho (essa )?informa|n[ãa]o (consigo|posso) (responder|ajudar)|n[ãa]o encontrei|sem informa[çc][ãa]o suficiente|desculpe,? (mas )?n[ãa]o|i (don'?t|do not) know|i (can'?t|cannot) help)\b/i;
+  /\b(n[ãa]o sei|n[ãa]o tenho (essa )?informa|n[ãa]o (consigo|posso) (responder|ajudar)|n[ãa]o encontrei|sem informa[çc][ãa]o suficiente|n[ãa]o h[áa] evid[êe]ncia suficiente|evid[êe]ncia insuficiente|desculpe,? (mas )?n[ãa]o|i (don'?t|do not) know|i (can'?t|cannot) help)\b/i;
 
 /** Heurística barata: a resposta é uma recusa / "não sei"? Vazio conta como recusa. */
 export function looksLikeRefusal(text: string): boolean {

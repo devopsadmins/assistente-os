@@ -67,6 +67,11 @@ test("looksLikeRefusal: pega 'não sei' / vazio; ignora resposta normal", () => 
   assert.equal(looksLikeRefusal("O pm2 reinicia com `pm2 restart <app>`."), false);
 });
 
+test("looksLikeRefusal: pega a frase de 'evidência insuficiente' que o próprio system prompt instrui (context.ts)", () => {
+  assert.equal(looksLikeRefusal("Não há evidência suficiente para responder a essa pergunta."), true);
+  assert.equal(looksLikeRefusal("A base de conhecimento não cobre isso — evidência insuficiente."), true);
+});
+
 test("parseJudgeVerdict: SIM/NÃO/lixo", () => {
   assert.equal(parseJudgeVerdict("SIM"), "ok");
   assert.equal(parseJudgeVerdict("sim, a resposta cobre a pergunta"), "ok");
