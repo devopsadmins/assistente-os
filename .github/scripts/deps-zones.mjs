@@ -1,0 +1,68 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+const BACKEND_ZONE = ["core", "daemon", "tools", "memory", "cli", "voice"].map((p) => `packages/${p}`);
+const FRONTEND_ZONE = ["packages/ui"]; // + packages/web, landing later
+
+/** Each rule: (depName) => boolean */
+export const FRONTEND_ALLOW = [
+  (d) => ["react", "react-dom", "@types/react", "@types/react-dom"].includes(d),
+  (d) => d.startsWith("@radix-ui/"),
+  (d) => ["tailwindcss", "postcss", "autoprefixer"].includes(d) || d.startsWith("@tailwindcss/"),
+  (d) => ["class-variance-authority", "clsx", "tailwind-merge"].includes(d),
+  (d) => d === "lucide-react",
+  (d) => ["marked", "dompurify", "shiki"].includes(d),
+  (d) => d === "@ladle/react",
+  (d) => d === "vitest" || d.startsWith("@vitest/") || d.startsWith("@testing-library/") || ["jsdom", "axe-core"].includes(d),
+  (d) => d === "typescript",
+];
+
+/** Backend: the grandfathered snapshot (2026-09-01). SPEC-HR5 owns tightening this. */
+export const BACKEND_ALLOW = [
+  (d) => d.startsWith("node:"),
+  (d) => d.startsWith("@langchain/"),
+  (d) => d.startsWith("@assistente-os/"), // workspace-internal packages
+  (d) =>
+    [
+      "pg", "zod", "playwright-core", "@types/node", "@types/pg", "typescript",
+      "azure-devops-node-api", "ioredis", "pino", "pino-pretty", "say", "telegraf",
+      "@xenova/transformers", "busboy", "@types/busboy",
+      // grandfathered 2026-09-01 (present in the tree when the guard landed):
+      "@sentry/node", "adm-zip", "@types/adm-zip", "baileys", "prom-client",
+      "qrcode-terminal", "archiver", "@types/archiver",
+    ].includes(d),
+];
+
+export function checkPackage(pkgPath, pkgJson, zone) {
+  const allow = zone === "frontend" ? FRONTEND_ALLOW : BACKEND_ALLOW;
+  const deps = { ...(pkgJson.dependencies ?? {}), ...(pkgJson.devDependencies ?? {}) };
+  const violations = [];
+  for (const dep of Object.keys(deps)) {
+    if (!allow.some((rule) => rule(dep))) violations.push(`${pkgPath} :: ${dep}`);
+  }
+  return violations;
+}
+
+function main() {
+  const root = process.cwd();
+  const all = [];
+  for (const [zone, paths] of [["backend", BACKEND_ZONE], ["frontend", FRONTEND_ZONE]]) {
+    for (const p of paths) {
+      let json;
+      try {
+        json = JSON.parse(readFileSync(join(root, p, "package.json"), "utf8"));
+      } catch {
+        continue; // package not present yet (e.g. packages/web)
+      }
+      all.push(...checkPackage(p, json, zone));
+    }
+  }
+  if (all.length) {
+    console.error("Dependency zone violations:\n" + all.map((v) => "  " + v).join("\n"));
+    console.error("\nFix: move the dep to the right zone, or amend docs/adr/ADR-UI-001.md + FRONTEND_ALLOW.");
+    process.exit(1);
+  }
+  console.log("dependency zones: OK");
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) main();
