@@ -91,6 +91,18 @@ Cada "soul" é um perfil vivo de conhecimento com markdown files (perfil, contex
 - **Skills por soul**: `SKILL.md` (frontmatter `name`/`description`/`keywords`/`tools` + corpo markdown) em `~/.assistant-os/skills/<name>/` (global) ou `~/.assistant-os/souls/<id>/skills/<name>/` (por-soul). A soul declara a allowlist em `agent.permissions.skills`; o `buildPrompt` injeta **sempre** o índice nome+description e **só o corpo** das que casam o prompt (matcher híbrido léxico + embedding, com auto-skip). `skill.tools` é advisório — não eleva o Zero Trust. Env: `SKILL_MATCH_THRESHOLD` (0.35), `SKILL_MAX_ACTIVE` (3), `SKILLS_ENABLED`. Tools `skill_list`/`skill_create` + `os skill list|show|create`.
 - **AIIA.md por soul**: relatório de impacto algorítmico gerado sob demanda (tool `soul_generate_aiia`), compondo capabilities/guardrails efetivos, dados pessoais e base legal (quando a soul é do tipo `familia_<telefone>`) e regras de ouro ativas — 100% de dados já existentes no sistema, idempotente
 
+### Modo Amigável (contas multi-tenant self-service)
+
+Camada de acesso self-service sobre o daemon — detalhes em **[docs/FRIENDLY-MODE.md](docs/FRIENDLY-MODE.md)**. Página `/friendly.html`, migrações `0018_accounts` / `0019_friendly_allowlist`.
+
+- **Duas credenciais em paralelo**: token admin (`ASSISTENTE_OS_DAEMON_TOKEN`, acesso total) **e** sessão de conta (Bearer, TTL 30 dias, só as souls cujo `ownerAccountId` é a conta). O token admin nunca perde acesso; a sessão de conta só é tentada quando o Bearer não é o admin.
+- **Contas** (`packages/core/src/accounts.ts`): `POST /auth/{signup,login,logout}` + `GET /auth/me`. Senha ≥ 8 chars com hash **scrypt** nativo, e-mail `unique`, login anti-enumeração; sessão com token em claro só na resposta (banco guarda `sha256`).
+- **Guarda de posse centralizada**: todo `/souls/:id/*` é verificado contra `ownerAccountId` no gate central de `server.ts` — não rota por rota.
+- **Wizard** (`POST /accounts/me/souls`): cria soul com payload mínimo (`purpose`), default seguro (`autonomy: "ask"`, zero tools), fluxo `dry_run → plan_hash → confirmar`. Teto `ASSISTENTE_OS_MAX_SOULS_PER_ACCOUNT` (default 2).
+- **Configurações escopadas** (`GET`/`PATCH /accounts/me/souls/:id`): `displayName`, `description`, `perfil.md`, `contexto.md`, guardrails numéricos (re-clampados contra o teto global, nunca afrouxam), e `capabilities`/`skills` **só dentro da allowlist do admin**.
+- **Upload de conhecimento self-service**: teto **em KB por conta** (`friendlyUploadKbLimit()`), não em nº de chunks.
+- **Allowlist de admin** (`friendly_allowlist`, `kind ∈ {capability, skill}`, **fechada por padrão**): `GET`/`PUT /admin/friendly-allowlist` — exige token admin, **nunca** sessão de conta. Skills oferecidas ao self-service = só as de escopo global.
+
 ### RAG + Knowledge Graph
 
 - **Chunks + embeddings**: indexação de markdown/txt, Ollama embeddings ou fallback Xenova/ILIKE
@@ -409,8 +421,16 @@ aguardando medição.
 higiene de docs/migrations/jobs) + trilha RAG (citações auditáveis, confidence
 multi-sinal, fidelidade medida, `os rag eval --history`). Runbook de deploy do
 zero + protocolo de teste: **[docs/TESTES-DEPLOY-COMPLETO.md](docs/TESTES-DEPLOY-COMPLETO.md)**.
-Aberto: Onda 3d/3e (refactors), decisão multi-tenant, E13 Fase 2 (volume real).
+Aberto: Onda 3d/3e (refactors), E13 Fase 2 (volume real).
 Ver [docs/ROADMAP.md](docs/ROADMAP.md) § "Estado 2026-08-30".
+
+**Modo Amigável — contas multi-tenant self-service (2026-08-31)** —
+[docs/FRIENDLY-MODE.md](docs/FRIENDLY-MODE.md). Fases 0–4 + rename + allowlist
+de admin: signup/login por e-mail, sessão de conta como 2ª credencial, wizard
+de criação de soul, configurações e upload de conhecimento escopados à conta,
+allowlist de capabilities/skills curada pelo admin. Resolve a "decisão
+multi-tenant" que estava aberta (Onda 3f). Pendente: ADR do modelo de dados de
+conta (e-mail + hash de senha), preflight de requisitos de skill no picker.
 
 ## Docs
 

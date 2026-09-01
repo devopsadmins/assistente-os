@@ -10,6 +10,57 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Modo Amigável — contas multi-tenant self-service** (Fases 0–4 + rename +
+  allowlist de admin; migrações `0018_accounts`, `0019_friendly_allowlist`).
+  Doc: **[docs/FRIENDLY-MODE.md](docs/FRIENDLY-MODE.md)**. Registro retroativo —
+  as Fases entraram por commit direto em `main` (`18ccd5d`, `fb268a5`,
+  `405ad5d`, `2b3f8ca`, `48a6b0e`, `46f3145`, `6590ad7`), fora do fluxo PR+CI
+  do `CONTRIBUTING.md`; esta entrada fecha o paper trail exigido pelos
+  caminhos sensíveis (`migrations.ts`, `policy.ts`).
+  - **Fase 0 — contas** (`packages/core/src/accounts.ts`,
+    `packages/daemon/src/routes/auth.ts`): `POST /auth/{signup,login,logout}` +
+    `GET /auth/me`. Senha ≥ 8 chars, hash **scrypt** nativo (`node:crypto`, sem
+    dependência nova), salt por conta; e-mail `unique` normalizado; login com
+    resposta única anti-enumeração. Sessão Bearer TTL 30 dias — token em claro
+    só na resposta, banco guarda só o `sha256`. Tabelas `accounts` +
+    `account_sessions` (FK `ON DELETE CASCADE`). `SoulSpec.ownerAccountId`
+    (ausente = soul do operador).
+  - **Fase 1 — busca/pergunta multi-tenant**: sessão de conta vira 2ª
+    credencial no gate central de `server.ts` (tentada só quando o Bearer não
+    é o token admin). Guarda de posse **centralizada** para todo
+    `/souls/:id/*` contra `ownerAccountId`; `GET /souls` se auto-escopa.
+  - **Fase 2 — wizard de criação de soul** (`POST /accounts/me/souls`,
+    `routes/accountSouls.ts`): payload mínimo (`purpose` + `id` opcional),
+    default seguro (`autonomy: "ask"`, `capabilities: []`). Fluxo
+    `dry_run → plan_hash → confirmar` reusando a lógica core de `soul_create`.
+    Teto `ASSISTENTE_OS_MAX_SOULS_PER_ACCOUNT` (default 2, `E_ACCOUNT_LIMIT`).
+  - **Fase 3 — configurações escopadas** (`GET`/`PATCH /accounts/me/souls/:id`):
+    edita `description`, `perfil.md`, `contexto.md`, guardrails numéricos
+    (sempre re-clampados contra o teto global, nunca afrouxam) e
+    `capabilities`/`skills` **só dentro da allowlist do admin**
+    (`validateRequestedGrants`). `autonomy`/`provider`/`model`/`ownerAccountId`
+    ficam fixos desde a criação.
+  - **Fase 4 — upload de conhecimento self-service** (`upload.ts`): teto **em
+    KB por conta** (`friendlyUploadKbLimit()`), não em nº de chunks; settings
+    devolve `knowledge: { usedKb, limitKb }`.
+  - **Rename** (`46f3145`): `SoulConfig.displayName` opcional e editável pela
+    Fase 3; não altera o `id` da soul.
+  - **Allowlist de admin** (`6590ad7`): tabela `friendly_allowlist
+    (pattern, kind)`, `kind ∈ {capability, skill}`, **fechada por padrão**.
+    `GET`/`PUT /admin/friendly-allowlist` (`routes/friendlyAdmin.ts`) —
+    **exige token admin, nunca sessão de conta**. `PUT` substitui a lista
+    inteira; capabilities fora do `CAPABILITY_CATALOG` são ignoradas;
+    skills oferecidas = só as de escopo **global** (`scanSkillDirs`).
+    `GET /accounts/me/available-capabilities` devolve só o liberado.
+  - Testes: `account-isolation`, `account-soul-wizard`,
+    `account-soul-settings`, `account-knowledge-upload`, `friendly-allowlist`
+    (daemon) + `accounts` (core).
+  Rollback: as migrações só adicionam tabelas (`accounts`,
+  `account_sessions`, `friendly_allowlist`) — sem `ownerAccountId` gravado,
+  toda soul é "do operador" e o comportamento antigo (só token admin) volta.
+  Reverter os 7 commits remove as rotas `/auth/*`, `/accounts/me/*` e
+  `/admin/friendly-allowlist`.
+
 - **`scripts/setup.sh` — instalador guiado** (`npm run setup`): sobe o sistema
   numa máquina limpa. Checa pré-requisitos (Node ≥ 22.16, Docker, Ollama,
   `pg_dump`), roda `npm ci` + `build` + `typecheck`, pergunta o essencial

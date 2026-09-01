@@ -47,6 +47,13 @@ Runbook de deploy + protocolo de teste: **[`docs/TESTES-DEPLOY-COMPLETO.md`](TES
   "evidência insuficiente"), E12a (fidelidade heurística + casos adversariais),
   E12b (`runFaithfulnessEval` + tabela `rag_eval_runs` + `os rag eval
   --record`/`--history` + amostragem online).
+- **Modo Amigável — contas multi-tenant self-service (2026-08-31)** — Fases 0–4
+  + rename + allowlist de admin. Doc: [`FRIENDLY-MODE.md`](FRIENDLY-MODE.md).
+  Resolve a **Onda 3f** abaixo: a decisão foi "sim" — `accounts` +
+  `account_sessions` + `friendly_allowlist` (migrações `0018`/`0019`),
+  `SoulSpec.ownerAccountId` como FK lógica, sessão de conta como 2ª credencial
+  do gate. **Entrou por commit direto em `main`, fora do fluxo PR+CI** — dívida
+  de processo registrada em `CHANGELOG.md` e `FRIENDLY-MODE.md`.
 
 **Aberto:**
 
@@ -55,7 +62,7 @@ Runbook de deploy + protocolo de teste: **[`docs/TESTES-DEPLOY-COMPLETO.md`](TES
 | **E13** — protocolo "zero → real" (3 fases) | Fase 1/3 = o runbook acima. Fase 2 (volume) e o relatório de prontidão dependem do corpus real do cliente. |
 | **Onda 3d** — centralizar config | ~58 `process.env` soltos → `loadConfig` + schema (zod/envalid); matar pares de alias (`ADO_*`/`AZURE_DEVOPS_*`, `RAG_INJECTION_MODO`/`PROMPT_INJECTION_MODO`). Refactor grande. |
 | **Onda 3e** — quebrar god-objects | `handleChat` (640 l., `routes/chat.ts`) e `tools/src/index.ts` (1859 l.). Refactor grande e arriscado. |
-| **Onda 3f** — multi-tenant sim/não | Decisão de produto. Se sim: tabela de tenants + auth por tenant + FK em `soul`. Se não: remover `X-Client-Id`/`client_key` e o `/home/support/bin/ffmpeg` hardcoded. |
+| ~~**Onda 3f** — multi-tenant sim/não~~ | **Resolvido 2026-08-31: sim.** Modo Amigável, Fases 0–4 ([`FRIENDLY-MODE.md`](FRIENDLY-MODE.md)) — `accounts`/`account_sessions`/`friendly_allowlist`, `ownerAccountId` em `soul`, auth de sessão de conta. Segue aberto só: ADR do modelo de dados de conta (e-mail + hash de senha, base legal/retenção — mesmo gate G3 do `ADR-PRIV-001`); preflight de requisitos de skill + co-concessão de tools no picker amigável. Limpeza `X-Client-Id`/`client_key` e `ffmpeg` hardcoded continua pendente. |
 | **M3** — prompt injection | Screening regex-only e não-bloqueante por default. |
 | **M4** — LGPD famílias | Exclusão não propaga pro backup; `questionnaire_data` (saúde de criança) em texto plano; `temp-vault` nunca faz `purge`. |
 | Toggles OFF a medir em staging | `RAG_RERANK`+`bge-reranker-base`, `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, prefill da Etapa 9. **E12 (`os rag eval --history`) é a ferramenta de medição.** |
