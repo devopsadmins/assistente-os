@@ -62,16 +62,17 @@ export function deriveTheme(brand: BrandInput): DerivedTheme {
       break;
     }
   }
-  if (!primary) primary = nudgeToAA(ramp[6]!, BACKGROUND, -1);
   set("--primary", primary);
   const primaryResolved = primary ?? parseTripletToOklch(DEFAULT_DERIVED["--primary"]);
 
   // --primary-foreground: white or near-black, whichever clears AA against --primary.
   set("--primary-foreground", pickForeground(primaryResolved, [WHITE, NEAR_BLACK]));
 
-  // --primary-hover: one ramp step darker than --primary (bounded).
-  const hoverIdx = Math.min(10, ramp.indexOf(primaryResolved) + 1);
-  const hover = ramp[hoverIdx] ?? { ...primaryResolved, l: clamp01(primaryResolved.l - 0.06) };
+  // --primary-hover: one ramp step darker than --primary (bounded). Index by position,
+  // never by object identity — a future `{...ramp[i]}` copy must still resolve correctly.
+  const primaryIdx = ramp.indexOf(primaryResolved);
+  const hoverIdx = primaryIdx < 0 ? 10 : Math.min(10, primaryIdx + 1);
+  const hover = ramp[hoverIdx]!;
   set("--primary-hover", hover);
 
   // --ring: --primary at reduced chroma.
@@ -87,18 +88,26 @@ export function deriveTheme(brand: BrandInput): DerivedTheme {
   set("--chat-user-bubble-foreground", nudgeToAA(pickForeground(bubbleBg, [NEAR_BLACK, WHITE]), bubbleBg, -1));
 
   // Final guard: any key still failing AA against its pair -> fall back to default + mark nudged.
+  // The --primary cluster shares a ramp position (--primary-hover, --ring are both derived
+  // from --primary), so resetting only the fg/bg pair would leave --primary-hover/--ring on
+  // the brand hue while --primary reverts to the default — an incoherent theme. Reset the
+  // whole cluster together.
   const pairs: [DerivedVarKey, DerivedVarKey][] = [
     ["--primary-foreground", "--primary"],
     ["--accent-foreground", "--accent"],
     ["--chat-user-bubble-foreground", "--chat-user-bubble"],
   ];
+  const PAIR_CLUSTER: Partial<Record<DerivedVarKey, DerivedVarKey[]>> = {
+    "--primary": ["--primary", "--primary-foreground", "--primary-hover", "--ring"],
+  };
   for (const [fgKey, bgKey] of pairs) {
     const ratio = contrastRatio(parseTripletToOklch(out[fgKey]), parseTripletToOklch(out[bgKey]));
     if (ratio < 4.5) {
-      out[fgKey] = DEFAULT_DERIVED[fgKey];
-      out[bgKey] = DEFAULT_DERIVED[bgKey];
-      if (!nudged.includes(fgKey)) nudged.push(fgKey);
-      if (!nudged.includes(bgKey)) nudged.push(bgKey);
+      const cluster = PAIR_CLUSTER[bgKey] ?? [fgKey, bgKey];
+      for (const k of cluster) {
+        out[k] = DEFAULT_DERIVED[k];
+        if (!nudged.includes(k)) nudged.push(k);
+      }
     }
   }
 

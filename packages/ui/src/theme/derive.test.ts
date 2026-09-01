@@ -64,6 +64,32 @@ test("DEFAULT_DERIVED has every whitelisted key", () => {
   expect(Object.keys(DEFAULT_DERIVED).sort()).toEqual([...DERIVED_VAR_KEYS].sort());
 });
 
+test("fallback seeds populate `nudged` with the whole primary cluster", () => {
+  for (const hex of ["#26dde5", "#0ba529", "#3ae0df"]) {
+    const { cssVars, nudged } = deriveTheme(brand(hex));
+    expect(nudged, hex).toContain("--primary");
+    expect(nudged, hex).toContain("--primary-foreground");
+    expect(nudged, hex).toContain("--primary-hover");
+    expect(nudged, hex).toContain("--ring");
+    for (const key of nudged) {
+      expect(cssVars[key], `${hex} ${key}`).toBe(DEFAULT_DERIVED[key]);
+    }
+  }
+});
+
+test("primary cluster is coherent after the AA fallback (Critical #1 regression lock)", () => {
+  const { cssVars } = deriveTheme(brand("#26dde5"));
+  expect(cssVars["--primary"]).toBe(DEFAULT_DERIVED["--primary"]);
+  expect(cssVars["--primary-hover"]).toBe(DEFAULT_DERIVED["--primary-hover"]);
+  expect(cssVars["--ring"]).toBe(DEFAULT_DERIVED["--ring"]);
+});
+
+test("the shipped default --primary clears AA against the fixed white --background", () => {
+  expect(contrastRatio(parseTriplet(DEFAULT_DERIVED["--primary"]), { l: 1, c: 0, h: 0 })).toBeGreaterThanOrEqual(
+    4.5,
+  );
+});
+
 test("fuzz: 200 random seeds never violate AA on the emitted pairs", () => {
   let rng = 123456789;
   const rand = () => ((rng = (rng * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);

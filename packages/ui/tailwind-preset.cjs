@@ -1,7 +1,7 @@
 /**
  * Tailwind preset for @assistente-os/ui. Consumers:
  *   presets: [require("@assistente-os/ui/tailwind-preset")]
- * and add "@assistente-os/ui/src/**\/*.{ts,tsx}" to `content`.
+ * and add "./node_modules/@assistente-os/ui/src/**\/*.{ts,tsx}" to `content`.
  * No raw color values here — everything resolves to a CSS var from tokens.css.
  */
 const color = (name) => `oklch(var(--${name}) / <alpha-value>)`;

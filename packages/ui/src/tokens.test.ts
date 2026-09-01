@@ -61,6 +61,15 @@ test("the 8 derived-var defaults in tokens.css match DEFAULT_DERIVED exactly", (
   }
 });
 
+test("each of the 8 derived vars is declared exactly once in the :root block", () => {
+  const block = css.match(/:root\s*\{([\s\S]*?)\}/)![1]!;
+  for (const key of DERIVED_VAR_KEYS) {
+    const re = new RegExp(`^\\s*${key}\\s*:`, "gm");
+    const matches = block.match(re) ?? [];
+    expect(matches.length, `${key} declared ${matches.length} times, expected 1`).toBe(1);
+  }
+});
+
 test("no raw color literal appears in the Tailwind preset", () => {
   const json = JSON.stringify(preset);
   expect(json).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);

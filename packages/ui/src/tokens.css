@@ -75,25 +75,21 @@
   --card-foreground: 0.2 0 0;
   --popover: 1 0 0;
   --popover-foreground: 0.2 0 0;
-  --primary: 0.55 0.17 264;
-  --primary-foreground: 0.99 0 0;
+  /* --primary, --primary-foreground, --primary-hover, --ring — see the "derived
+     (white-label) defaults" block below */
   --secondary: 0.97 0 0;
   --secondary-foreground: 0.27 0 0;
   --muted: 0.97 0 0;
   --muted-foreground: 0.5 0 0;
-  --accent: 0.96 0.02 264;
-  --accent-foreground: 0.32 0.05 264;
+  /* --accent, --accent-foreground, --chat-user-bubble, --chat-user-bubble-foreground —
+     see the "derived (white-label) defaults" block below */
   --destructive: 0.58 0.22 25;
   --destructive-foreground: 0.99 0 0;
   --border: 0.92 0 0;
   --input: 0.92 0 0;
-  --ring: 0.55 0.1 264;
   --radius: 0.5rem;
 
   /* ── semantic: product roles ── */
-  --primary-hover: 0.48 0.17 264;
-  --chat-user-bubble: 0.94 0.03 264;
-  --chat-user-bubble-foreground: 0.28 0.04 264;
   --chat-assistant-bubble: 0.97 0 0;
   --chat-assistant-bubble-foreground: 0.2 0 0;
   --citation: 0.9 0.05 264;

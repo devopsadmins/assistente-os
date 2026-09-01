@@ -7,7 +7,7 @@
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
     "./tailwind-preset": "./tailwind-preset.cjs",
-    "./styles/*": "./src/*"
+    "./src/*": "./src/*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

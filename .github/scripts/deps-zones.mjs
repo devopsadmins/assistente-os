@@ -24,23 +24,56 @@ export const BACKEND_ALLOW = [
   (d) => d.startsWith("@assistente-os/"), // workspace-internal packages
   (d) =>
     [
-      "pg", "zod", "playwright-core", "@types/node", "@types/pg", "typescript",
+      "pg", "playwright-core", "@types/node", "@types/pg", "typescript",
       "azure-devops-node-api", "ioredis", "pino", "pino-pretty", "say", "telegraf",
       "@xenova/transformers", "busboy", "@types/busboy",
       // grandfathered 2026-09-01 (present in the tree when the guard landed):
       "@sentry/node", "adm-zip", "@types/adm-zip", "baileys", "prom-client",
       "qrcode-terminal", "archiver", "@types/archiver",
+      // grandfathered 2026-09-01 (root package.json, brought into the backend zone
+      // by zone discovery below): graphviz/http-server power the graphify:* scripts.
+      "graphviz", "http-server",
     ].includes(d),
 ];
 
 export function checkPackage(pkgPath, pkgJson, zone) {
   const allow = zone === "frontend" ? FRONTEND_ALLOW : BACKEND_ALLOW;
-  const deps = { ...(pkgJson.dependencies ?? {}), ...(pkgJson.devDependencies ?? {}) };
+  const deps = {
+    ...(pkgJson.dependencies ?? {}),
+    ...(pkgJson.devDependencies ?? {}),
+    ...(pkgJson.peerDependencies ?? {}),
+    ...(pkgJson.optionalDependencies ?? {}),
+  };
   const violations = [];
   for (const dep of Object.keys(deps)) {
     if (!allow.some((rule) => rule(dep))) violations.push(`${pkgPath} :: ${dep}`);
   }
   return violations;
+}
+
+/** Every `packages/*` directory with a package.json must be assigned to a zone. */
+export function findUnassignedPackages(root) {
+  const assigned = new Set([...BACKEND_ZONE, ...FRONTEND_ZONE]);
+  let entries;
+  try {
+    entries = readdirSync(join(root, "packages"), { withFileTypes: true });
+  } catch {
+    return []; // no packages/ dir
+  }
+  const unassigned = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const pkgPath = `packages/${entry.name}`;
+    try {
+      readFileSync(join(root, pkgPath, "package.json"), "utf8");
+    } catch {
+      continue; // not a real package (no package.json)
+    }
+    if (!assigned.has(pkgPath)) {
+      unassigned.push(`${pkgPath} :: (unassigned to a dependency zone)`);
+    }
+  }
+  return unassigned;
 }
 
 function main() {
@@ -57,6 +90,14 @@ function main() {
       all.push(...checkPackage(p, json, zone));
     }
   }
+  // The root package.json (graphify:*, workspace tooling) is assigned to the backend zone.
+  try {
+    const rootJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    all.push(...checkPackage(".", rootJson, "backend"));
+  } catch {
+    // no root package.json — shouldn't happen, nothing to check
+  }
+  all.push(...findUnassignedPackages(root));
   if (all.length) {
     console.error("Dependency zone violations:\n" + all.map((v) => "  " + v).join("\n"));
     console.error("\nFix: move the dep to the right zone, or amend docs/adr/ADR-UI-001.md + FRONTEND_ALLOW.");

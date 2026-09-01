@@ -116,7 +116,7 @@ packages/ui/
 ```
 
 - **Distribuição source-only.** `package.json` aponta `exports` para `./src/*`.
-  Sem `dist` de JS. Os consumidores incluem `@assistente-os/ui/src/**/*.{ts,tsx}`
+  Sem `dist` de JS. Os consumidores incluem `./node_modules/@assistente-os/ui/src/**/*.{ts,tsx}`
   no `content` glob do Tailwind — as classes são geradas no bundle do consumidor.
 - **peerDeps:** `react`, `react-dom` (>=19). O pacote nunca embute React.
 - **`react`/`react-dom`** entram como **devDep na raiz** (para type-check e Ladle) e
