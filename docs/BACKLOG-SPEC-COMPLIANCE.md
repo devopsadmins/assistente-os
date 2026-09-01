@@ -28,6 +28,7 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 | SPEC-HR3 | Todo handler MCP: `authorizeTool` + evento em `audit-trail.ts` | HR3 IDENTITY_SCOPED_TOOLS | P1 | M | TODO | — |
 | SPEC-HR4 | `maxIterations`/`LANGGRAPH_MAX_ITERATIONS=5` como hard-stop no runner | HR4 RECURSION_GUARD | P1 | S | TODO | — |
 | SPEC-HR5 | Reconciliar dependências com a allowlist STDLIB_FIRST | HR5 STDLIB_FIRST | P2 | S–M | TODO | — |
+| SPEC-HR6 | Hub WS: broadcast sem isolamento por conta vaza `chat.step`/`graph.step` entre clientes | (achado fora do system_prompt — ver nota) | P0 | M | TODO | — |
 | SPEC-GR1 | 4º loop: 3 reincidências → Regra de Ouro → aprovação 6 dígitos → `SOUL.md` + `.opencode/rules/golden-rules.md` | GR1 AUTOAPRENDIZADO | P1 | M | TODO | — |
 | SPEC-GR2 | Rodapé `usage_metadata` em toda `sessoes/YYYY-MM-DD.md` | GR2 TELEMETRIA | P1 | M | TODO | E1 (done) |
 | SPEC-GR3 | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel | GR3 BROWSER SEMÂNTICO | P2 | S | TODO | — |
@@ -93,6 +94,18 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 - Check de CI (`depcheck`/allowlist) falha em dep nova fora da lista aprovada.
 **Arquivos**: `package.json` (workspaces), `docs/adr/`, `system_prompt`.
 **Relacionado**: ROADMAP Onda 3d (centralizar config).
+
+### SPEC-HR6 — Hub WS sem isolamento por conta  ·  P0
+**Nota de origem**: diferente dos demais itens deste backlog, não vem de uma regra nomeada do `system_prompt` — foi achado lendo o código durante o brainstorm do sub-projeto B (redesign do app). Mantido no mesmo ID scheme por ser da mesma natureza (violação de isolamento) e pra ficar rastreável junto dos outros.
+**Objetivo**: eventos do hub WS (`chat.step`, `graph.step`, `chat.done`, e os demais broadcasts de `voice.ts`/`agenda.ts`/`monitors.ts`/`events.ts`) só chegam a clientes autorizados a ver aquela soul/conta — não a todo cliente conectado.
+**Estado atual (verificado)**: `packages/daemon/src/server.ts` — `WsHub.broadcast()` escreve o frame pra **todo** socket em `this.clients`, sem filtro. O próprio código documenta a lacuna: comentário no construtor diz que sem o `token` de conexão *"qualquer cliente que alcançasse a porta recebia todos os broadcasts (chat, custos, passos do grafo)"* — e mesmo com `token` configurado, é um token único pro daemon inteiro, não por conta/soul. `packages/daemon/src/routes/chat.ts:527` confirma que `graph.step` inclui `lastContent` — **texto parcial da resposta do LLM** — no payload.
+**Gap**: qualquer cliente WS conectado (de qualquer conta, no modo amigável) recebe o progresso e trechos de resposta de chats de **todas as outras contas**, não só o dela. É um vazamento de conteúdo entre contas, não só de metadado.
+**Aceitação**:
+- `WsHub` ganha conceito de "sala"/escopo — cliente se identifica na conexão (via `?token=` de conta, não só o token global do daemon) e só recebe broadcasts da(s) soul(s)/conta que ele tem acesso.
+- Teste: dois clientes WS autenticados como contas diferentes; broadcast de um chat da conta A não chega no socket da conta B.
+- Auditoria dos demais `hub.broadcast(...)` (`voice.ts`, `agenda.ts`, `monitors.ts`, `events.ts`, `missions.ts`) — decidir caso a caso se cada um precisa do mesmo escopo ou é legitimamente global (ex.: `monitor.added` pode ser info do operador, sem PII de conta).
+**Arquivos**: `packages/daemon/src/server.ts` (`WsHub`), `packages/daemon/src/routes/chat.ts`.
+**Relacionado**: sub-projeto B (`docs/superpowers/specs/2026-09-01-app-redesign-threads-streaming-design.md`) decidiu não rotear o novo endpoint de streaming por este hub exatamente por causa deste gap. `MCP_ZERO_TRUST` resolve autorização de *tools*, não de *broadcasts* — este item é ortogonal ao SPEC-HR3.
 
 ### SPEC-GR1 — 4º loop de autoaprendizado ponta a ponta
 **Objetivo**: erro/exceção/correção → `~/.assistant-os/souls/<soulId>/licoes.md`; 3 reincidências no mesmo tópico → sintetiza Regra de Ouro → aprovação humana (código 6 dígitos no Telegram) → promove para `SOUL.md` e `.opencode/rules/golden-rules.md`.
@@ -167,3 +180,4 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 | Data | Item | Evento |
 |---|---|---|
 | 2026-08-31 | — | Backlog criado a partir do `system_prompt`. |
+| 2026-09-01 | SPEC-HR6 | Achado durante o brainstorm do sub-projeto B: hub WS vaza `chat.step`/`graph.step` (incl. texto parcial) entre contas, sem isolamento. |
