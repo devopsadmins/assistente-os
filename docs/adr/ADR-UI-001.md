@@ -43,5 +43,7 @@ workspace tem dep fora da allowlist da sua zona. `node --test` cobre o script.
   junto do SEO da landing — sub-projeto E).
 - Supply-chain cresce: versões **pinadas** (sem `^`) nos `package.json` da zona;
   `npm audit --workspace` na zona de frontend entra no CI num follow-up.
-- O texto de SPEC-HR5 / `system_prompt` passa a referenciar o modelo de duas
-  zonas (edição feita junto com este ADR).
+- **Pendente (follow-up, fora deste ADR):** atualizar o item SPEC-HR5 em
+  `docs/BACKLOG-SPEC-COMPLIANCE.md` para registrar que o modelo de duas zonas
+  fecha parte do seu escopo (a allowlist real de frontend agora está codificada
+  e guardada no CI).
