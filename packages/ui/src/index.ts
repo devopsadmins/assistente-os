@@ -9,3 +9,5 @@ export {
   type DerivedVarKey,
   type Oklch,
 } from "./theme/types";
+
+export { deriveTheme, DEFAULT_DERIVED } from "./theme/derive";
