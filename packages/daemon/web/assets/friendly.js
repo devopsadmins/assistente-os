@@ -187,7 +187,7 @@ $("#friendly-ask-form").addEventListener("submit", async (e) => {
       answerBox.innerHTML = `
         <div class="friendly-question">${esc(prompt)}</div>
         <div class="friendly-answer-text">${esc(body.stdout || "não consegui responder")}</div>
-        ${window.renderCitationsHtml(body.ragVerdict)}
+        ${window.renderCitationsHtml(body.ragVerdict, body.stdout)}
       `;
     } else {
       answerBox.innerHTML = `<div class="friendly-question">${esc(prompt)}</div><div class="friendly-answer-text friendly-answer-err">não consegui responder agora — tenta de novo em instantes.</div>`;
