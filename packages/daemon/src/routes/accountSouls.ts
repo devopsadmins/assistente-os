@@ -11,6 +11,10 @@ import {
   computePlanHash,
   isValidSoulId,
   resolveEffectiveGuardrails,
+  loadConfig,
+  getPool,
+  getFriendlyAllowlist,
+  CAPABILITY_CATALOG,
   SOUL_SPEC_SCHEMA_VERSION,
   CAPABILITY_CATALOG_VERSION,
   DEFAULT_GLOBAL_GUARDRAILS,
@@ -35,6 +39,29 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
+}
+
+/**
+ * Valida capabilities/skills pedidas pelo cliente contra a allowlist que o
+ * admin configurou (docs em friendlyAdmin.ts). Fora da allowlist = rejeita —
+ * nunca aceita parcialmente nem ignora silenciosamente (silenciar dava a
+ * ilusão de que a capability foi concedida quando não foi).
+ */
+async function validateRequestedGrants(
+  pool: import("pg").Pool,
+  requestedCapabilities: unknown,
+  requestedSkills: unknown,
+): Promise<{ ok: true; capabilities: string[]; skills: string[] } | { ok: false; error: string }> {
+  const capabilities = Array.isArray(requestedCapabilities) ? requestedCapabilities.filter((x) => typeof x === "string") : [];
+  const skills = Array.isArray(requestedSkills) ? requestedSkills.filter((x) => typeof x === "string") : [];
+  if (capabilities.length === 0 && skills.length === 0) return { ok: true, capabilities: [], skills: [] };
+
+  const allowlist = await getFriendlyAllowlist(pool);
+  const badCap = capabilities.find((c) => !allowlist.capabilities.includes(c));
+  if (badCap) return { ok: false, error: `capability '${badCap}' não está liberada pro modo amigável` };
+  const badSkill = skills.find((s) => !allowlist.skills.includes(s));
+  if (badSkill) return { ok: false, error: `skill '${badSkill}' não está liberada pro modo amigável` };
+  return { ok: true, capabilities, skills };
 }
 
 /** Slug único: sufixa -2, -3... se colidir com uma soul existente. */
@@ -73,6 +100,22 @@ export async function handleAccountSouls(
     return handleAccountSoulItem(req, res, home, decodeURIComponent(itemMatch[1]!));
   }
 
+  if (path === "/accounts/me/available-capabilities" && req.method === "GET") {
+    if (getRequestAccountId(req) == null) {
+      sendJson(res, 401, { error: "requer sessão de conta (faça login)" });
+      return true;
+    }
+    const pool = getPool(loadConfig({ home }).databaseUrl);
+    const allowlist = await getFriendlyAllowlist(pool);
+    const capabilities = CAPABILITY_CATALOG.filter((c) => allowlist.capabilities.includes(c.pattern)).map((c) => ({
+      pattern: c.pattern,
+      level: c.level,
+      description: c.description ?? null,
+    }));
+    sendJson(res, 200, { capabilities, skills: allowlist.skills.map((name) => ({ name })) });
+    return true;
+  }
+
   if (path !== "/accounts/me/souls" || req.method !== "POST") return false;
 
   const accountId = getRequestAccountId(req);
@@ -106,6 +149,13 @@ export async function handleAccountSouls(
     return true;
   }
 
+  const pool = getPool(loadConfig({ home }).databaseUrl);
+  const grants = await validateRequestedGrants(pool, body?.capabilities, body?.skills);
+  if (!grants.ok) {
+    sendJson(res, 400, { error: grants.error, code: "E_VALIDATION" });
+    return true;
+  }
+
   const existingIds = new Set(existingSouls.map((s) => s.id));
   const requestedId = body && typeof body.id === "string" ? body.id.trim() : "";
   const newId = requestedId && isValidSoulId(requestedId) && !existingIds.has(requestedId)
@@ -117,7 +167,8 @@ export async function handleAccountSouls(
     newId,
     description: purpose,
     autonomy: "ask",
-    capabilities: [],
+    capabilities: grants.capabilities,
+    skills: grants.skills,
     ownerAccountId: accountId,
   };
   const validation = validateSoulSpec(spec, { existingIds });
@@ -174,17 +225,19 @@ function soulSettingsView(home: string, id: string): Record<string, unknown> {
     contextoMd: readPersonaFile(soul.dir, "contexto.md"),
     guardrails: { maxTurns: eff.maxTurns, maxIterations: eff.maxIterations, ragRelevanceThreshold: eff.ragRelevanceThreshold },
     knowledge: { usedKb, limitKb },
+    capabilities: soul.config.agent?.permissions?.tools ?? [],
+    skills: soul.config.agent?.permissions?.skills ?? [],
   };
 }
 
 /**
  * Configurações escopadas do modo amigável (Fase 3) — GET/PATCH
- * /accounts/me/souls/:id. Superfície de edição deliberadamente pequena:
- * description + as duas personas mais usadas (perfil/contexto) + guardrails
- * numéricos, sempre re-clampados contra o teto global (nunca afrouxa). NÃO dá
- * pra mudar autonomy/capabilities/connectors/provider/model/ownerAccountId
- * por aqui — isso ficaria fixo desde a criação (v1), escalar privilégio via
- * "configurações" seria a mesma classe de bug que o resto do sistema evita.
+ * /accounts/me/souls/:id. Superfície de edição: description + as duas
+ * personas mais usadas (perfil/contexto) + guardrails numéricos, sempre
+ * re-clampados contra o teto global (nunca afrouxa) + capabilities/skills,
+ * mas só dentro da allowlist que o admin liberou (validateRequestedGrants) —
+ * nunca livre. NÃO dá pra mudar autonomy/connectors/provider/model/
+ * ownerAccountId por aqui — isso fica fixo desde a criação (v1).
  *
  * writeSoulConfig() não é atômico feito createSoulFull() — aceitável aqui:
  * é update de uma soul já existente e válida, não criação; pior caso de
@@ -247,13 +300,33 @@ async function handleAccountSoulItem(
     },
   });
 
+  // capabilities/skills só mudam se vierem no body (array explícito — mesmo
+  // [] vazio conta como "trocar pra nada"); ausente = mantém o que já tinha.
+  // Sempre revalidado contra a allowlist do admin, nunca aceita livre.
+  let tools = soul.config.agent?.permissions?.tools ?? [];
+  let skills = soul.config.agent?.permissions?.skills ?? [];
+  if (Array.isArray(body.capabilities) || Array.isArray(body.skills)) {
+    const pool = getPool(loadConfig({ home }).databaseUrl);
+    const grants = await validateRequestedGrants(
+      pool,
+      Array.isArray(body.capabilities) ? body.capabilities : tools,
+      Array.isArray(body.skills) ? body.skills : skills,
+    );
+    if (!grants.ok) {
+      sendJson(res, 400, { error: grants.error, code: "E_VALIDATION" });
+      return true;
+    }
+    tools = grants.capabilities;
+    skills = grants.skills;
+  }
+
   writeSoulConfig(soul.dir, {
     ...soul.config,
     displayName,
     description,
     agent: {
       ...soul.config.agent,
-      permissions: soul.config.agent?.permissions ?? { tools: [] },
+      permissions: { ...soul.config.agent?.permissions, tools, skills },
       autonomy: soul.config.agent?.autonomy ?? "ask",
       guardrails: { maxTurns: eff.maxTurns, maxIterations: eff.maxIterations, ragRelevanceThreshold: eff.ragRelevanceThreshold },
     },

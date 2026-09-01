@@ -235,6 +235,14 @@ input:focus, textarea:focus, select:focus {
   border-color: var(--neon-cyan);
   box-shadow: var(--glow-cyan);
 }
+/* checkbox/radio nunca deviam herdar width:100%/padding de input de texto —
+   sem isso a caixinha vira um retângulo esticado até a borda do container. */
+input[type="checkbox"], input[type="radio"] {
+  width: auto;
+  padding: 0;
+  vertical-align: middle;
+  margin-right: 4px;
+}
 textarea { line-height: 1.5; resize: vertical; }
 input::placeholder, textarea::placeholder { color: var(--text-muted); }
 

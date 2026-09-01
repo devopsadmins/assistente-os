@@ -424,4 +424,22 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_account_sessions_account ON account_sessions (account_id);
     `,
   },
+  {
+    // Lista de capabilities/skills que o admin (modo especialista) libera pro
+    // self-service escolher na criação/configurações de soul (modo amigável).
+    // Vazia por padrão — sem nenhuma linha aqui, toda soul self-service
+    // continua nascendo com capabilities:[] (comportamento da Fase 2, nunca
+    // muda sozinho). `kind` distingue capability (do CAPABILITY_CATALOG) de
+    // skill (nome de SKILL.md global) porque os dois catálogos são
+    // independentes e um pattern podia colidir por acaso entre os dois.
+    id: "0019_friendly_allowlist",
+    sql: `
+      CREATE TABLE IF NOT EXISTS friendly_allowlist (
+        pattern TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('capability', 'skill')),
+        added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (pattern, kind)
+      );
+    `,
+  },
 ];
