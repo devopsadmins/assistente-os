@@ -36,6 +36,7 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS7 | Limpeza cosmética em lote (ver item) | A2a | P3 | S | TODO | — |
 | DS8 | Token `--overlay` pro scrim do Dialog (hoje usa `--foreground`, quebra no dark mode) | A1 → futuro dark mode | P3 | S | BLOCKED | dark mode nem existe ainda |
 | DS9 | Reformular a Global Constraint de `forwardRef` no spec do A1 | A1 (doc) | P3 | S | TODO | — |
+| DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | TODO | A2b-1 |
 
 ---
 
@@ -110,6 +111,16 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 **Arquivos**: `docs/superpowers/specs/2026-09-01-design-system-packages-ui-design.md`.
 **Nota**: é só o texto do spec — o código já está certo (`DialogHeader`/`DialogFooter`/`Skeleton`/`Badge` poderiam ganhar `forwardRef` por uniformidade cosmética, mas nada depende disso).
 
+### DS10 — `CodeBlock` + highlight + `Citation` interativa em `Markdown`  ·  P2
+**Objetivo**: `CodeBlock` ganha destaque de sintaxe real (via `shiki`, já pré-aprovado no allowlist) e `Markdown` passa a renderizar marcadores `[[n]]` como `<Citation>` interativos de verdade, não como `<sup>` estático.
+**Estado atual**: `CodeBlock` renderiza texto monoespaçado sem cor; `Markdown` renderiza `[[n]]` como texto estático sem popover.
+**Gap**: nenhum componente interativo (Popover) pode ser montado dentro de HTML produzido via `dangerouslySetInnerHTML` sem uma estratégia de delegação de evento + âncora virtual do Radix Popper (`virtualRef`) — decisão de design deliberadamente adiada em A2b-1 para não acoplar essa complexidade ao primeiro corte.
+**Aceitação**: 
+- Highlight de sintaxe visível em pelo menos 3 linguagens testadas.
+- Clique em `[[n]]` dentro de um `<Markdown>` abre o mesmo Popover que `<Citation>` usa isoladamente.
+**Arquivos**: `packages/ui/src/components/code-block.tsx`, `packages/ui/src/components/markdown.tsx`, `packages/ui/src/components/citation.tsx`.
+**Relacionado**: A2b-1 (`docs/superpowers/plans/2026-09-02-design-system-content-components.md`).
+
 ---
 
 ## Observação — não é item de backlog, é pra vigiar
@@ -128,3 +139,4 @@ nesses tempos — pode precisar reduzir escopo dos testes ou paralelizar menos.
 | Data | Item | Evento |
 |---|---|---|
 | 2026-09-02 | — | Backlog criado a partir das revisões do A1 e A2a (final + por tarefa). |
+| 2026-09-02 | DS10 | Adicionado item tracking `CodeBlock` highlight + `Citation` interativa em `Markdown`. |
