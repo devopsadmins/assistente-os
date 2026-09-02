@@ -65,6 +65,10 @@ export async function handleThreads(
       return true;
     }
     const threadId = Number(threadMatch[2]);
+    if (!Number.isSafeInteger(threadId) || threadId < 1) {
+      sendJson(res, 404, { error: "thread não encontrada" });
+      return true;
+    }
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
     const requestAccountId = getRequestAccountId(req);
@@ -84,7 +88,7 @@ export async function handleThreads(
         sendJson(res, 400, { error: "title é obrigatório" });
         return true;
       }
-      const renamed = await renameThread(pool, threadId, requestAccountId, title);
+      const renamed = await renameThread(pool, threadId, requestAccountId, title, soul.id);
       if (!renamed) {
         sendJson(res, 404, { error: "thread não encontrada" });
         return true;
@@ -94,7 +98,7 @@ export async function handleThreads(
     }
 
     // DELETE
-    const deleted = await deleteThread(pool, threadId, requestAccountId);
+    const deleted = await deleteThread(pool, threadId, requestAccountId, soul.id);
     if (!deleted) {
       sendJson(res, 404, { error: "thread não encontrada" });
       return true;
@@ -112,11 +116,15 @@ export async function handleThreads(
       return true;
     }
     const threadId = Number(messagesMatch[2]);
+    if (!Number.isSafeInteger(threadId) || threadId < 1) {
+      sendJson(res, 404, { error: "thread não encontrada" });
+      return true;
+    }
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
     const requestAccountId = getRequestAccountId(req);
 
-    const thread = await getThread(pool, threadId, requestAccountId);
+    const thread = await getThread(pool, threadId, requestAccountId, soul.id);
     if (!thread) {
       sendJson(res, 404, { error: "thread não encontrada" });
       return true;

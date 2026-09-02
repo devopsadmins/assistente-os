@@ -326,6 +326,7 @@ test("getThreadMessages: devolve as mensagens da thread em ordem cronológica", 
     assert.equal(messages.length, 2);
     assert.equal(messages[0]!.role, "user");
     assert.equal(messages[0]!.content, "primeira pergunta");
+    assert.ok(Number.isInteger(messages[0]!.id) && messages[0]!.id > 0);
     assert.equal(messages[1]!.role, "assistant");
     assert.ok(messages[0]!.ts);
   } finally {
@@ -339,6 +340,26 @@ test("getThreadMessages: thread sem mensagens devolve array vazio", async () => 
     const account = await createAccount(testDb.pool, "nomsgs@exemplo.com", "senha-forte-123");
     const thread = await createThread(testDb.pool, "fiscal", account.id);
     assert.deepEqual(await getThreadMessages(testDb.pool, thread.id), []);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("getThread/renameThread/deleteThread: soul informado rejeita thread de outra soul", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "soulcheck@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", account.id, "da soul fiscal");
+
+    assert.equal(await getThread(testDb.pool, thread.id, account.id, "outra-soul"), null);
+    const foundWithCorrectSoul = await getThread(testDb.pool, thread.id, account.id, "fiscal");
+    assert.equal(foundWithCorrectSoul?.id, thread.id);
+    assert.equal(await renameThread(testDb.pool, thread.id, account.id, "tentativa", "outra-soul"), null);
+    assert.equal(await deleteThread(testDb.pool, thread.id, account.id, "outra-soul"), false);
+
+    // Sem soul informado (chamadas antigas), continua funcionando como antes.
+    const found = await getThread(testDb.pool, thread.id, account.id);
+    assert.equal(found?.id, thread.id);
   } finally {
     await testDb.cleanup();
   }

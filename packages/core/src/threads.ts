@@ -71,43 +71,64 @@ export async function listThreads(pool: Pool, soul: string, accountId: number | 
   return rows.map(rowToThread);
 }
 
-/** null = thread não existe ou não pertence a este accountId. accountId undefined = sem filtro (token admin). */
-export async function getThread(pool: Pool, threadId: number, accountId: number | null | undefined): Promise<Thread | null> {
+/** null = thread não existe, não pertence a este accountId, ou (se soul informado) não é dessa soul. accountId undefined = sem filtro de conta (token admin). */
+export async function getThread(
+  pool: Pool,
+  threadId: number,
+  accountId: number | null | undefined,
+  soul?: string,
+): Promise<Thread | null> {
   const { rows } =
     accountId === undefined
-      ? await pool.query("SELECT * FROM threads WHERE id = $1", [threadId])
-      : await pool.query("SELECT * FROM threads WHERE id = $1 AND account_id IS NOT DISTINCT FROM $2", [threadId, accountId]);
+      ? await pool.query("SELECT * FROM threads WHERE id = $1 AND ($2::text IS NULL OR soul = $2)", [threadId, soul ?? null])
+      : await pool.query(
+          "SELECT * FROM threads WHERE id = $1 AND ($2::text IS NULL OR soul = $2) AND account_id IS NOT DISTINCT FROM $3",
+          [threadId, soul ?? null, accountId],
+        );
   return rows[0] ? rowToThread(rows[0]) : null;
 }
 
-/** null = thread não existe ou não pertence a este accountId. accountId undefined = sem filtro (token admin). */
+/** null = thread não existe, não pertence a este accountId, ou (se soul informado) não é dessa soul. accountId undefined = sem filtro de conta (token admin). */
 export async function renameThread(
   pool: Pool,
   threadId: number,
   accountId: number | null | undefined,
   title: string,
+  soul?: string,
 ): Promise<Thread | null> {
   const cappedTitle = title.slice(0, 200);
   const { rows } =
     accountId === undefined
-      ? await pool.query("UPDATE threads SET title = $1 WHERE id = $2 RETURNING *", [cappedTitle, threadId])
+      ? await pool.query(
+          "UPDATE threads SET title = $1 WHERE id = $2 AND ($3::text IS NULL OR soul = $3) RETURNING *",
+          [cappedTitle, threadId, soul ?? null],
+        )
       : await pool.query(
-          "UPDATE threads SET title = $1 WHERE id = $2 AND account_id IS NOT DISTINCT FROM $3 RETURNING *",
-          [cappedTitle, threadId, accountId],
+          "UPDATE threads SET title = $1 WHERE id = $2 AND ($3::text IS NULL OR soul = $3) AND account_id IS NOT DISTINCT FROM $4 RETURNING *",
+          [cappedTitle, threadId, soul ?? null, accountId],
         );
   return rows[0] ? rowToThread(rows[0]) : null;
 }
 
-/** false = thread não existe ou não pertence a este accountId. accountId undefined = sem filtro (token admin). */
-export async function deleteThread(pool: Pool, threadId: number, accountId: number | null | undefined): Promise<boolean> {
+/** false = thread não existe, não pertence a este accountId, ou (se soul informado) não é dessa soul. accountId undefined = sem filtro de conta (token admin). */
+export async function deleteThread(
+  pool: Pool,
+  threadId: number,
+  accountId: number | null | undefined,
+  soul?: string,
+): Promise<boolean> {
   const { rowCount } =
     accountId === undefined
-      ? await pool.query("DELETE FROM threads WHERE id = $1", [threadId])
-      : await pool.query("DELETE FROM threads WHERE id = $1 AND account_id IS NOT DISTINCT FROM $2", [threadId, accountId]);
+      ? await pool.query("DELETE FROM threads WHERE id = $1 AND ($2::text IS NULL OR soul = $2)", [threadId, soul ?? null])
+      : await pool.query(
+          "DELETE FROM threads WHERE id = $1 AND ($2::text IS NULL OR soul = $2) AND account_id IS NOT DISTINCT FROM $3",
+          [threadId, soul ?? null, accountId],
+        );
   return (rowCount ?? 0) > 0;
 }
 
 export interface ThreadMessage {
+  id: number;
   role: "user" | "assistant";
   content: string;
   ts: string;
@@ -115,11 +136,11 @@ export interface ThreadMessage {
 
 /** Não checa posse — quem chama já confirmou via getThread antes (mesmo padrão de touchThread). */
 export async function getThreadMessages(pool: Pool, threadId: number): Promise<ThreadMessage[]> {
-  const { rows } = await pool.query<{ role: string; content: string; ts: unknown }>(
-    "SELECT role, content, ts FROM session_messages WHERE thread_id = $1 ORDER BY id ASC",
+  const { rows } = await pool.query<{ id: number; role: string; content: string; ts: unknown }>(
+    "SELECT id, role, content, ts FROM session_messages WHERE thread_id = $1 ORDER BY id ASC",
     [threadId],
   );
-  return rows.map((r) => ({ role: r.role as ThreadMessage["role"], content: r.content, ts: String(r.ts) }));
+  return rows.map((r) => ({ id: Number(r.id), role: r.role as ThreadMessage["role"], content: r.content, ts: String(r.ts) }));
 }
 
 /** Não valida posse por accountId de propósito — chamado no caminho quente de gravar uma mensagem, onde a posse já foi checada antes (na rota). */

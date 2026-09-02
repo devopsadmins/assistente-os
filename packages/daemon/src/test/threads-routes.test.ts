@@ -107,7 +107,26 @@ test("threads REST: conta B não alcança thread da conta A (404, não 403 — n
     const fakeThread = await fetchJson(`${base}/souls/soul-bob2/threads/999999`, { headers: bobHeaders });
     assert.equal(fakeThread.status, 404);
 
-    void aliceHeaders; // Alice headers reservado — cenário de mesma-soul-duas-contas não existe neste modelo (1 soul = 1 conta dona), documentado no plano.
+    // Forma alcançável de isolamento na mesma soul: uma thread criada pelo
+    // token admin (account_id NULL) na soul da própria Alice não aparece nem
+    // é editável pela sessão de conta da Alice — só pelo admin.
+    createSoul(home, "soul-alice-op", { name: "soul-alice-op", ownerAccountId: alice.accountId });
+    const opCreated = await fetchJson(`${base}/souls/soul-alice-op/threads`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ title: "criada pelo admin" }),
+    });
+    const opThreadId = opCreated.body.id;
+
+    const aliceListOnOwnSoul = await fetchJson(`${base}/souls/soul-alice-op/threads`, { headers: aliceHeaders });
+    assert.equal(aliceListOnOwnSoul.body.length, 0);
+
+    const aliceTouchesOpThread = await fetchJson(`${base}/souls/soul-alice-op/threads/${opThreadId}`, {
+      method: "PATCH",
+      headers: aliceHeaders,
+      body: JSON.stringify({ title: "tentativa" }),
+    });
+    assert.equal(aliceTouchesOpThread.status, 404);
   } finally {
     await daemon.close();
     await cleanup();
@@ -189,6 +208,72 @@ test("threads REST: soul inexistente devolve 404", async () => {
       headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
     });
     assert.equal(r.status, 404);
+  } finally {
+    await daemon.close();
+    await cleanup();
+  }
+});
+
+test("threads REST: URL de uma soul não alcança thread de outra soul da mesma conta", async () => {
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    const base = `http://127.0.0.1:${daemon.port}`;
+    const alice = await signup(base, "alice-twosouls@exemplo.com");
+    createSoul(home, "soul-alice-x", { name: "soul-alice-x", ownerAccountId: alice.accountId });
+    createSoul(home, "soul-alice-y", { name: "soul-alice-y", ownerAccountId: alice.accountId });
+    const aliceHeaders = { authorization: `Bearer ${alice.token}`, "content-type": "application/json" };
+
+    const created = await fetchJson(`${base}/souls/soul-alice-x/threads`, {
+      method: "POST",
+      headers: aliceHeaders,
+      body: JSON.stringify({ title: "da soul x" }),
+    });
+    const threadId = created.body.id;
+
+    const crossSoulPatch = await fetchJson(`${base}/souls/soul-alice-y/threads/${threadId}`, {
+      method: "PATCH",
+      headers: aliceHeaders,
+      body: JSON.stringify({ title: "tentativa via soul errada" }),
+    });
+    assert.equal(crossSoulPatch.status, 404);
+
+    const crossSoulMessages = await fetchJson(`${base}/souls/soul-alice-y/threads/${threadId}/messages`, { headers: aliceHeaders });
+    assert.equal(crossSoulMessages.status, 404);
+
+    const crossSoulDelete = await fetch(`${base}/souls/soul-alice-y/threads/${threadId}`, { method: "DELETE", headers: aliceHeaders });
+    assert.equal(crossSoulDelete.status, 404);
+
+    // Pela soul certa, continua funcionando.
+    const ownSoulPatch = await fetchJson(`${base}/souls/soul-alice-x/threads/${threadId}`, {
+      method: "PATCH",
+      headers: aliceHeaders,
+      body: JSON.stringify({ title: "renomeada pela soul certa" }),
+    });
+    assert.equal(ownSoulPatch.status, 200);
+  } finally {
+    await daemon.close();
+    await cleanup();
+  }
+});
+
+test("threads REST: thread id fora do range de bigint devolve 404, não 500", async () => {
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    const base = `http://127.0.0.1:${daemon.port}`;
+    const alice = await signup(base, "alice-bigid@exemplo.com");
+    createSoul(home, "soul-alice-bigid", { name: "soul-alice-bigid", ownerAccountId: alice.accountId });
+    const aliceHeaders = { authorization: `Bearer ${alice.token}` };
+
+    const r1 = await fetchJson(`${base}/souls/soul-alice-bigid/threads/99999999999999999999`, { headers: aliceHeaders });
+    assert.equal(r1.status, 404);
+
+    const r2 = await fetchJson(`${base}/souls/soul-alice-bigid/threads/99999999999999999999/messages`, { headers: aliceHeaders });
+    assert.equal(r2.status, 404);
+
+    const r3 = await fetch(`${base}/souls/soul-alice-bigid/threads/99999999999999999999`, { method: "DELETE", headers: aliceHeaders });
+    assert.equal(r3.status, 404);
   } finally {
     await daemon.close();
     await cleanup();
