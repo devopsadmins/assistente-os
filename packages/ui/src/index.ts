@@ -39,3 +39,11 @@ export {
   DialogDescription,
 } from "./components/dialog";
 export { Popover, PopoverTrigger, PopoverContent } from "./components/popover";
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "./components/tooltip";
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "./components/dropdown-menu";
