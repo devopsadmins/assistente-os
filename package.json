@@ -14,7 +14,6 @@
     "setup": "bash scripts/setup.sh",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "catalog": "npm run catalog -w @assistente-os/ui",
     "os": "node packages/cli/dist/index.js",
     "graphify:serve": "npx http-server graphify-out -p 8080 -c-1",
     "graphify:open": "npx http-server graphify-out -p 8080 -c-1 -o"
