@@ -10,11 +10,11 @@ export const StreamingText = React.forwardRef<HTMLDivElement, StreamingTextProps
   ({ chunks, className, ...props }, ref) => {
     const source = React.useMemo(() => chunks.join(""), [chunks]);
     return (
-      <div ref={ref} className={cn("ds-streaming-text", className)} {...props}>
+      <div ref={ref} className={cn("ds-streaming-text relative pr-3", className)} {...props}>
         <Markdown source={source} />
         <span
           aria-hidden="true"
-          className="ds-streaming-caret ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-current align-text-bottom"
+          className="ds-streaming-caret absolute bottom-1 right-0 inline-block h-4 w-0.5 animate-pulse bg-current"
         />
       </div>
     );

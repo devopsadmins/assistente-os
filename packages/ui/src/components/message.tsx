@@ -23,7 +23,7 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
         <div className={cn("flex max-w-[80%] flex-col gap-1", isUser && "items-end")}>
           <div
             className={cn(
-              "rounded-lg px-3 py-2 text-sm",
+              "rounded-lg px-3 py-2 text-sm break-words",
               isUser ? "bg-chat-user text-chat-user-foreground" : "bg-chat-assistant text-chat-assistant-foreground",
             )}
           >

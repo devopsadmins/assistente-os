@@ -16,10 +16,11 @@ export const MessageList = React.forwardRef<HTMLDivElement, MessageListProps>(
     const atBottomRef = React.useRef(true);
     const [atBottom, setAtBottom] = React.useState(true);
 
-    const scrollToBottom = React.useCallback(() => {
+    const scrollToBottom = React.useCallback((moveFocus = false) => {
       const viewport = viewportRef.current;
       if (!viewport) return;
       viewport.scrollTop = viewport.scrollHeight;
+      if (moveFocus) viewport.focus();
       atBottomRef.current = true;
       setAtBottom(true);
     }, []);
@@ -29,7 +30,6 @@ export const MessageList = React.forwardRef<HTMLDivElement, MessageListProps>(
       scrollToBottom();
       // Mount-only: intentionally does not re-run on scrollToBottom identity
       // changes (it's a stable useCallback with an empty dep array anyway).
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     React.useEffect(() => {
@@ -80,7 +80,7 @@ export const MessageList = React.forwardRef<HTMLDivElement, MessageListProps>(
             variant="secondary"
             size="sm"
             className="absolute bottom-4 left-1/2 -translate-x-1/2 gap-1.5 shadow-md"
-            onClick={scrollToBottom}
+            onClick={() => scrollToBottom(true)}
           >
             <ArrowDown className="h-3.5 w-3.5" />
             Ir para o final

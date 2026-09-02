@@ -111,6 +111,24 @@ test("does not yank the scroll position when new content arrives after the reade
   expect(screen.getByRole("button", { name: /ir para o final/i })).toBeInTheDocument();
 });
 
+test("clicking the jump-to-latest button moves focus to the scrollable region", async () => {
+  stubScrollGeometry(500, 200);
+  const user = userEvent.setup();
+  const { container } = render(
+    <MessageList>
+      <div>msg 1</div>
+    </MessageList>,
+  );
+  const viewport = getViewport(container);
+  viewport.scrollTop = 0;
+  viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+  const button = screen.getByRole("button", { name: /ir para o final/i });
+
+  await user.click(button);
+
+  expect(viewport).toHaveFocus();
+});
+
 test("has no a11y violations once the jump-to-latest button is visible", async () => {
   stubScrollGeometry(500, 200);
   const { container } = render(
