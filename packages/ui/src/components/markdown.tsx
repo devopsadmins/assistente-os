@@ -46,6 +46,30 @@ function HtmlBlock({ html }: { html: string }) {
   return <div dangerouslySetInnerHTML={{ __html: safe }} />;
 }
 
+// Tailwind's preflight reset strips the browser's default heading/list/table
+// styling, and sanitized HTML mounted via dangerouslySetInnerHTML can't carry
+// per-element React classNames — so typography is applied here as descendant
+// selectors on the wrapper instead of a `prose` plugin (keeps this package's
+// existing token-only-via-preset approach, no new dependency).
+const MARKDOWN_TYPOGRAPHY = [
+  "[&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:leading-tight",
+  "[&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-tight",
+  "[&_h3]:text-lg [&_h3]:font-semibold",
+  "[&_h4]:text-base [&_h4]:font-semibold",
+  "[&_h5]:text-sm [&_h5]:font-semibold",
+  "[&_h6]:text-sm [&_h6]:font-semibold [&_h6]:text-muted-foreground",
+  "[&_p]:leading-relaxed",
+  "[&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
+  "[&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5",
+  "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground",
+  "[&_a]:text-primary [&_a]:underline-offset-2 [&_a:hover]:underline",
+  "[&_strong]:font-semibold",
+  "[&_hr]:border-border",
+  "[&_table]:w-full [&_table]:border-collapse [&_table]:text-sm",
+  "[&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-medium",
+  "[&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
+].join(" ");
+
 export function Markdown({ source, className }: MarkdownProps) {
   const tokens = React.useMemo(
     // Deliberately no explicit options object here: `marked.lexer(src, options)`
@@ -67,7 +91,7 @@ export function Markdown({ source, className }: MarkdownProps) {
   );
 
   return (
-    <div className={cn("ds-markdown space-y-3 text-sm text-foreground", className)}>
+    <div className={cn("ds-markdown space-y-3 text-sm text-foreground", MARKDOWN_TYPOGRAPHY, className)}>
       {tokens.map((token: Token, index: number) =>
         token.type === "code" ? (
           <CodeBlock key={index} code={token.text} lang={token.lang || undefined} />
