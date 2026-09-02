@@ -34,3 +34,4 @@ auth.json
 test-results/
 playwright-report/
 packages/ui/build/
+*.AppImage
