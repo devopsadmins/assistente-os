@@ -1,0 +1,23 @@
+import * as React from "react";
+import { cn } from "../lib/cn";
+import { Markdown } from "./markdown";
+
+export interface StreamingTextProps extends React.HTMLAttributes<HTMLDivElement> {
+  chunks: string[];
+}
+
+export const StreamingText = React.forwardRef<HTMLDivElement, StreamingTextProps>(
+  ({ chunks, className, ...props }, ref) => {
+    const source = React.useMemo(() => chunks.join(""), [chunks]);
+    return (
+      <div ref={ref} className={cn("ds-streaming-text", className)} {...props}>
+        <Markdown source={source} />
+        <span
+          aria-hidden="true"
+          className="ds-streaming-caret ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-current align-text-bottom"
+        />
+      </div>
+    );
+  },
+);
+StreamingText.displayName = "StreamingText";

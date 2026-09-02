@@ -59,3 +59,4 @@ export { Markdown, type MarkdownProps } from "./components/markdown";
 export { Citation, type CitationProps, type CitationSource } from "./components/citation";
 export { Message, type MessageProps, type MessageRole } from "./components/message";
 export { MessageList, type MessageListProps } from "./components/message-list";
+export { StreamingText, type StreamingTextProps } from "./components/streaming-text";
