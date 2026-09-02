@@ -1,8 +1,10 @@
+// @vitest-environment node
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
-const componentsDir = join(process.cwd(), "src/components");
+const componentsDir = fileURLToPath(new URL(".", import.meta.url));
 
 function listSourceFiles(dir: string): string[] {
   const out: string[] = [];
