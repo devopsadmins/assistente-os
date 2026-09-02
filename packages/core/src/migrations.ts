@@ -442,4 +442,28 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Sub-projeto B (threads + streaming) — primeira fatia de backend, sem
+    // nenhuma dependência de componente de front-end. `account_id` NULL =
+    // thread do operador (token admin ASSISTENTE_OS_DAEMON_TOKEN), não uma
+    // conta de cliente — o padrão já usado por outras tabelas escopadas por
+    // conta desde 0018_accounts. `thread_id` em session_messages é nullable
+    // de propósito: o /chat sem thread (uso direto via API/integrações,
+    // comportamento atual) continua funcionando sem thread nenhuma.
+    id: "0020_threads",
+    sql: `
+      CREATE TABLE IF NOT EXISTS threads (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        soul TEXT NOT NULL,
+        account_id BIGINT REFERENCES accounts (id) ON DELETE CASCADE,
+        title TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_message_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_threads_soul_account ON threads (soul, account_id, last_message_at DESC);
+
+      ALTER TABLE session_messages ADD COLUMN IF NOT EXISTS thread_id BIGINT REFERENCES threads (id) ON DELETE CASCADE;
+      CREATE INDEX IF NOT EXISTS idx_session_messages_thread ON session_messages (thread_id);
+    `,
+  },
 ];
