@@ -1,8 +1,9 @@
 // packages/core/src/test/threads.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createThread, listThreads, renameThread, deleteThread, touchThread } from "../threads.js";
+import { createThread, listThreads, getThread, renameThread, deleteThread, touchThread } from "../threads.js";
 import { createAccount } from "../accounts.js";
+import { isAssistenteOsError } from "../errors.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
 test("createThread + listThreads: fluxo feliz, título default vazio", async () => {
@@ -171,6 +172,82 @@ test("deleteThread: cascata apaga session_messages vinculadas", async () => {
 
     const after = await testDb.pool.query("SELECT count(*) FROM session_messages WHERE thread_id = $1", [thread.id]);
     assert.equal(Number(after.rows[0].count), 0);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("getThread: devolve a thread quando o accountId bate, null quando não bate ou não existe", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const accountA = await createAccount(testDb.pool, "getthread1@exemplo.com", "senha-forte-123");
+    const accountB = await createAccount(testDb.pool, "getthread2@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", accountA.id, "minha thread");
+
+    const found = await getThread(testDb.pool, thread.id, accountA.id);
+    assert.equal(found?.id, thread.id);
+
+    assert.equal(await getThread(testDb.pool, thread.id, accountB.id), null);
+    assert.equal(await getThread(testDb.pool, 999_999, accountA.id), null);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("listThreads: threads de operador (accountId null) e de conta não se misturam", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "opiso@exemplo.com", "senha-forte-123");
+    const accountThread = await createThread(testDb.pool, "fiscal", account.id, "da conta");
+    const operatorThread = await createThread(testDb.pool, "fiscal", null, "do operador");
+
+    const listedForAccount = await listThreads(testDb.pool, "fiscal", account.id);
+    assert.equal(listedForAccount.length, 1);
+    assert.equal(listedForAccount[0]!.id, accountThread.id);
+
+    const listedForOperator = await listThreads(testDb.pool, "fiscal", null);
+    assert.equal(listedForOperator.length, 1);
+    assert.equal(listedForOperator[0]!.id, operatorThread.id);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("renameThread/deleteThread: accountId null não consegue mexer numa thread de conta, e vice-versa", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "opiso2@exemplo.com", "senha-forte-123");
+    const accountThread = await createThread(testDb.pool, "fiscal", account.id, "da conta");
+    const operatorThread = await createThread(testDb.pool, "fiscal", null, "do operador");
+
+    assert.equal(await renameThread(testDb.pool, accountThread.id, null, "invasão"), null);
+    assert.equal(await renameThread(testDb.pool, operatorThread.id, account.id, "invasão"), null);
+
+    assert.equal(await deleteThread(testDb.pool, accountThread.id, null), false);
+    assert.equal(await deleteThread(testDb.pool, operatorThread.id, account.id), false);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("renameThread/deleteThread: id inexistente devolve null/false", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "naoexiste@exemplo.com", "senha-forte-123");
+    assert.equal(await renameThread(testDb.pool, 999_999, account.id, "x"), null);
+    assert.equal(await deleteThread(testDb.pool, 999_999, account.id), false);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("createThread: accountId inexistente rejeita com E_VALIDATION", async () => {
+  const testDb = await createTestSchema();
+  try {
+    await assert.rejects(
+      () => createThread(testDb.pool, "fiscal", 999_999),
+      (err: unknown) => isAssistenteOsError(err) && err.code === "E_VALIDATION",
+    );
   } finally {
     await testDb.cleanup();
   }

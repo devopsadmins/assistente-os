@@ -463,7 +463,7 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_threads_soul_account ON threads (soul, account_id, last_message_at DESC);
 
       ALTER TABLE session_messages ADD COLUMN IF NOT EXISTS thread_id BIGINT REFERENCES threads (id) ON DELETE CASCADE;
-      CREATE INDEX IF NOT EXISTS idx_session_messages_thread ON session_messages (thread_id);
+      CREATE INDEX IF NOT EXISTS idx_session_messages_thread ON session_messages (thread_id, id);
     `,
   },
 ];
