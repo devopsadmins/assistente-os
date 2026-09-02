@@ -36,3 +36,10 @@ test("renders a [[n]] citation marker as a static, non-interactive superscript",
   expect(marker.tagName).toBe("SUP");
   expect(marker).not.toHaveAttribute("role", "button");
 });
+
+test("drops empty spacer blocks between blocks instead of doubling the layout gap", () => {
+  const source = "# Title\n\nSome paragraph.\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n```ts\nconst x = 1;\n```";
+  const { container } = render(<Markdown source={source} />);
+  const emptyDivs = Array.from(container.querySelectorAll("div")).filter((el) => el.innerHTML === "");
+  expect(emptyDivs).toHaveLength(0);
+});

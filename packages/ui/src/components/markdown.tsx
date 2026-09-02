@@ -22,7 +22,14 @@ function HtmlBlock({ html }: { html: string }) {
 }
 
 export function Markdown({ source, className }: MarkdownProps) {
-  const tokens = React.useMemo(() => marked.lexer(source, { gfm: true }), [source]);
+  const tokens = React.useMemo(
+    // "space" tokens (blank lines between blocks) render as empty HTML via
+    // marked's default renderer and would double the gap `space-y-3` already
+    // adds between block children — drop them, the block spacing is already
+    // handled by the wrapper's own layout.
+    () => marked.lexer(source, { gfm: true }).filter((token) => token.type !== "space"),
+    [source],
+  );
 
   return (
     <div className={cn("ds-markdown space-y-3 text-sm text-foreground", className)}>
