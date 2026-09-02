@@ -52,3 +52,4 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/tabs";
 export { Select, SelectValue, SelectTrigger, SelectContent, SelectItem } from "./components/select";
 export { Switch } from "./components/switch";
 export { Checkbox } from "./components/checkbox";
+export { ScrollArea } from "./components/scroll-area";
