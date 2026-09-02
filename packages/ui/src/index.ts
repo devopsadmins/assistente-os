@@ -27,3 +27,15 @@ export { Skeleton } from "./components/skeleton";
 export { Badge, badgeVariants, type BadgeProps } from "./components/badge";
 export { Avatar, AvatarImage, AvatarFallback } from "./components/avatar";
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "./components/card";
+
+export {
+  Dialog,
+  DialogTrigger,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "./components/dialog";
+export { Popover, PopoverTrigger, PopoverContent } from "./components/popover";
