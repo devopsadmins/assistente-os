@@ -49,16 +49,15 @@ export async function createThread(
   }
 }
 
-/**
- * Mais recente primeiro (por last_message_at, com id como desempate — `now()`
- * é o timestamp da transação, então threads tocadas/criadas na mesma
- * transação podem ter o mesmo last_message_at). Branch por accountId em vez
- * de `IS NOT DISTINCT FROM` porque esse operador não é sargable no Postgres —
- * provado via EXPLAIN ANALYZE numa tabela de 200k linhas, o índice
- * (soul, account_id, last_message_at DESC) degradava para usar só a coluna
- * soul. `account_id = $n` e `account_id IS NULL` são ambos sargable.
- */
-export async function listThreads(pool: Pool, soul: string, accountId: number | null): Promise<Thread[]> {
+/** Mais recente primeiro (por last_message_at). accountId undefined = sem filtro (token admin, vê tudo). */
+export async function listThreads(pool: Pool, soul: string, accountId: number | null | undefined): Promise<Thread[]> {
+  if (accountId === undefined) {
+    const { rows } = await pool.query(
+      "SELECT * FROM threads WHERE soul = $1 ORDER BY last_message_at DESC, id DESC",
+      [soul],
+    );
+    return rows.map(rowToThread);
+  }
   const { rows } =
     accountId === null
       ? await pool.query(
@@ -72,36 +71,55 @@ export async function listThreads(pool: Pool, soul: string, accountId: number | 
   return rows.map(rowToThread);
 }
 
-/** null = thread não existe ou não pertence a este accountId (mesma ambiguidade deliberada de renameThread/deleteThread). */
-export async function getThread(pool: Pool, threadId: number, accountId: number | null): Promise<Thread | null> {
-  const { rows } = await pool.query(
-    "SELECT * FROM threads WHERE id = $1 AND account_id IS NOT DISTINCT FROM $2",
-    [threadId, accountId],
-  );
+/** null = thread não existe ou não pertence a este accountId. accountId undefined = sem filtro (token admin). */
+export async function getThread(pool: Pool, threadId: number, accountId: number | null | undefined): Promise<Thread | null> {
+  const { rows } =
+    accountId === undefined
+      ? await pool.query("SELECT * FROM threads WHERE id = $1", [threadId])
+      : await pool.query("SELECT * FROM threads WHERE id = $1 AND account_id IS NOT DISTINCT FROM $2", [threadId, accountId]);
   return rows[0] ? rowToThread(rows[0]) : null;
 }
 
-/** null = thread não existe ou não pertence a este accountId (as duas situações se parecem de propósito — não vaza qual é qual). */
+/** null = thread não existe ou não pertence a este accountId. accountId undefined = sem filtro (token admin). */
 export async function renameThread(
   pool: Pool,
   threadId: number,
-  accountId: number | null,
+  accountId: number | null | undefined,
   title: string,
 ): Promise<Thread | null> {
-  const { rows } = await pool.query(
-    "UPDATE threads SET title = $1 WHERE id = $2 AND account_id IS NOT DISTINCT FROM $3 RETURNING *",
-    [title.slice(0, 200), threadId, accountId],
-  );
+  const cappedTitle = title.slice(0, 200);
+  const { rows } =
+    accountId === undefined
+      ? await pool.query("UPDATE threads SET title = $1 WHERE id = $2 RETURNING *", [cappedTitle, threadId])
+      : await pool.query(
+          "UPDATE threads SET title = $1 WHERE id = $2 AND account_id IS NOT DISTINCT FROM $3 RETURNING *",
+          [cappedTitle, threadId, accountId],
+        );
   return rows[0] ? rowToThread(rows[0]) : null;
 }
 
-/** false = thread não existe ou não pertence a este accountId. */
-export async function deleteThread(pool: Pool, threadId: number, accountId: number | null): Promise<boolean> {
-  const { rowCount } = await pool.query(
-    "DELETE FROM threads WHERE id = $1 AND account_id IS NOT DISTINCT FROM $2",
-    [threadId, accountId],
-  );
+/** false = thread não existe ou não pertence a este accountId. accountId undefined = sem filtro (token admin). */
+export async function deleteThread(pool: Pool, threadId: number, accountId: number | null | undefined): Promise<boolean> {
+  const { rowCount } =
+    accountId === undefined
+      ? await pool.query("DELETE FROM threads WHERE id = $1", [threadId])
+      : await pool.query("DELETE FROM threads WHERE id = $1 AND account_id IS NOT DISTINCT FROM $2", [threadId, accountId]);
   return (rowCount ?? 0) > 0;
+}
+
+export interface ThreadMessage {
+  role: "user" | "assistant";
+  content: string;
+  ts: string;
+}
+
+/** Não checa posse — quem chama já confirmou via getThread antes (mesmo padrão de touchThread). */
+export async function getThreadMessages(pool: Pool, threadId: number): Promise<ThreadMessage[]> {
+  const { rows } = await pool.query<{ role: string; content: string; ts: unknown }>(
+    "SELECT role, content, ts FROM session_messages WHERE thread_id = $1 ORDER BY id ASC",
+    [threadId],
+  );
+  return rows.map((r) => ({ role: r.role as ThreadMessage["role"], content: r.content, ts: String(r.ts) }));
 }
 
 /** Não valida posse por accountId de propósito — chamado no caminho quente de gravar uma mensagem, onde a posse já foi checada antes (na rota). */
