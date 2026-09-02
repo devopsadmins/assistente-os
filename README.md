@@ -421,16 +421,8 @@ aguardando medição.
 higiene de docs/migrations/jobs) + trilha RAG (citações auditáveis, confidence
 multi-sinal, fidelidade medida, `os rag eval --history`). Runbook de deploy do
 zero + protocolo de teste: **[docs/TESTES-DEPLOY-COMPLETO.md](docs/TESTES-DEPLOY-COMPLETO.md)**.
-Aberto: Onda 3d/3e (refactors), E13 Fase 2 (volume real).
+Aberto: Onda 3d/3e (refactors), decisão multi-tenant, E13 Fase 2 (volume real).
 Ver [docs/ROADMAP.md](docs/ROADMAP.md) § "Estado 2026-08-30".
-
-**Modo Amigável — contas multi-tenant self-service (2026-08-31)** —
-[docs/FRIENDLY-MODE.md](docs/FRIENDLY-MODE.md). Fases 0–4 + rename + allowlist
-de admin: signup/login por e-mail, sessão de conta como 2ª credencial, wizard
-de criação de soul, configurações e upload de conhecimento escopados à conta,
-allowlist de capabilities/skills curada pelo admin. Resolve a "decisão
-multi-tenant" que estava aberta (Onda 3f). Pendente: ADR do modelo de dados de
-conta (e-mail + hash de senha), preflight de requisitos de skill no picker.
 
 ## Docs
 

@@ -47,13 +47,6 @@ Runbook de deploy + protocolo de teste: **[`docs/TESTES-DEPLOY-COMPLETO.md`](TES
   "evidência insuficiente"), E12a (fidelidade heurística + casos adversariais),
   E12b (`runFaithfulnessEval` + tabela `rag_eval_runs` + `os rag eval
   --record`/`--history` + amostragem online).
-- **Modo Amigável — contas multi-tenant self-service (2026-08-31)** — Fases 0–4
-  + rename + allowlist de admin. Doc: [`FRIENDLY-MODE.md`](FRIENDLY-MODE.md).
-  Resolve a **Onda 3f** abaixo: a decisão foi "sim" — `accounts` +
-  `account_sessions` + `friendly_allowlist` (migrações `0018`/`0019`),
-  `SoulSpec.ownerAccountId` como FK lógica, sessão de conta como 2ª credencial
-  do gate. **Entrou por commit direto em `main`, fora do fluxo PR+CI** — dívida
-  de processo registrada em `CHANGELOG.md` e `FRIENDLY-MODE.md`.
 
 **Aberto:**
 

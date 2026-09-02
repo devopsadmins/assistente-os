@@ -10,57 +10,6 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
-- **Modo Amigável — contas multi-tenant self-service** (Fases 0–4 + rename +
-  allowlist de admin; migrações `0018_accounts`, `0019_friendly_allowlist`).
-  Doc: **[docs/FRIENDLY-MODE.md](docs/FRIENDLY-MODE.md)**. Registro retroativo —
-  as Fases entraram por commit direto em `main` (`18ccd5d`, `fb268a5`,
-  `405ad5d`, `2b3f8ca`, `48a6b0e`, `46f3145`, `6590ad7`), fora do fluxo PR+CI
-  do `CONTRIBUTING.md`; esta entrada fecha o paper trail exigido pelos
-  caminhos sensíveis (`migrations.ts`, `policy.ts`).
-  - **Fase 0 — contas** (`packages/core/src/accounts.ts`,
-    `packages/daemon/src/routes/auth.ts`): `POST /auth/{signup,login,logout}` +
-    `GET /auth/me`. Senha ≥ 8 chars, hash **scrypt** nativo (`node:crypto`, sem
-    dependência nova), salt por conta; e-mail `unique` normalizado; login com
-    resposta única anti-enumeração. Sessão Bearer TTL 30 dias — token em claro
-    só na resposta, banco guarda só o `sha256`. Tabelas `accounts` +
-    `account_sessions` (FK `ON DELETE CASCADE`). `SoulSpec.ownerAccountId`
-    (ausente = soul do operador).
-  - **Fase 1 — busca/pergunta multi-tenant**: sessão de conta vira 2ª
-    credencial no gate central de `server.ts` (tentada só quando o Bearer não
-    é o token admin). Guarda de posse **centralizada** para todo
-    `/souls/:id/*` contra `ownerAccountId`; `GET /souls` se auto-escopa.
-  - **Fase 2 — wizard de criação de soul** (`POST /accounts/me/souls`,
-    `routes/accountSouls.ts`): payload mínimo (`purpose` + `id` opcional),
-    default seguro (`autonomy: "ask"`, `capabilities: []`). Fluxo
-    `dry_run → plan_hash → confirmar` reusando a lógica core de `soul_create`.
-    Teto `ASSISTENTE_OS_MAX_SOULS_PER_ACCOUNT` (default 2, `E_ACCOUNT_LIMIT`).
-  - **Fase 3 — configurações escopadas** (`GET`/`PATCH /accounts/me/souls/:id`):
-    edita `description`, `perfil.md`, `contexto.md`, guardrails numéricos
-    (sempre re-clampados contra o teto global, nunca afrouxam) e
-    `capabilities`/`skills` **só dentro da allowlist do admin**
-    (`validateRequestedGrants`). `autonomy`/`provider`/`model`/`ownerAccountId`
-    ficam fixos desde a criação.
-  - **Fase 4 — upload de conhecimento self-service** (`upload.ts`): teto **em
-    KB por conta** (`friendlyUploadKbLimit()`), não em nº de chunks; settings
-    devolve `knowledge: { usedKb, limitKb }`.
-  - **Rename** (`46f3145`): `SoulConfig.displayName` opcional e editável pela
-    Fase 3; não altera o `id` da soul.
-  - **Allowlist de admin** (`6590ad7`): tabela `friendly_allowlist
-    (pattern, kind)`, `kind ∈ {capability, skill}`, **fechada por padrão**.
-    `GET`/`PUT /admin/friendly-allowlist` (`routes/friendlyAdmin.ts`) —
-    **exige token admin, nunca sessão de conta**. `PUT` substitui a lista
-    inteira; capabilities fora do `CAPABILITY_CATALOG` são ignoradas;
-    skills oferecidas = só as de escopo **global** (`scanSkillDirs`).
-    `GET /accounts/me/available-capabilities` devolve só o liberado.
-  - Testes: `account-isolation`, `account-soul-wizard`,
-    `account-soul-settings`, `account-knowledge-upload`, `friendly-allowlist`
-    (daemon) + `accounts` (core).
-  Rollback: as migrações só adicionam tabelas (`accounts`,
-  `account_sessions`, `friendly_allowlist`) — sem `ownerAccountId` gravado,
-  toda soul é "do operador" e o comportamento antigo (só token admin) volta.
-  Reverter os 7 commits remove as rotas `/auth/*`, `/accounts/me/*` e
-  `/admin/friendly-allowlist`.
-
 - **`scripts/setup.sh` — instalador guiado** (`npm run setup`): sobe o sistema
   numa máquina limpa. Checa pré-requisitos (Node ≥ 22.16, Docker, Ollama,
   `pg_dump`), roda `npm ci` + `build` + `typecheck`, pergunta o essencial
@@ -196,6 +145,91 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
   - Testes: `sessions.test.ts` (+1), `daemon.test.ts` (+1).
   Rollback: reverter o commit — a migração só adiciona coluna/tabela (sem
   down-migration; `execution_spans` fica órfã, inofensiva).
+
+### Alterado
+
+- **Onda 3a — higiene de docs e config** (roadmap de remediação da análise
+  crítica 2026-08-29):
+  - `docs/ARCHITECTURE.md` **reescrito** para bater com o código atual — descrevia
+    um design SQLite (`memory.db`/`kernel.db`), Windows como plataforma primária e
+    "Stitch MCP" (descontinuado). Agora: Postgres+pgvector, 6 pacotes atuais,
+    Zero Trust, trace, throttle, LangGraph opt-in, deploy PM2.
+  - Contagem de tools MCP reconciliada em **56** (`docs/MCPS.md` dizia 54,
+    `docs/ROADMAP.md` 52, `docs/ARCHITECTURE.md` 16 — `packages/tools` tem 56).
+  - **`ASSISTENTE_OS_ROUTER_TIERS`** passa a ser lido (`config.ts`) — estava
+    documentado no QUICKSTART mas nenhum código consumia. `override` explícito >
+    env > `["local","zen","soul"]`. Teste em `core.test.ts`.
+  - Novo **`.env.example`** na raiz com todas as variáveis e valores de exemplo.
+  - QUICKSTART §4 corrigido ("kernel.db em SQLite" → tudo Postgres).
+  Rollback: reverter o commit (só docs + 1 fallback de env não-destrutivo).
+
+### Segurança
+
+- **Onda 1b — rate limit + cap de concorrência no daemon** (roadmap de remediação
+  da análise crítica 2026-08-29; `packages/daemon/src/throttle.ts`):
+  - **Rate limit por cliente** (janela fixa) no `handle()`: default **600 req /
+    60 s** — generoso, pega loop descontrolado sem modelar tráfego. Chave:
+    `X-Client-Id`, senão hash do token, senão IP. Estouro → `429` +
+    `Retry-After`. `/health` e `/metrics` fora. `AOS_RATE_LIMIT=0` desliga.
+  - **Semáforo de execuções caras** (`/souls/:id/chat`, `/api/missions/*`,
+    `/api/pipelines/*`): o slot é segurado pela duração da rota; estouro → `503`
+    imediato (sem fila). Default `AOS_MAX_CONCURRENT_EXEC=8`; `0` desliga.
+  Antes só havia limite de *gasto* (`dailyLimit`) e de *turnos* (`maxTurns`) —
+  nada barrava milhares de `/chat`/min, cada um um subprocesso.
+  Testes: `throttle.test.ts` (novo, 5), `daemon.test.ts` (+2).
+  Rollback: `AOS_RATE_LIMIT=0` + `AOS_MAX_CONCURRENT_EXEC=0` neutralizam; ou
+  reverter o commit.
+
+- **Onda 1 — Zero Trust aplicado no MCP e no agente LangGraph** (roadmap de
+  remediação da análise crítica 2026-08-29, Onda 1a; segue a Onda 0 em #11;
+  `MCP_ZERO_TRUST`, **default off**):
+  - **Gate central em `tools/call`** (`packages/tools/src/index.ts`): toda tool
+    passa por `authorizeExecution` — allowlist + nível de risco × `autonomy` +
+    fail-closed para capability fora do catálogo. Antes, `authorizeExecution` (o
+    motor com autonomia/budget/approvalPolicy) tinha **1 caller** em todo o
+    código; o MCP só checava a allowlist. Com `MCP_ZERO_TRUST=off` (default) o
+    gate central é **no-op** — comportamento idêntico ao anterior, sem quebrar
+    souls que ainda não declararam `autonomy`. `on` = enforcement completo.
+  - **Agente LangGraph** (`packages/daemon/src/langgraph-tools.ts`):
+    `createAgentTools` agora **filtra as tools pela allowlist da soul** (antes
+    executava qualquer tool ignorando o snapshot) e cada `func` passa por
+    `authorizeExecution`. O filtro de allowlist vale **sempre**; o gate
+    autonomia/aprovação só com `MCP_ZERO_TRUST=on`.
+  - `authorizeExecution` ganha `enforcePolicyGates?: boolean` (default `true`):
+    `false` pula os passos 5–6 (autonomy/approvalPolicy) mantendo denylist,
+    allowlist, conector e budget.
+  - **Path traversal**: `skill_list` / `skill_create` / `mission_run` passam a
+    validar `args.soul` com `isValidSoulId` antes de qualquer `join(home,
+    "souls", …)`.
+  - Testes: `policy.test.ts` (+2), `tools.test.ts` (+4), `langgraph-tools.test.ts`
+    (+2).
+  Rollback: `MCP_ZERO_TRUST` off (default) já neutraliza o gate de autonomia; o
+  filtro de allowlist do LangGraph e a validação de `soul` exigem reverter o
+  commit.
+
+- **Onda 0 de contenção** (pós-análise crítica 2026-08-29, `docs/superpowers/`
+  não — plano em `.claude/plans/`):
+  - `GET /health` (rota pública, sem token) **deixa de listar as souls** — os ids
+    incluem `familia_<telefone>` (enumeração não-autenticada de PII). A lista fica
+    em `GET /souls`, que exige o token.
+  - **`agenda` isolada por soul.** `getAgendaItems(pool, doneFilter, soul?)` ganha
+    filtro: chamador escopado (`agenda_list` via MCP com `AGENT_SOUL_ID`, via
+    LangGraph com `soulId`, ou `GET /agenda?soul=`) só enxerga a própria agenda +
+    itens globais (`soul IS NULL`), nunca a de outra soul. Sem `soul` = modo
+    administrativo (todas), atrás do token.
+  - **Transcrições de sessão e `auth.json` saem do versionamento.** `git rm
+    --cached` de `session-ses_*.md` (raiz + `archive/sessions/`), `auth.json` e
+    screenshots de trabalho; `.gitignore` passa a cobrir `session-*.md`,
+    `auth.json`, `.playwright-mcp/`, `.web-shots/`, `/*.png`. (Os valores nesses
+    arquivos eram de teste; sem reescrita de histórico.)
+  - `GET /infra/status` reporta `postgres.ok=false` quando o Postgres está fora,
+    em vez de 500 na query de `pg_database_size` não protegida.
+  - `ADR-PRIV-001 §G3` corrigido: citava `packages/memory/src/reindex.ts`
+    (removido) — o mecanismo real é a poda de órfãos em `indexer.ts`.
+  Rollback: reverter o commit (rotas voltam ao comportamento anterior; os
+  arquivos removidos seguem no disco e no histórico).
+
+### Alterado
 
 ### Alterado
 
