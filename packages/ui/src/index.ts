@@ -57,3 +57,4 @@ export { useToast, type ToastOptions } from "./hooks/use-toast";
 export { CodeBlock, type CodeBlockProps } from "./components/code-block";
 export { Markdown, type MarkdownProps } from "./components/markdown";
 export { Citation, type CitationProps, type CitationSource } from "./components/citation";
+export { Message, type MessageProps, type MessageRole } from "./components/message";
