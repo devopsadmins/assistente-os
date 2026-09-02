@@ -37,6 +37,7 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS8 | Token `--overlay` pro scrim do Dialog (hoje usa `--foreground`, quebra no dark mode) | A1 → futuro dark mode | P3 | S | BLOCKED | dark mode nem existe ainda |
 | DS9 | Reformular a Global Constraint de `forwardRef` no spec do A1 | A1 (doc) | P3 | S | TODO | — |
 | DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | TODO | A2b-1 |
+| DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | TODO | A2b-1 |
 
 ---
 
@@ -97,6 +98,7 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 - `DialogOverlay` e `ToastEntry` não estão no barrel (`index.ts`) — seriam úteis pro B restylizar o scrim / tipar estado de toast.
 - Varredura de cor hardcoded (`no-hardcoded-color.test.ts`) é não-recursiva — só cobre `src/components/` no nível raiz; `src/hooks/`, `src/theme/`, e qualquer subpasta futura ficam sem guarda.
 - Novas deps do `package.json` não estão em ordem alfabética.
+- `Markdown` e `Citation` são componentes de função simples — não fazem `forwardRef` nem espalham `{...props}` como todo o resto do pacote (Global Constraint #1 do spec do A1). Isso veio do próprio código das Tarefas 2/3 do plano A2b-1, não é desvio do implementador (achado da revisão final; decisão do controller: parkeado em vez de consertado na onda de fix do A2b-1 — reformatar a assinatura pública desses dois componentes merecia revisão com escopo próprio, não um fix embutido na revisão final). Hoje quem consome não consegue passar `id`, `data-testid`, nem `aria-*` pra nenhum dos dois.
 **Arquivos**: vários, ver acima.
 
 ### DS8 — Token `--overlay` pro scrim do Dialog  ·  P3  ·  BLOCKED
@@ -120,6 +122,15 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 - Clique em `[[n]]` dentro de um `<Markdown>` abre o mesmo Popover que `<Citation>` usa isoladamente.
 **Arquivos**: `packages/ui/src/components/code-block.tsx`, `packages/ui/src/components/markdown.tsx`, `packages/ui/src/components/citation.tsx`.
 **Relacionado**: A2b-1 (`docs/superpowers/plans/2026-09-02-design-system-content-components.md`).
+**Gap adicional (achado na revisão final do A2b-1, 2026-09-02)**: hoje qualquer texto no formato `[[n]]` em conteúdo comum vira um marcador de citação (verificado: `marked` tokeniza `[[n]]` como inline, sem checar se existe uma fonte correspondente). Quando este item tornar os marcadores clicáveis, isso vira um vetor de *spoofing*: conteúdo de usuário/LLM contendo `[[1]]`-like text literal passaria a parecer uma citação clicável gerada pelo sistema, sem nenhuma fonte real por trás. Não é explorável hoje (marcadores são `<sup>` inertes), mas o design deste item deveria decidir: marcadores só deveriam renderizar como citação quando o índice tiver uma entrada correspondente numa lista de fontes passada para `Markdown` — não para qualquer texto no formato `[[n]]` incondicionalmente.
+
+### DS11 — `Markdown` perde imagens e checkboxes de task-list GFM  ·  P2
+**Objetivo**: documentar perda silenciosa de conteúdo markdown sob o `ALLOWED_TAGS` atual de `sanitizeHtml`, verificada diretamente na revisão final do A2b-1.
+**Estado atual (verificado)**: `img` não está em `ALLOWED_TAGS`, então `![alt](url)` markdown vira nada — nem o texto alternativo sobrevive, o nó inteiro desaparece. Checkboxes de task-list GFM (`- [ ] todo` / `- [x] done`) renderizam como `<li>` plano, sem nenhuma distinção visual entre marcado e desmarcado, porque o `input[type=checkbox]` que o GFM normalmente emite não está em `ALLOWED_TAGS`/`ALLOWED_ATTR`.
+**Gap**: não é um defeito do texto deste plano — segue diretamente do allowlist de tags especificado nele — mas ninguém tinha registrado isso em lugar nenhum até esta revisão, e respostas geradas por LLM rotineiramente contêm tanto imagens quanto task lists.
+**Aceitação**: decidir por tag se vale suportar cada uma (ex.: permitir `img` só com `src`/`alt`, sem `srcset`/`onerror` obviamente; adicionar uma permissão de `input[type=checkbox][disabled]` pra task lists GFM) ou documentar a perda explicitamente como escopo permanente do produto.
+**Arquivos**: `packages/ui/src/lib/sanitize.ts`, `packages/ui/src/components/markdown.tsx`.
+**Relacionado**: A2b-1 (`docs/superpowers/plans/2026-09-02-design-system-content-components.md`).
 
 ---
 
@@ -140,3 +151,5 @@ nesses tempos — pode precisar reduzir escopo dos testes ou paralelizar menos.
 |---|---|---|
 | 2026-09-02 | — | Backlog criado a partir das revisões do A1 e A2a (final + por tarefa). |
 | 2026-09-02 | DS10 | Adicionado item tracking `CodeBlock` highlight + `Citation` interativa em `Markdown`. |
+| 2026-09-02 | DS10 | Estendido com achado de spoofing (revisão final do A2b-1): marcadores `[[n]]` sem checagem de fonte, a decidir no design deste item. |
+| 2026-09-02 | DS11 | Adicionado (revisão final do A2b-1): perda silenciosa de imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual. |

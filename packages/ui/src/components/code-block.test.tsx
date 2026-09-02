@@ -16,7 +16,12 @@ test("shows the language badge when lang is provided", () => {
 
 test("omits the language badge when lang is absent", () => {
   render(<CodeBlock code="plain text" />);
-  expect(screen.queryByText("ts")).not.toBeInTheDocument();
+  expect(screen.getByTestId("code-block-lang")).toHaveTextContent("");
+});
+
+test("shows only the language token when the fence info string has extra content", () => {
+  render(<CodeBlock code="const x = 1;" lang='ts title="a.ts"' />);
+  expect(screen.getByTestId("code-block-lang")).toHaveTextContent("ts");
 });
 
 test("copy button writes the exact code to the clipboard", async () => {
@@ -25,6 +30,7 @@ test("copy button writes the exact code to the clipboard", async () => {
   // via defineProperty *after* setup() — Object.assign before setup() gets
   // silently discarded, and Object.assign after setup() throws ("has only
   // a getter") since the installed property has no setter.
+  const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
   const user = userEvent.setup({ pointerEventsCheck: 0 });
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", {
@@ -33,10 +39,15 @@ test("copy button writes the exact code to the clipboard", async () => {
     writable: true,
   });
 
-  render(<CodeBlock code="const x = 1;" lang="ts" />);
-  await user.click(screen.getByRole("button", { name: /copiar código/i }));
-
-  expect(writeText).toHaveBeenCalledWith("const x = 1;");
+  try {
+    render(<CodeBlock code="const x = 1;" lang="ts" />);
+    await user.click(screen.getByRole("button", { name: /copiar código/i }));
+    expect(writeText).toHaveBeenCalledWith("const x = 1;");
+  } finally {
+    if (originalClipboard) {
+      Object.defineProperty(navigator, "clipboard", originalClipboard);
+    }
+  }
 });
 
 test("renders text content safely even when the code string contains HTML-like syntax", () => {

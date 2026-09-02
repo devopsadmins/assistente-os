@@ -13,11 +13,18 @@ export const CodeBlock = React.forwardRef<HTMLDivElement, CodeBlockProps>(
     const [copied, setCopied] = React.useState(false);
 
     const handleCopy = React.useCallback(() => {
-      navigator.clipboard.writeText(code).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      });
+      if (!navigator.clipboard?.writeText) return;
+      navigator.clipboard
+        .writeText(code)
+        .then(() => setCopied(true))
+        .catch(() => {});
     }, [code]);
+
+    React.useEffect(() => {
+      if (!copied) return;
+      const id = setTimeout(() => setCopied(false), 1500);
+      return () => clearTimeout(id);
+    }, [copied]);
 
     return (
       <div
@@ -26,8 +33,11 @@ export const CodeBlock = React.forwardRef<HTMLDivElement, CodeBlockProps>(
         {...props}
       >
         <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-          <span className="text-xs text-muted-foreground">{lang ?? ""}</span>
+          <span data-testid="code-block-lang" className="text-xs text-muted-foreground">
+            {lang ? lang.split(/\s+/)[0] : ""}
+          </span>
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             className="h-6 px-2"
