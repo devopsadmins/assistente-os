@@ -39,24 +39,39 @@ const CARET_CLASSES = cn(
   "[&_.ds-markdown>*:last-child>:is(p,h1,h2,h3,h4,h5,h6):last-child]:after:bg-current",
   "[&_.ds-markdown>*:last-child>:is(p,h1,h2,h3,h4,h5,h6):last-child]:after:align-text-bottom",
   "[&_.ds-markdown>*:last-child>:is(p,h1,h2,h3,h4,h5,h6):last-child]:after:content-['']",
-  // List as the last block — the trailing text lives in its last <li>.
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:ml-0.5",
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:inline-block",
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:h-4",
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:w-0.5",
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:animate-pulse",
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:bg-current",
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:align-text-bottom",
-  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child_li:last-child]:after:content-['']",
-  // Table as the last block — the trailing text lives in its last <td>.
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:ml-0.5",
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:inline-block",
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:h-4",
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:w-0.5",
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:animate-pulse",
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:bg-current",
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:align-text-bottom",
-  "[&_.ds-markdown>*:last-child>table:last-child_td:last-child]:after:content-['']",
+  // List as the last block — the trailing text lives in its last <li>. Uses
+  // a direct-child combinator (`>li:last-child`, not a descendant one) so a
+  // nested sub-list inside that final <li> doesn't also match its own
+  // innermost last <li> — `:last-child` is evaluated per-parent, not
+  // globally, so a descendant selector here would match both.
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:ml-0.5",
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:inline-block",
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:h-4",
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:w-0.5",
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:animate-pulse",
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:bg-current",
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:align-text-bottom",
+  "[&_.ds-markdown>*:last-child>:is(ul,ol):last-child>li:last-child]:after:content-['']",
+  // Table as the last block — the trailing text lives in the last <td> of
+  // the last row of the body. `marked`'s GFM table renderer always wraps
+  // body rows in their own <tbody>, separate from the header's <thead><tr>
+  // — without the `tbody:last-child` step, `tr:last-child` would ALSO match
+  // the header's single <tr> (trivially "last-child" of its own <thead>
+  // parent), duplicating the caret into the header. `tr:last-child` alone
+  // (without a tbody scope) would also match the last <td> of *every* row,
+  // not just the table's true final row, since `:last-child` is evaluated
+  // per-parent: each row's own last <td> independently satisfies
+  // `td:last-child` relative to that row. Direct-child (`>`) between
+  // `tr:last-child` and `td:last-child` since a <td> is always a direct
+  // child of its <tr>.
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:ml-0.5",
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:inline-block",
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:h-4",
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:w-0.5",
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:animate-pulse",
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:bg-current",
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:align-text-bottom",
+  "[&_.ds-markdown>*:last-child>table:last-child_tbody:last-child>tr:last-child>td:last-child]:after:content-['']",
   // Blockquote as the last block — marked wraps its text in a <p>.
   "[&_.ds-markdown>*:last-child>blockquote:last-child_p:last-child]:after:ml-0.5",
   "[&_.ds-markdown>*:last-child>blockquote:last-child_p:last-child]:after:inline-block",
