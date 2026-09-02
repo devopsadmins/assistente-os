@@ -2,7 +2,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from ".
 
 export const Default = () => (
   <Select defaultValue="local">
-    <SelectTrigger style={{ width: 180 }}>
+    <SelectTrigger aria-label="Tier" style={{ width: 180 }}>
       <SelectValue />
     </SelectTrigger>
     <SelectContent>

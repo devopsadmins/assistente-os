@@ -56,6 +56,7 @@ export const ToastClose = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitive.Close ref={ref} className={cn("opacity-70 hover:opacity-100", className)} {...props}>
     <X className="h-4 w-4" />
+    <span className="sr-only">Fechar</span>
   </ToastPrimitive.Close>
 ));
 ToastClose.displayName = "ToastClose";

@@ -22,7 +22,7 @@ test("shows the default tab's content and hides the other", () => {
   expect(screen.queryByText("form de cadastro")).not.toBeInTheDocument();
 });
 
-test("switches content on trigger click, and via ArrowRight + Enter from the keyboard", async () => {
+test("switches content on trigger click, and via ArrowLeft + Enter from the keyboard", async () => {
   const user = userEvent.setup();
   render(<Example />);
   await user.click(screen.getByRole("tab", { name: "Criar conta" }));

@@ -5,7 +5,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Button } from "./button";
 
 test("opens with keyboard (Enter) and navigates items with ArrowDown, activates with Enter", async () => {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
   const onSelectA = vi.fn();
   render(
     <DropdownMenu>

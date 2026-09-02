@@ -6,6 +6,6 @@ export const Default = () => (
     <PopoverTrigger asChild>
       <Button variant="secondary">Abrir</Button>
     </PopoverTrigger>
-    <PopoverContent>Conteúdo flutuante do popover.</PopoverContent>
+    <PopoverContent aria-label="Detalhes">Conteúdo flutuante do popover.</PopoverContent>
   </Popover>
 );

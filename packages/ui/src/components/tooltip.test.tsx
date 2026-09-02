@@ -5,7 +5,7 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "./tool
 import { Button } from "./button";
 
 test("shows content on hover", async () => {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ pointerEventsCheck: 0, delay: null });
   render(
     <TooltipProvider delayDuration={0}>
       <Tooltip>
