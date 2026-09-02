@@ -27,7 +27,7 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 
 | ID | Item | Sub-projeto | Prio | Esforço | Status | Depende |
 |---|---|---|---|---|---|---|
-| DS1 | `ScrollArea` sem acesso ao Viewport (sem `viewportRef`/scrollbar horizontal) | A2a → A2b | P0 | S | TODO | — |
+| DS1 | `ScrollArea` sem acesso ao Viewport (sem `viewportRef`/scrollbar horizontal) | A2a → A2b | P0 | S | DONE | — |
 | DS2 | Notas operacionais do A1 nunca foram pro spec do B (bundler resolution, content glob, memoize de `brand`) | A1 → B | P1 | S | TODO | — |
 | DS3 | `Field` não compõe com `Select` (só documentado, não resolvido de verdade) | A2a → A2b | P1 | M | TODO | — |
 | DS4 | Testes de a11y faltando em Tabs/DropdownMenu/Switch/Checkbox (hoje verificados limpos, sem teste de regressão) | A2a | P2 | S | TODO | — |
