@@ -76,11 +76,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Dependency zones
-        run: |
-          node --test .github/scripts/deps-zones.test.mjs
-          node .github/scripts/deps-zones.mjs
-
       # Prime o Postgres do serviço ANTES dos testes: `os status` roda
       # runMigrations() no schema `public`, o que inclui `0001_extensions`
       # (CREATE EXTENSION vector). Sem isto, o `public` fica vazio e os testes

@@ -33,5 +33,3 @@ auth.json
 # Saída gerada a cada run de teste (Playwright) — nunca versionar
 test-results/
 playwright-report/
-packages/ui/build/
-*.AppImage
