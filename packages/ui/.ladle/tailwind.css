@@ -1,0 +1,9 @@
+/*
+ * Ladle-only entry point for Tailwind's generated layers. Kept separate from
+ * `src/tokens.css` (published to consumers via the `./tokens.css` export) so
+ * that file stays pure CSS-custom-properties, with no Tailwind directives of
+ * its own — consumers wire `@tailwind` into their own app's global CSS.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
