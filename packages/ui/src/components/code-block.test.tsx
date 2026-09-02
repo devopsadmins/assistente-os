@@ -1,5 +1,5 @@
-import { describe, expect, test, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CodeBlock } from "./code-block";
 import { expectNoA11yViolations } from "../test/axe";
@@ -20,9 +20,18 @@ test("omits the language badge when lang is absent", () => {
 });
 
 test("copy button writes the exact code to the clipboard", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.assign(navigator, { clipboard: { writeText } });
+  // @testing-library/user-event's setup() installs its own (getter-only)
+  // navigator.clipboard as a side effect, so the mock must be installed
+  // via defineProperty *after* setup() — Object.assign before setup() gets
+  // silently discarded, and Object.assign after setup() throws ("has only
+  // a getter") since the installed property has no setter.
   const user = userEvent.setup({ pointerEventsCheck: 0 });
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText },
+    configurable: true,
+    writable: true,
+  });
 
   render(<CodeBlock code="const x = 1;" lang="ts" />);
   await user.click(screen.getByRole("button", { name: /copiar código/i }));

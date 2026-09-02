@@ -6,17 +6,6 @@ import { cleanup } from "@testing-library/react";
 // node`, where there is no `window`/`document`/`Element` at all. This setup
 // file still runs for them, so every DOM polyfill below must be guarded.
 if (typeof window !== "undefined") {
-  // jsdom does not provide navigator.clipboard by default. Add a polyfill.
-  if (!navigator.clipboard) {
-    Object.defineProperty(navigator, "clipboard", {
-      value: {
-        writeText: async (text: string) => text,
-      },
-      writable: true,
-      configurable: true,
-    });
-  }
-
   // jsdom does not implement ResizeObserver. Radix's Popper-based positioning
   // (used by Popover, and anything else built on @radix-ui/react-popper) needs
   // it to observe the anchor/content elements; without a stub the constructor
