@@ -53,3 +53,5 @@ export { Select, SelectValue, SelectTrigger, SelectContent, SelectItem } from ".
 export { Switch } from "./components/switch";
 export { Checkbox } from "./components/checkbox";
 export { ScrollArea } from "./components/scroll-area";
+export { Toaster } from "./components/toaster";
+export { useToast, type ToastOptions } from "./hooks/use-toast";
