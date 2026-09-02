@@ -10,6 +10,19 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Migração `0020_threads`** (`packages/core/src/migrations.ts`): tabela
+  `threads` (conversas nomeadas) — `account_id` nullable (`NULL` = thread do
+  operador, token admin; não confundir com conta de cliente), FK em cascata
+  pra `accounts`. Coluna nova `session_messages.thread_id` (nullable, FK em
+  cascata pra `threads`) — `/chat` sem thread continua funcionando sem
+  nenhuma mudança de comportamento. Aditiva e idempotente (`IF NOT EXISTS`
+  em tudo); sem efeito em dado existente. Primeira fatia de backend do
+  sub-projeto B (threads + streaming), spec em
+  `docs/superpowers/specs/2026-09-01-app-redesign-threads-streaming-design.md`
+  §2. Novo módulo `packages/core/src/threads.ts` (CRUD + isolamento por
+  `account_id`, testado com Postgres real). Sem rota REST nem consumidor
+  ainda — só o modelo de dados.
+
 - **`scripts/setup.sh` — instalador guiado** (`npm run setup`): sobe o sistema
   numa máquina limpa. Checa pré-requisitos (Node ≥ 22.16, Docker, Ollama,
   `pg_dump`), roda `npm ci` + `build` + `typecheck`, pergunta o essencial

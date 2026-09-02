@@ -12,6 +12,7 @@ export * from "./events.js";
 export * from "./entityQueue.js";
 export * from "./sessions.js";
 export * from "./accounts.js";
+export * from "./threads.js";
 export * from "./friendlyAllowlist.js";
 export * from "./rag-eval-runs.js";
 export * from "./monitors.js";
