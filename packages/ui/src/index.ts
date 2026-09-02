@@ -47,3 +47,4 @@ export {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "./components/dropdown-menu";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/tabs";
