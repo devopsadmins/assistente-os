@@ -2,6 +2,7 @@ import type { GlobalProvider } from "@ladle/react";
 import { ThemeProvider } from "../src/theme/context";
 import type { BrandInput } from "../src/theme/types";
 import "../src/tokens.css";
+import "./tailwind.css";
 
 const PRESETS: Record<string, BrandInput | null> = {
   Default: null,
