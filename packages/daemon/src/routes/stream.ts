@@ -164,8 +164,18 @@ export async function handleStream(
   // `GET /threads/:id/messages` continua mostrando a transcrição completa.
   // `getThreadMessages` não gira com a sessão, então a história do modelo
   // passa a acompanhar a mesma fonte que o usuário vê.
+  //
+  // R3 da re-revisão final: sem o `limit` abaixo, `getThreadMessages` lia a
+  // thread INTEIRA do Postgres a cada turno, só pra `trimHistoryToBudget`
+  // jogar fora tudo menos os últimos turnos em seguida — o prompt já saía
+  // corretamente limitado, mas a QUERY não. `sessionHistoryTurns() * 2`
+  // (turnos = pares usuário+assistente) é o mesmo teto que
+  // `getRecentSessionMessages` já aplica em SQL (core/sessions.ts) — mesma
+  // forma, mesmo resultado pra uma thread dentro do teto (a única diferença
+  // possível seria numa thread MAIOR que o teto, e aí é exatamente esse
+  // excesso que não precisa ser lido).
   const threadHistory = trimHistoryToBudget(
-    (await getThreadMessages(pool, threadId)).map((m) => ({ role: m.role, content: m.content })),
+    (await getThreadMessages(pool, threadId, sessionHistoryTurns() * 2)).map((m) => ({ role: m.role, content: m.content })),
     sessionHistoryTurns(),
     sessionHistoryMaxChars(),
   );
@@ -227,15 +237,87 @@ export async function handleStream(
       // na SSE, mesmo com a mensagem persistida corretamente redigida. Como
       // os tokens chegam picados, sanitizar cada um isoladamente deixaria
       // escapar um segredo partido entre dois tokens; por isso um buffer com
-      // lookback (128 chars — maior que o maior match de DEFAULT_PATTERNS):
-      // só emitimos, sanitizado, tudo MENOS a cauda dos últimos 128 chars, que
-      // fica pendente pro próximo token (ou pro flush final).
+      // lookback.
+      //
+      // R1 da re-revisão final (rodada 1): os 128 chars de lookback, sozinhos,
+      // NÃO garantem cobrir todo padrão de DEFAULT_PATTERNS — PRIVATE_KEY (um
+      // bloco PEM, ~1700 chars pra RSA-2048) e GENERIC_TOKEN (um JWT tem
+      // rotineiramente 300-900 chars) excedem 128 de sobra, e
+      // DATABASE_URL/GENERIC_PASSWORD/ENV_VAR são limitados só por espaço em
+      // branco, não por tamanho.
+      //
+      // R1 rodada 2 (achados pelos próprios testes desta rodada, não só pela
+      // revisão — cada um confirmado com um probe isolado antes de aceitar a
+      // correção como certa, ver scratchpad desta sessão):
+      //
+      //  a) a 1ª tentativa de clamp por "última palavra do buffer"
+      //     (`pending.search(/\s\S*$/)`) só protege a palavra que está SENDO
+      //     formada agora — no instante em que texto NOVO chega depois do
+      //     segredo (ex.: "...JWT... — mais texto"), o segredo deixa de ser
+      //     "a palavra final" e o clamp para de protegê-lo, mesmo que o corte
+      //     de 128 chars caia bem no meio dele. O mesmo valia pro clamp de PEM
+      //     original: uma vez que "-----END" aparecia EM QUALQUER LUGAR do
+      //     buffer, o clamp parava de proteger, mesmo que o corte de 128
+      //     chars ainda caísse ANTES do "-----END" de fato, no meio do bloco.
+      //  b) corrigido (a) recuando pro início de QUALQUER palavra em risco
+      //     (não só a última) — mas aí um 2º problema apareceu: recuar só até
+      //     o início da palavra separa o PREFIXO de palavra-chave ("token: ",
+      //     "senha: ") do valor que só termina bem mais adiante, porque os
+      //     dois viram pedaços emitidos em chamadas SEPARADAS — e
+      //     GENERIC_TOKEN/GENERIC_PASSWORD exigem a keyword ADJACENTE ao
+      //     valor na MESMA chamada de sanitizeLLMResponse pra casar. Corrigido
+      //     recuando mais SANITIZE_LOOKBACK chars ANTES do início da palavra
+      //     em risco (não só até ela) — mantém keyword+valor pendentes juntos
+      //     até o valor resolver, aí os dois saem sanitizados na MESMA chamada.
+      //
+      // Garantia final: o corte nunca cai no meio de nenhuma sequência sem
+      // espaço do buffer, com margem extra de contexto antes dela (cobre
+      // JWT/DATABASE_URL/senha/token, com ou sem prefixo de palavra-chave); e
+      // nunca cai dentro de um bloco PEM a menos que já inclua o
+      // "-----END...-----" de fechamento por inteiro (cobre PRIVATE_KEY).
+      // Válvula de segurança: um stream patológico sem nenhum espaço força o
+      // corte aos 64KB pendentes, pra não bufferizar sem limite.
       const SANITIZE_LOOKBACK = 128;
+      const SANITIZE_MAX_PENDING = 64 * 1024;
       let sanitizePending = "";
       const emitSanitizedToken = (chunk: string, flush = false): void => {
         sanitizePending += chunk;
-        const cut = flush ? sanitizePending.length : Math.max(0, sanitizePending.length - SANITIZE_LOOKBACK);
-        if (cut === 0) return;
+        let cut = Math.max(0, sanitizePending.length - SANITIZE_LOOKBACK);
+
+        // nunca corta no meio de QUALQUER sequência sem espaço (não só a
+        // última) — recua pra ANTES do início dela, com uma margem extra de
+        // SANITIZE_LOOKBACK chars pra manter um possível prefixo de
+        // palavra-chave ("token:", "senha:", ...) junto do valor.
+        if (cut > 0 && cut < sanitizePending.length) {
+          let ws = -1;
+          for (let i = cut - 1; i >= 0; i--) {
+            if (/\s/.test(sanitizePending[i]!)) {
+              ws = i;
+              break;
+            }
+          }
+          const wordStart = ws + 1;
+          cut = Math.max(0, wordStart - SANITIZE_LOOKBACK);
+        }
+
+        // nunca corta dentro de um bloco PEM cujo "-----END...-----" de
+        // fechamento ainda não chegou por inteiro no buffer.
+        const pemStart = sanitizePending.lastIndexOf("-----BEGIN");
+        if (pemStart >= 0) {
+          const endIdx = sanitizePending.indexOf("-----END", pemStart);
+          let pemSafeEnd = Number.POSITIVE_INFINITY;
+          if (endIdx !== -1) {
+            const closeDash = sanitizePending.indexOf("-----", endIdx + "-----END".length);
+            pemSafeEnd = closeDash === -1 ? Number.POSITIVE_INFINITY : closeDash + 5;
+          }
+          if (cut < pemSafeEnd) cut = Math.min(cut, pemStart);
+        }
+
+        // válvula de segurança: nada de espaço/fechamento por 64KB — força o corte
+        // mesmo que isso corte no meio de algo (pathológico, sem espaços nunca).
+        if (sanitizePending.length > SANITIZE_MAX_PENDING) cut = Math.max(cut, sanitizePending.length - SANITIZE_MAX_PENDING);
+        if (flush) cut = sanitizePending.length;
+        if (cut <= 0) return;
         const head = sanitizeLLMResponse(sanitizePending.slice(0, cut), { taskId: String(session.id), soulId: soul.id }).sanitized;
         sanitizePending = sanitizePending.slice(cut);
         if (head) writeSSEEvent(res, { type: "token", text: head });
@@ -304,11 +386,15 @@ export async function handleStream(
       }
     }
 
-    // N5: um provider que fecha o stream sem emitir nenhum token real ainda
-    // devolve code:0 (ollamaChatStream cai pro placeholder "(sem resposta)")
-    // — sem o `stdout.trim()` abaixo isso virava uma mensagem de assistente
+    // N5 (corrigido na re-revisão final — R2: a 1ª tentativa checava só
+    // `stdout.trim().length > 0`, mas `ollamaChatStream` (e o ramo langgraph)
+    // caem pro literal "(sem resposta)" quando o provider não emite conteúdo
+    // real, e essa string tem 14 chars — passava pelo guard de qualquer
+    // jeito. Sem o `body !== "(sem resposta)"` abaixo, um provider que fecha
+    // o stream sem nenhum token real ainda virava uma mensagem de assistente
     // sintética, permanente, na transcrição da thread.
-    const succeeded = code === 0 && !timedOut && stdout.trim().length > 0;
+    const responseBody = stdout.trim();
+    const succeeded = code === 0 && !timedOut && responseBody.length > 0 && responseBody !== "(sem resposta)";
     const finalUsage: ExecUsage = execUsage ?? {
       promptTokens: estimateTokens(built.fullPrompt),
       completionTokens: estimateTokens(stdout),

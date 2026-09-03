@@ -368,6 +368,165 @@ test("stream: N2 — um segredo partido entre dois onToken() nunca aparece em te
   }
 });
 
+test("stream: R1 — chave privada PEM transmitida em pedaços nunca vaza em texto puro (128 chars de lookback sozinho não bastava)", async () => {
+  // Um bloco PEM de verdade (RSA-2048) tem ~1700 chars — bem além dos 128 de
+  // lookback. O clamp de PEM em emitSanitizedToken precisa segurar TODO o
+  // corte até ver o "-----END" correspondente, não só os últimos 128 chars.
+  const pemLines = Array.from({ length: 20 }, (_, i) => `LINE${i}FAKEKEYDATA1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ`);
+  const pem = `-----BEGIN RSA PRIVATE KEY-----\n${pemLines.join("\n")}\n-----END RSA PRIVATE KEY-----`;
+  const fullText = `Aqui esta a chave: ${pem} — guarde com cuidado.`;
+  const CHUNK_SIZE = 40; // mesmo tamanho de chunk que a re-revisão usou pra reproduzir o bug (P3)
+  const chatChunks: object[] = [];
+  for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
+    chatChunks.push({ message: { content: fullText.slice(i, i + CHUNK_SIZE) } });
+  }
+  chatChunks.push({ done: true, prompt_eval_count: 5, eval_count: 5 });
+
+  const fake = await startFakeOllama({ chatChunks });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-pem@exemplo.com");
+      createSoul(home, "soul-stream-pem", { name: "soul-stream-pem", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-pem", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-pem/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "qual e a chave privada?" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      const tokenEvents = events.filter((e) => e.type === "token") as Array<{ text: string }>;
+      assert.ok(tokenEvents.length > 0, "esperava ao menos um evento token");
+
+      for (const e of tokenEvents) {
+        assert.ok(!e.text.includes("-----BEGIN"), `evento token não deveria conter o cabeçalho PEM cru: ${JSON.stringify(e.text)}`);
+        for (const line of pemLines) {
+          assert.ok(!e.text.includes(line), `evento token não deveria conter material da chave em texto puro: ${JSON.stringify(e.text)}`);
+        }
+      }
+      const wireText = tokenEvents.map((e) => e.text).join("");
+      assert.ok(wireText.includes("[REDACTED_PRIVATE_KEY]"), `esperava o marcador de redação no texto reconstruído: ${JSON.stringify(wireText)}`);
+      assert.ok(!wireText.includes("-----BEGIN"), "o texto reconstruído não deveria conter o cabeçalho PEM cru");
+      for (const line of pemLines) assert.ok(!wireText.includes(line), "o texto reconstruído não deveria conter material da chave");
+
+      const messagesRes = await fetch(`${base}/souls/soul-stream-pem/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
+      const assistantMsg = messages.find((m) => m.role === "assistant");
+      assert.ok(assistantMsg, "esperava a resposta do assistente gravada");
+      assert.ok(assistantMsg!.content.includes("[REDACTED_PRIVATE_KEY]"));
+      // A propriedade que R1/N2 existem pra garantir: o que saiu na SSE e o
+      // que ficou persistido são o MESMO texto — sem divergência entre o
+      // que o cliente viu e o que a transcrição mostra depois.
+      assert.equal(wireText.trim(), assistantMsg!.content.trim());
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
+test("stream: R1 — token/JWT longo (400+ chars, sem espaço interno) transmitido em pedaços nunca vaza em texto puro", async () => {
+  // GENERIC_TOKEN é limitado só por whitespace, não por tamanho — um JWT de
+  // verdade tem rotineiramente 300-900 chars, bem além dos 128 de lookback.
+  // Sem o clamp de "nunca corta no meio de uma palavra", o corte de 128 chars
+  // partiria o token ao meio e a metade sem o prefixo "token:" nunca casaria
+  // o padrão sozinha — vazando em texto puro.
+  const jwtBody = `ey${"A".repeat(60)}.${"B".repeat(300)}.${"C".repeat(80)}`; // > 400 chars, sem nenhum espaço
+  const fullText = `Aqui esta o token: ${jwtBody} — guarde com cuidado.`;
+  const CHUNK_SIZE = 30;
+  const chatChunks: object[] = [];
+  for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
+    chatChunks.push({ message: { content: fullText.slice(i, i + CHUNK_SIZE) } });
+  }
+  chatChunks.push({ done: true, prompt_eval_count: 5, eval_count: 5 });
+
+  const fake = await startFakeOllama({ chatChunks });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-jwt@exemplo.com");
+      createSoul(home, "soul-stream-jwt", { name: "soul-stream-jwt", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-jwt", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-jwt/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "qual e o token de acesso?" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      const tokenEvents = events.filter((e) => e.type === "token") as Array<{ text: string }>;
+      assert.ok(tokenEvents.length > 0, "esperava ao menos um evento token");
+
+      for (const e of tokenEvents) {
+        assert.ok(!e.text.includes(jwtBody), `evento token não deveria conter o JWT completo em texto puro: ${JSON.stringify(e.text.slice(0, 80))}`);
+        assert.ok(!e.text.includes("A".repeat(60)), "evento token não deveria conter a primeira seção do JWT em texto puro");
+      }
+      const wireText = tokenEvents.map((e) => e.text).join("");
+      assert.ok(wireText.includes("[REDACTED_TOKEN]"), `esperava o marcador de redação no texto reconstruído: ${JSON.stringify(wireText)}`);
+      assert.ok(!wireText.includes(jwtBody), "o texto reconstruído não deveria conter o JWT completo");
+
+      const messagesRes = await fetch(`${base}/souls/soul-stream-jwt/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
+      const assistantMsg = messages.find((m) => m.role === "assistant");
+      assert.ok(assistantMsg, "esperava a resposta do assistente gravada");
+      assert.equal(wireText.trim(), assistantMsg!.content.trim());
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
+test("stream: R2 — provider que só emite {done:true} (nenhum conteúdo real) não vira sucesso sintético '(sem resposta)'", async () => {
+  const fake = await startFakeOllama({
+    chatChunks: [{ done: true, prompt_eval_count: 3, eval_count: 0 }],
+  });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-empty@exemplo.com");
+      createSoul(home, "soul-stream-empty", { name: "soul-stream-empty", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-empty", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-empty/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "qual e a resposta?" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      assert.ok(events.some((e) => e.type === "error"), "esperava {type:'error'} quando o provider não emite conteúdo real");
+      assert.ok(!events.some((e) => e.type === "done"), "não deveria haver 'done' — seria uma resposta sintética '(sem resposta)'");
+      assert.ok(!events.some((e) => e.type === "token"), "nenhum evento token real deveria ter sido emitido");
+
+      const messagesRes = await fetch(`${base}/souls/soul-stream-empty/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as unknown[];
+      assert.equal(messages.length, 0, "nenhuma linha deveria ser persistida — nem a do usuário, nem um '(sem resposta)' sintético");
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
 test("stream: N3 — histórico da thread sobrevive à rotação de sessão por ociosidade (120min default)", async () => {
   const { home, cleanup } = await tempHome();
   const chatRequests: any[] = [];

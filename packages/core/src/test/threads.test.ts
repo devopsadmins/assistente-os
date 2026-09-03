@@ -345,6 +345,51 @@ test("getThreadMessages: thread sem mensagens devolve array vazio", async () => 
   }
 });
 
+test("getThreadMessages: limit opcional lê só as últimas N linhas (R3 — sem LIMIT, /stream lia a thread inteira a cada turno)", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "limitmsgs@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", account.id);
+    const { rows: sessionRows } = await testDb.pool.query(
+      "INSERT INTO sessions (soul, client_key, started_at) VALUES ($1, $2, now()) RETURNING id",
+      ["fiscal", "test-client-limit"],
+    );
+    const sessionId = sessionRows[0].id;
+    // 8 linhas, na ordem cronológica.
+    for (let i = 0; i < 8; i++) {
+      await testDb.pool.query(
+        "INSERT INTO session_messages (session_id, soul, role, content, thread_id) VALUES ($1, $2, $3, $4, $5)",
+        [sessionId, "fiscal", i % 2 === 0 ? "user" : "assistant", `linha-${i}`, thread.id],
+      );
+    }
+
+    const all = await getThreadMessages(testDb.pool, thread.id);
+    assert.equal(all.length, 8);
+
+    const limited = await getThreadMessages(testDb.pool, thread.id, 4);
+    assert.equal(limited.length, 4, "limit=4 deveria devolver só 4 linhas");
+    // Mesmo conteúdo e mesma ORDEM cronológica que a cauda da lista sem limite —
+    // a query usa ORDER BY id DESC LIMIT + reverse, tem que bater com a cauda
+    // do resultado sem limite (o que /stream's trimHistoryToBudget também
+    // faria em JS se lesse a thread inteira) — prova que o limite em SQL não
+    // muda QUAIS mensagens entram no histórico pra uma thread sob o teto.
+    assert.deepEqual(
+      limited.map((m) => m.content),
+      all.slice(-4).map((m) => m.content),
+    );
+
+    // Uma thread DENTRO do teto (limit >= total) devolve tudo, sem diferença.
+    const underCap = await getThreadMessages(testDb.pool, thread.id, 100);
+    assert.equal(underCap.length, 8);
+    assert.deepEqual(
+      underCap.map((m) => m.content),
+      all.map((m) => m.content),
+    );
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
 test("getThread/renameThread/deleteThread: soul informado rejeita thread de outra soul", async () => {
   const testDb = await createTestSchema();
   try {
