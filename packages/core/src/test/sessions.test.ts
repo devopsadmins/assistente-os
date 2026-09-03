@@ -9,6 +9,8 @@ import {
   recordExecutionSpan,
   getTrace,
 } from "../sessions.js";
+import { createThread } from "../threads.js";
+import { createAccount } from "../accounts.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
 /** Roda `fn` com ASSISTENTE_OS_SESSION_IDLE_MINUTES setada, restaurando o valor original depois. */
@@ -200,6 +202,36 @@ test("trace (Onda 2): recordExecution + spans → getTrace reconstrói o turno e
     const vazio = await getTrace(testDb.pool, "nao-existe-trace-id");
     assert.equal(vazio.execution, null);
     assert.equal(vazio.spans.length, 0);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("recordSessionMessage: grava thread_id quando informado e devolve o id da mensagem", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "recmsg@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", account.id);
+    const session = await openSession(testDb.pool, "fiscal", 10, undefined, `thread-${thread.id}`);
+
+    const messageId = await recordSessionMessage(testDb.pool, session.id, "fiscal", "user", "oi", thread.id);
+    assert.ok(Number.isInteger(messageId) && messageId > 0);
+
+    const { rows } = await testDb.pool.query("SELECT thread_id, content FROM session_messages WHERE id = $1", [messageId]);
+    assert.equal(Number(rows[0].thread_id), thread.id);
+    assert.equal(rows[0].content, "oi");
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("recordSessionMessage: sem threadId continua funcionando (thread_id fica NULL) — compatibilidade com /chat", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const session = await openSession(testDb.pool, "fiscal", 10, undefined, "default");
+    const messageId = await recordSessionMessage(testDb.pool, session.id, "fiscal", "assistant", "resposta sem thread");
+    const { rows } = await testDb.pool.query("SELECT thread_id FROM session_messages WHERE id = $1", [messageId]);
+    assert.equal(rows[0].thread_id, null);
   } finally {
     await testDb.cleanup();
   }

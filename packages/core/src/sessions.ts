@@ -145,17 +145,20 @@ export async function bumpSessionPrompt(pool: Pool, sessionId: number): Promise<
 }
 
 /** Grava um turno (usuário ou assistente) da conversa, associado à sessão. */
+/** threadId opcional — quando informado, grava em session_messages.thread_id (é o que GET .../threads/:id/messages lê). Devolve o id da mensagem gravada. */
 export async function recordSessionMessage(
   pool: Pool,
   sessionId: number,
   soul: string,
   role: SessionMessage["role"],
   content: string,
-): Promise<void> {
-  await pool.query(
-    "INSERT INTO session_messages (session_id, soul, role, content, ts) VALUES ($1, $2, $3, $4, $5)",
-    [sessionId, soul, role, content, nowIso()],
+  threadId?: number,
+): Promise<number> {
+  const { rows } = await pool.query<{ id: number }>(
+    "INSERT INTO session_messages (session_id, soul, role, content, ts, thread_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+    [sessionId, soul, role, content, nowIso(), threadId ?? null],
   );
+  return Number(rows[0]!.id);
 }
 
 /**
