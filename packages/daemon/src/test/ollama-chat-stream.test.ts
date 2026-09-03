@@ -70,6 +70,34 @@ test("ollamaChatStream: HTTP de erro devolve code!=0 sem lançar", async () => {
   }
 });
 
+test("ollamaChatStream: socket da resposta destruído no meio do stream ainda resolve (F1 — não trava pra sempre)", async () => {
+  // Simula o peer derrubando a conexão DEPOIS dos headers (restart de
+  // container, OOM-kill, NAT/proxy cortando ociosidade) — não um erro HTTP,
+  // não um fechamento limpo (FIN). Sem res.on("aborted"/"error") em
+  // ollamaChatStream, essa promise nunca resolvia.
+  const server = createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/x-ndjson" });
+    res.write(JSON.stringify({ message: { content: "par" } }) + "\n");
+    res.write(JSON.stringify({ message: { content: "cial" } }) + "\n");
+    setTimeout(() => res.socket?.destroy(), 20);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const addr = server.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+  try {
+    const tokens: string[] = [];
+    const result = await Promise.race([
+      ollamaChatStream(`http://127.0.0.1:${port}`, { model: "x", messages: [] }, 20_000, (t) => tokens.push(t)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ollamaChatStream não resolveu em 5s — travou")), 5000)),
+    ]);
+    assert.deepEqual(tokens, ["par", "cial"]);
+    assert.notEqual(result.code, 0, "socket destruído no meio deve ser tratado como falha, não sucesso");
+    assert.equal(result.stdout, "parcial", "o texto acumulado até a queda deve estar no resultado");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test("ollamaChatStream: timeout devolve timedOut=true", async () => {
   const server = createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/x-ndjson" });

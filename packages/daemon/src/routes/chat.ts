@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Pool } from "pg";
 import type { AssistenteOsConfig, Soul } from "@assistente-os/core";
-import type { WsHub } from "../server.js";
 import {
   loadConfig,
   getPool,
@@ -198,6 +197,15 @@ export function ollamaChatStream(
         headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
       },
       (res) => {
+        // Sem isso, um peer que derruba o socket DEPOIS dos headers (restart do
+        // container do Ollama, OOM-kill do processo do modelo, NAT/proxy
+        // cortando uma conexão ociosa) nunca dispara "end" nem "error" no
+        // ClientRequest — só handlers na RESPOSTA veem esse tipo de falha. Sem
+        // eles a Promise nunca resolve: quem chama (o /stream) fica com a
+        // conexão SSE aberta pra sempre, sem "done" nem "error", vazando o
+        // heartbeat interval e a mensagem do turno.
+        res.on("aborted", () => finish({ code: 1, stdout: accumulated, stderr: "conexão com Ollama encerrada no meio do stream", timedOut }));
+        res.on("error", (err) => finish({ code: 1, stdout: accumulated, stderr: err.message, timedOut }));
         if ((res.statusCode ?? 0) >= 400) {
           let errData = "";
           res.setEncoding("utf8");
@@ -275,7 +283,6 @@ export type PreparePromptContextResult =
 export async function preparePromptContext(params: {
   req: IncomingMessage;
   pool: Pool;
-  hub: WsHub;
   home: string;
   config: AssistenteOsConfig;
   soul: Soul;
@@ -284,14 +291,16 @@ export async function preparePromptContext(params: {
    * Fábrica do sink de notificação "ao vivo" pra cada `emitStep` — recebe o
    * traceId real (gerado aqui dentro) e devolve a função que efetivamente
    * notifica. `/chat` passa uma que reproduz o hub.broadcast de sempre;
-   * `/stream` passa uma que escreve eventos SSE — NUNCA o hub (decisão da
-   * spec: hub faz broadcast sem escopo de conta, inaceitável pra conteúdo de
-   * stream). A persistência em `execution_spans` abaixo roda sempre, pros
-   * dois casos — é diagnóstico interno, não é o que a spec restringe.
+   * `/stream` passa uma que escreve/enfileira eventos SSE — NUNCA o hub
+   * (decisão da spec: hub faz broadcast sem escopo de conta, inaceitável pra
+   * conteúdo de stream). Por isso esta função não recebe `hub` — cada
+   * chamador já embute o que precisa dentro do próprio sink que fornece. A
+   * persistência em `execution_spans` abaixo roda sempre, pros dois casos —
+   * é diagnóstico interno, não é o que a spec restringe.
    */
   createStepSink: (traceId: string) => (module: string, message: string, level?: "err") => void;
 }): Promise<PreparePromptContextResult> {
-  const { req, pool, hub, home, config, soul, prompt, createStepSink } = params;
+  const { req, pool, home, config, soul, prompt, createStepSink } = params;
 
   // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
   // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
@@ -593,7 +602,6 @@ export async function handleChat(
     const prepared = await preparePromptContext({
       req,
       pool,
-      hub,
       home,
       config,
       soul,

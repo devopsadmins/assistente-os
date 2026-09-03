@@ -12,7 +12,6 @@ import {
   recordSessionMessage,
   estimateTokens,
   nextZenApiKey,
-  resolveTarget,
   logger,
 } from "@assistente-os/core";
 import { readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
@@ -24,6 +23,28 @@ import { startSSE, writeSSEEvent, startHeartbeat, type StreamEvent } from "./sse
 
 const HEARTBEAT_MS = 15_000;
 
+/**
+ * Rede de segurança acima do timeout do próprio provider (300s em cada
+ * chamada abaixo). F1: `ollamaChatStream` já ganhou handlers de
+ * `res.on("aborted"/"error")` pra resolver quando o Ollama derruba o socket
+ * no meio do stream, mas isso conserta só ESSE provider — um bug equivalente
+ * numa integração futura (langgraph, opencode run, um provider novo) travaria
+ * a resposta SSE pra sempre do mesmo jeito: sem "done", sem "error", sem
+ * `stopHeartbeat()`. `Promise.race` contra este watchdog garante que a rota
+ * sempre estabiliza, mesmo que a chamada do provider nunca resolva sozinha.
+ */
+const WATCHDOG_MS = 310_000;
+
+function watchdogTimeout(ms: number): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(
+      () => resolve({ code: 1, stdout: "", stderr: "watchdog: provider não respondeu dentro do limite de segurança", timedOut: true }),
+      ms,
+    );
+    timer.unref?.();
+  });
+}
+
 export async function handleStream(
   req: IncomingMessage,
   res: ServerResponse,
@@ -31,7 +52,7 @@ export async function handleStream(
   path: string,
   context: RequestContext,
 ): Promise<boolean> {
-  const { home, run, hub } = context;
+  const { home, run } = context;
 
   const match = path.match(/^\/souls\/([^/]+)\/threads\/(\d+)\/messages\/stream$/);
   if (!match || req.method !== "POST") return false;
@@ -103,13 +124,12 @@ export async function handleStream(
   const prepared = await preparePromptContext({
     req: reqWithThreadClientKey,
     pool,
-    hub,
     home,
     config,
     soul,
     prompt,
-    createStepSink: () => (module, message, level) => {
-      pendingSteps.push({ type: "step", step: module, message, ...(level ? {} : {}) });
+    createStepSink: () => (module, message) => {
+      pendingSteps.push({ type: "step", step: module, message });
     },
   });
 
@@ -145,18 +165,21 @@ export async function handleStream(
         baseUrl = baseUrl.replace("host.docker.internal", "192.168.65.254");
       }
       const ollamaModel = (decision.target.model ?? model).replace(/^(ollama|openai)\//, "");
-      const result = await ollamaChatStream(
-        baseUrl,
-        {
-          model: ollamaModel,
-          messages: [
-            { role: "system", content: built.fullPrompt.replace(promptSanitized.sanitized, "").trim() },
-            { role: "user", content: promptSanitized.sanitized },
-          ],
-        },
-        300_000,
-        (token) => writeSSEEvent(res, { type: "token", text: token }),
-      );
+      const result = await Promise.race([
+        ollamaChatStream(
+          baseUrl,
+          {
+            model: ollamaModel,
+            messages: [
+              { role: "system", content: built.fullPrompt.replace(promptSanitized.sanitized, "").trim() },
+              { role: "user", content: promptSanitized.sanitized },
+            ],
+          },
+          300_000,
+          (token) => writeSSEEvent(res, { type: "token", text: token }),
+        ),
+        watchdogTimeout(WATCHDOG_MS),
+      ]);
       stdout = result.stdout;
       code = result.code;
       timedOut = result.timedOut;
@@ -166,26 +189,32 @@ export async function handleStream(
       // de verdade pra zen/soul/langgraph fica pra uma próxima fatia.
       let result: { code: number; stdout: string; stderr: string; timedOut: boolean };
       if (decision.target.provider === "langgraph") {
-        result = await runLangGraphAgentStream(pool, {
-          soul: soul.id,
-          prompt: promptSanitized.sanitized,
-          timeoutSeconds: 300,
-          threadId: `stream-thread-${threadId}`,
-          seedMessages: prepared.context.history,
-          useTools: true,
-        });
+        result = await Promise.race([
+          runLangGraphAgentStream(pool, {
+            soul: soul.id,
+            prompt: promptSanitized.sanitized,
+            timeoutSeconds: 300,
+            threadId: `stream-thread-${threadId}`,
+            seedMessages: prepared.context.history,
+            useTools: true,
+          }),
+          watchdogTimeout(WATCHDOG_MS),
+        ]);
       } else {
         const env = { ...(process.env as Record<string, string>) };
         const rotatedZenKey = nextZenApiKey(config);
         if (rotatedZenKey) env.ZEN_API_KEY = rotatedZenKey;
-        result = await run!(built.fullPrompt, {
-          cwd: soul.dir,
-          model,
-          timeoutSeconds: 300,
-          agent: soul.config.agent ? soul.id : undefined,
-          soulId: soul.id,
-          env,
-        });
+        result = await Promise.race([
+          run!(built.fullPrompt, {
+            cwd: soul.dir,
+            model,
+            timeoutSeconds: 300,
+            agent: soul.config.agent ? soul.id : undefined,
+            soulId: soul.id,
+            env,
+          }),
+          watchdogTimeout(WATCHDOG_MS),
+        ]);
       }
       stdout = result.stdout;
       code = result.code;

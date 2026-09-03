@@ -21,12 +21,10 @@ test("preparePromptContext: createStepSink recebe o traceId real e emitStep pass
 
     const config = { defaultMaxTurns: 10, databaseUrl: "", ollamaUrl: "http://127.0.0.1:11434" } as any;
     const req = { headers: {} } as any;
-    const fakeHub = { broadcast: () => {} } as any;
 
     const result = await preparePromptContext({
       req,
       pool: testDb.pool,
-      hub: fakeHub,
       home,
       config,
       soul: soul as any,

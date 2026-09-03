@@ -58,13 +58,16 @@ test("semáforo: cap<=0 desliga o guarda", () => {
   }
 });
 
-test("isExpensivePath: só chat / missions / pipelines seguram slot", () => {
+test("isExpensivePath: chat / stream / missions / pipelines seguram slot", () => {
   assert.equal(isExpensivePath("/souls/main/chat"), true);
   assert.equal(isExpensivePath("/souls/consultoria_ia/chat"), true);
+  assert.equal(isExpensivePath("/souls/main/threads/1/messages/stream"), true);
+  assert.equal(isExpensivePath("/souls/consultoria_ia/threads/42/messages/stream"), true);
   assert.equal(isExpensivePath("/api/missions/m1/run"), true);
   assert.equal(isExpensivePath("/api/pipelines/email-ingest"), true);
   assert.equal(isExpensivePath("/souls/main"), false);
   assert.equal(isExpensivePath("/souls/main/buffer"), false);
+  assert.equal(isExpensivePath("/souls/main/threads/1/messages"), false);
   assert.equal(isExpensivePath("/health"), false);
   assert.equal(isExpensivePath("/agenda"), false);
 });
