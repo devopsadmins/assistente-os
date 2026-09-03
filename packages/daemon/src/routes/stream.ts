@@ -284,6 +284,16 @@ export async function handleStream(
       //     palavra-chave de padrão ("token:", "senha:", "Authorization:",
       //     ...) — o que resolve (b) sem reabrir (a). Só arredondar pra
       //     fronteira de espaço NÃO basta: reabre (b) pro caso "token: <JWT>".
+      //  d) S2 da re-revisão final (rodada 3), lacuna PRÉ-EXISTENTE (não veio
+      //     de (c)): o clamp de PEM usava `lastIndexOf("-----BEGIN")`, ou
+      //     seja, protegia SÓ o último bloco do buffer. Com DUAS chaves na
+      //     mesma resposta, o 2º "-----BEGIN" roubava o clamp e a 1ª chave
+      //     saía quase inteira em texto puro na SSE (10 de 14 linhas de
+      //     base64 no repro do revisor) enquanto o banco gravava dois
+      //     [REDACTED_PRIVATE_KEY] — a mesma divergência silenciosa de
+      //     auditoria de novo. Todo teste de PEM das 4 rodadas anteriores
+      //     usava exatamente UM bloco, por isso nunca foi exercitado.
+      //     Corrigido varrendo TODOS os "-----BEGIN".
       //
       // O que o código garante de fato (nem mais, nem menos):
       //  1. o corte nunca cai no meio de uma sequência sem espaço de texto
@@ -292,8 +302,13 @@ export async function handleStream(
       //     segue (recuo palavra a palavra, limitado a 8 iterações pelo
       //     `guard` — uma pilha de mais de 8 palavras-chave consecutivas
       //     antes do valor para de recuar);
-      //  3. o corte nunca cai dentro de um bloco PEM aberto, a menos que o
-      //     "-----END...-----" de fechamento já esteja inteiro no buffer.
+      //  3. o corte nunca cai dentro de NENHUM bloco PEM ainda não emitido —
+      //     não só o último do buffer (S2), e não só os "abertos": um bloco
+      //     JÁ fechado que ainda não saiu inteiro também segura o corte, já
+      //     que PRIVATE_KEY exige "-----BEGIN...-----END-----" numa mesma
+      //     chamada de sanitizeLLMResponse. Duas ou mais chaves na mesma
+      //     resposta são cobertas; o corte cai antes da PRIMEIRA delas que
+      //     ainda não passou inteira.
       // O que ele NÃO garante: um stream patológico SEM NENHUM espaço em
       // branco por mais de 64KB. Aí a válvula de segurança
       // (SANITIZE_MAX_PENDING) força o corte pra não bufferizar sem limite, e
@@ -334,17 +349,30 @@ export async function handleStream(
           }
         }
 
-        // nunca corta dentro de um bloco PEM cujo "-----END...-----" de
-        // fechamento ainda não chegou por inteiro no buffer.
-        const pemStart = sanitizePending.lastIndexOf("-----BEGIN");
-        if (pemStart >= 0) {
+        // nunca corta dentro de NENHUM bloco PEM ainda não emitido. S2: usar
+        // lastIndexOf("-----BEGIN") protegia SÓ o último bloco do buffer —
+        // com duas chaves na mesma resposta, a chegada do 2º "-----BEGIN"
+        // fazia o clamp pular pra ele e a 1ª chave saía picada (nenhum dos
+        // pedaços casa PRIVATE_KEY, que exige BEGIN...END na mesma string).
+        // Agora varre TODOS os "-----BEGIN" da frente pra trás e para no
+        // primeiro bloco cujo fim seguro ainda esteja além do corte.
+        let pemSearchFrom = 0;
+        for (;;) {
+          const pemStart = sanitizePending.indexOf("-----BEGIN", pemSearchFrom);
+          if (pemStart === -1 || pemStart >= cut) break;
           const endIdx = sanitizePending.indexOf("-----END", pemStart);
           let pemSafeEnd = Number.POSITIVE_INFINITY;
           if (endIdx !== -1) {
             const closeDash = sanitizePending.indexOf("-----", endIdx + "-----END".length);
             pemSafeEnd = closeDash === -1 ? Number.POSITIVE_INFINITY : closeDash + 5;
           }
-          if (cut < pemSafeEnd) cut = Math.min(cut, pemStart);
+          // esse bloco ainda não passou inteiro — corta ANTES dele
+          if (cut < pemSafeEnd) {
+            cut = pemStart;
+            break;
+          }
+          // esse bloco já sai inteiro nesta emissão — olha o próximo
+          pemSearchFrom = pemSafeEnd;
         }
 
         // válvula de segurança: nada de espaço/fechamento por 64KB — força o corte

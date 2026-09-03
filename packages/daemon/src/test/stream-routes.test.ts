@@ -625,6 +625,150 @@ test("stream: S1 — DATABASE_URL (postgres://user:pass@host) seguida de texto c
   }
 });
 
+// Gera um bloco PEM com material de chave distinguível por bloco, pra dar pra
+// afirmar QUAL das chaves vazou se algum dia vazar.
+// Linhas com "+" e "/" no meio (como base64 de verdade) de propósito: sem
+// nenhuma sequência puramente alfanumérica de 52 chars, elas NÃO casam
+// AZURE_DEVOPS_PAT — assim, se alguma linha vazar, ela vaza CRUA e as
+// asserções abaixo detectam de fato, em vez de a linha já vir mastigada por
+// outro padrão e a asserção passar por acidente.
+function makePemBlock(tag: string, lineCount = 14): { pem: string; lines: string[] } {
+  const lines = Array.from(
+    { length: lineCount },
+    (_, i) => `${tag}${String(i).padStart(2, "0")}abcdefghijKLMNOPQR+stuvwxyz0123456789ABCDEFGH/ijklmnopqrstuvwx`.slice(0, 64),
+  );
+  return { pem: `-----BEGIN RSA PRIVATE KEY-----\n${lines.join("\n")}\n-----END RSA PRIVATE KEY-----`, lines };
+}
+
+test("stream: S2 — DUAS chaves PEM na mesma resposta: nenhuma das duas vaza (o clamp protegia só a última)", async () => {
+  // O clamp de PEM usava lastIndexOf("-----BEGIN"): quando o 2º bloco chegava
+  // com o 1º ainda pendente, o clamp pulava pro 2º e o 1º saía picado — e
+  // nenhum pedaço isolado casa PRIVATE_KEY (que exige BEGIN...END na mesma
+  // string). Todos os testes de PEM das rodadas anteriores usavam UM bloco só,
+  // por isso essa lacuna sobreviveu 4 rodadas de revisão.
+  const k1 = makePemBlock("AAA");
+  const k2 = makePemBlock("BBB");
+  const fullText = `Aqui estao as duas chaves do servidor:\n${k1.pem}\ne a segunda, de backup:\n${k2.pem}\nGuarde as duas com cuidado e nao compartilhe com ninguem fora da equipe de infraestrutura em hipotese alguma.`;
+  const CHUNK_SIZE = 30;
+  const chatChunks: object[] = [];
+  for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
+    chatChunks.push({ message: { content: fullText.slice(i, i + CHUNK_SIZE) } });
+  }
+  chatChunks.push({ done: true, prompt_eval_count: 5, eval_count: 5 });
+
+  const fake = await startFakeOllama({ chatChunks });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-pem2@exemplo.com");
+      createSoul(home, "soul-stream-pem2", { name: "soul-stream-pem2", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-pem2", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-pem2/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "quais sao as chaves privadas?" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      const tokenEvents = events.filter((e) => e.type === "token") as Array<{ text: string }>;
+      assert.ok(tokenEvents.length > 0, "esperava ao menos um evento token");
+
+      // 1) nenhum evento token isolado pode conter cabeçalho nem material de NENHUMA das duas chaves
+      for (const e of tokenEvents) {
+        assert.ok(!e.text.includes("-----BEGIN"), `evento token não deveria conter cabeçalho PEM cru: ${JSON.stringify(e.text.slice(0, 100))}`);
+        for (const line of k1.lines) assert.ok(!e.text.includes(line), `evento token não deveria conter material da 1ª chave: ${JSON.stringify(e.text.slice(0, 100))}`);
+        for (const line of k2.lines) assert.ok(!e.text.includes(line), `evento token não deveria conter material da 2ª chave: ${JSON.stringify(e.text.slice(0, 100))}`);
+      }
+      // 2) nem a concatenação de todos (o que o cliente realmente vê)
+      const wireText = tokenEvents.map((e) => e.text).join("");
+      assert.ok(!wireText.includes("-----BEGIN"), "o texto reconstruído da SSE não deveria conter cabeçalho PEM cru");
+      for (const line of k1.lines) assert.ok(!wireText.includes(line), "o texto reconstruído não deveria conter material da 1ª chave");
+      for (const line of k2.lines) assert.ok(!wireText.includes(line), "o texto reconstruído não deveria conter material da 2ª chave");
+      // 3) AS DUAS aparecem redigidas — não só a última
+      const redactions = wireText.split("[REDACTED_PRIVATE_KEY]").length - 1;
+      assert.equal(redactions, 2, `esperava 2 marcadores [REDACTED_PRIVATE_KEY] na SSE, veio ${redactions}: ${JSON.stringify(wireText.slice(0, 300))}`);
+
+      // 4) wire ≡ cópia persistida
+      const messagesRes = await fetch(`${base}/souls/soul-stream-pem2/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
+      const assistantMsg = messages.find((m) => m.role === "assistant");
+      assert.ok(assistantMsg, "esperava a resposta do assistente gravada");
+      assert.equal(assistantMsg!.content.split("[REDACTED_PRIVATE_KEY]").length - 1, 2, "a cópia persistida deveria mostrar as duas chaves redigidas");
+      assert.equal(wireText.trim(), assistantMsg!.content.trim());
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
+test("stream: S2 — TRÊS chaves PEM coladas (quase sem texto entre elas) também não vazam", async () => {
+  // Caso de fronteira do fix: blocos praticamente grudados, sem texto comum
+  // entre eles pra "salvar" o corte, e chunks pequenos.
+  const k1 = makePemBlock("XXX", 10);
+  const k2 = makePemBlock("YYY", 10);
+  const k3 = makePemBlock("ZZZ", 10);
+  const fullText = `Chaves:\n${k1.pem}\n${k2.pem}\n${k3.pem}\nFim da listagem das chaves do cluster, guarde todas em local seguro e nunca em texto puro num chat.`;
+  const CHUNK_SIZE = 13;
+  const chatChunks: object[] = [];
+  for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
+    chatChunks.push({ message: { content: fullText.slice(i, i + CHUNK_SIZE) } });
+  }
+  chatChunks.push({ done: true, prompt_eval_count: 5, eval_count: 5 });
+
+  const fake = await startFakeOllama({ chatChunks });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-pem3@exemplo.com");
+      createSoul(home, "soul-stream-pem3", { name: "soul-stream-pem3", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-pem3", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-pem3/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "liste as chaves do cluster" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      const tokenEvents = events.filter((e) => e.type === "token") as Array<{ text: string }>;
+      assert.ok(tokenEvents.length > 0, "esperava ao menos um evento token");
+
+      const allLines = [...k1.lines, ...k2.lines, ...k3.lines];
+      for (const e of tokenEvents) {
+        assert.ok(!e.text.includes("-----BEGIN"), `evento token não deveria conter cabeçalho PEM cru: ${JSON.stringify(e.text.slice(0, 100))}`);
+        for (const line of allLines) assert.ok(!e.text.includes(line), `evento token não deveria conter material de chave: ${JSON.stringify(e.text.slice(0, 100))}`);
+      }
+      const wireText = tokenEvents.map((e) => e.text).join("");
+      assert.ok(!wireText.includes("-----BEGIN"), "o texto reconstruído da SSE não deveria conter cabeçalho PEM cru");
+      for (const line of allLines) assert.ok(!wireText.includes(line), "o texto reconstruído não deveria conter material de chave");
+      const redactions = wireText.split("[REDACTED_PRIVATE_KEY]").length - 1;
+      assert.equal(redactions, 3, `esperava 3 marcadores [REDACTED_PRIVATE_KEY] na SSE, veio ${redactions}: ${JSON.stringify(wireText.slice(0, 300))}`);
+
+      const messagesRes = await fetch(`${base}/souls/soul-stream-pem3/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
+      const assistantMsg = messages.find((m) => m.role === "assistant");
+      assert.ok(assistantMsg, "esperava a resposta do assistente gravada");
+      assert.equal(assistantMsg!.content.split("[REDACTED_PRIVATE_KEY]").length - 1, 3, "a cópia persistida deveria mostrar as três chaves redigidas");
+      assert.equal(wireText.trim(), assistantMsg!.content.trim());
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
 test("stream: R2 — provider que só emite {done:true} (nenhum conteúdo real) não vira sucesso sintético '(sem resposta)'", async () => {
   const fake = await startFakeOllama({
     chatChunks: [{ done: true, prompt_eval_count: 3, eval_count: 0 }],
