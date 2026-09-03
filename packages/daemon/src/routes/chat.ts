@@ -153,6 +153,99 @@ function ollamaChat(
   });
 }
 
+/**
+ * Igual a `ollamaChat`, mas com `stream: true` real contra o `/api/chat` do
+ * Ollama — cada linha da resposta é um objeto NDJSON com `message.content`
+ * (um token/fragmento) até a linha final `{done: true, ...}` com as
+ * contagens de uso. `onToken` é chamado uma vez por fragmento, na ordem de
+ * chegada; o texto acumulado ainda é devolvido inteiro no final (mesmo
+ * formato de retorno de `ollamaChat`) — quem chama não precisa reconstruir
+ * o texto sozinho a partir dos tokens, tem os dois.
+ */
+export function ollamaChatStream(
+  baseUrl: string,
+  payload: { model: string; messages: Array<{ role: string; content: string }> },
+  timeoutMs: number,
+  onToken: (text: string) => void,
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }> {
+  return new Promise((resolvePromise) => {
+    let url: URL;
+    try {
+      url = new URL("/api/chat", baseUrl);
+    } catch {
+      resolvePromise({ code: 1, stdout: "", stderr: `OLLAMA_URL inválida: ${baseUrl}`, timedOut: false });
+      return;
+    }
+    const body = JSON.stringify({ ...payload, stream: true });
+    let timedOut = false;
+    let settled = false;
+    let accumulated = "";
+    let usage: ExecUsage | undefined;
+    let buffer = "";
+
+    const finish = (result: { code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }) => {
+      if (settled) return;
+      settled = true;
+      resolvePromise(result);
+    };
+
+    const req = httpRequest(
+      {
+        hostname: url.hostname,
+        port: url.port || 80,
+        path: url.pathname,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        if ((res.statusCode ?? 0) >= 400) {
+          let errData = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk: string) => (errData += chunk));
+          res.on("end", () => finish({ code: 1, stdout: "", stderr: `Ollama HTTP ${res.statusCode}: ${errData.slice(0, 300)}`, timedOut: false }));
+          return;
+        }
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => {
+          buffer += chunk;
+          let newlineIdx: number;
+          while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIdx).trim();
+            buffer = buffer.slice(newlineIdx + 1);
+            if (!line) continue;
+            try {
+              const parsed = JSON.parse(line) as {
+                message?: { content?: string };
+                done?: boolean;
+                prompt_eval_count?: number;
+                eval_count?: number;
+              };
+              if (parsed.message?.content) {
+                accumulated += parsed.message.content;
+                onToken(parsed.message.content);
+              }
+              if (parsed.done && (typeof parsed.prompt_eval_count === "number" || typeof parsed.eval_count === "number")) {
+                usage = { promptTokens: parsed.prompt_eval_count ?? 0, completionTokens: parsed.eval_count ?? 0, source: "provider" };
+              }
+            } catch {
+              /* linha NDJSON inválida — ignora, o stream de Ollama pode ter linhas parciais entre reads */
+            }
+          }
+        });
+        res.on("end", () => {
+          finish({ code: 0, stdout: accumulated || "(sem resposta)", stderr: "", timedOut: false, usage });
+        });
+      },
+    );
+    req.setTimeout(timeoutMs, () => {
+      timedOut = true;
+      req.destroy(new Error(`Ollama não respondeu em ${Math.round(timeoutMs / 1000)}s`));
+    });
+    req.on("error", (err) => finish({ code: 1, stdout: accumulated, stderr: err.message, timedOut }));
+    req.end(body);
+  });
+}
+
 export interface PreparedPromptContext {
   session: Awaited<ReturnType<typeof openSession>>;
   promptsUsed: number;
