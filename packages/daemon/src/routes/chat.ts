@@ -54,7 +54,7 @@ import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragReran
  * modelo local em CPU pode exceder só no prompt eval. Aqui o único limite é o
  * timeoutMs do chamador (o timeoutSeconds da requisição de chat).
  */
-interface ExecUsage {
+export interface ExecUsage {
   promptTokens: number;
   completionTokens: number;
   source: "provider" | "estimate";

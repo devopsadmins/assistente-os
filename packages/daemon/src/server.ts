@@ -27,6 +27,7 @@ import { handleAgenda } from "./routes/agenda.js";
 import { handleInfra } from "./routes/infra.js";
 import { handleMemory } from "./routes/memory.js";
 import { handleThreads } from "./routes/threads.js";
+import { handleStream } from "./routes/stream.js";
 import { handleVoice } from "./routes/voice.js";
 import { handlePipelines } from "./routes/pipelines.js";
 import { handleLlmsTxt, handleCapabilities } from "./routes/llms-txt.js";
@@ -460,6 +461,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleInfra,
   handleMemory,
   handleThreads,
+  handleStream,
   handleVoice,
   handlePipelines,
   handleLlmsTxt,
