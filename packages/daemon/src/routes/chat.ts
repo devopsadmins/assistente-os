@@ -187,8 +187,18 @@ export async function preparePromptContext(params: {
   config: AssistenteOsConfig;
   soul: Soul;
   prompt: string;
+  /**
+   * Fábrica do sink de notificação "ao vivo" pra cada `emitStep` — recebe o
+   * traceId real (gerado aqui dentro) e devolve a função que efetivamente
+   * notifica. `/chat` passa uma que reproduz o hub.broadcast de sempre;
+   * `/stream` passa uma que escreve eventos SSE — NUNCA o hub (decisão da
+   * spec: hub faz broadcast sem escopo de conta, inaceitável pra conteúdo de
+   * stream). A persistência em `execution_spans` abaixo roda sempre, pros
+   * dois casos — é diagnóstico interno, não é o que a spec restringe.
+   */
+  createStepSink: (traceId: string) => (module: string, message: string, level?: "err") => void;
 }): Promise<PreparePromptContextResult> {
-  const { req, pool, hub, home, config, soul, prompt } = params;
+  const { req, pool, hub, home, config, soul, prompt, createStepSink } = params;
 
   // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
   // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
@@ -197,14 +207,16 @@ export async function preparePromptContext(params: {
   const traceStartedAt = Date.now();
   let traceSeq = 0;
   let traceSessionId: number | null = null;
+  const onStep = createStepSink(traceId);
 
-  // Passos do pipeline de chat: ao vivo no WS `chat.step` E persistidos como
-  // spans (diagnóstico — não entram em custo/uso; falha de escrita é ignorada).
+  // Passos do pipeline de chat: notificados ao chamador via createStepSink E
+  // persistidos como spans (diagnóstico — não entram em custo/uso; falha de
+  // escrita é ignorada).
   const emitStep = (module: string, message: string, level?: "err") => {
     try {
-      hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
+      onStep(module, message, level);
     } catch {
-      /* ws opcional */
+      /* sink é fornecido pelo chamador; falha lá não deve derrubar o pipeline */
     }
     void recordExecutionSpan(pool, {
       traceId,
@@ -485,7 +497,22 @@ export async function handleChat(
     const config = await loadConfig({ home });
     const pool = getPool(config.databaseUrl);
 
-    const prepared = await preparePromptContext({ req, pool, hub, home, config, soul, prompt });
+    const prepared = await preparePromptContext({
+      req,
+      pool,
+      hub,
+      home,
+      config,
+      soul,
+      prompt,
+      createStepSink: (traceId) => (module, message, level) => {
+        try {
+          hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
+        } catch {
+          /* ws opcional */
+        }
+      },
+    });
     if (!prepared.ok) {
       sendJson(res, prepared.status, prepared.body);
       return true;
