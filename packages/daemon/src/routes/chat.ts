@@ -181,7 +181,6 @@ export type PreparePromptContextResult =
  */
 export async function preparePromptContext(params: {
   req: IncomingMessage;
-  res: ServerResponse;
   pool: Pool;
   hub: WsHub;
   home: string;
@@ -189,18 +188,18 @@ export async function preparePromptContext(params: {
   soul: Soul;
   prompt: string;
 }): Promise<PreparePromptContextResult> {
-  const { req, res, pool, hub, home, config, soul, prompt } = params;
+  const { req, pool, hub, home, config, soul, prompt } = params;
 
+  // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
+  // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
+  // header `x-trace-id` da resposta. `os trace <id>` / `GET /trace/:id`.
   const traceId = randomUUID();
   const traceStartedAt = Date.now();
   let traceSeq = 0;
   let traceSessionId: number | null = null;
-  try {
-    res.setHeader("x-trace-id", traceId);
-  } catch {
-    /* headers já enviados — ignora */
-  }
 
+  // Passos do pipeline de chat: ao vivo no WS `chat.step` E persistidos como
+  // spans (diagnóstico — não entram em custo/uso; falha de escrita é ignorada).
   const emitStep = (module: string, message: string, level?: "err") => {
     try {
       hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
@@ -486,10 +485,15 @@ export async function handleChat(
     const config = await loadConfig({ home });
     const pool = getPool(config.databaseUrl);
 
-    const prepared = await preparePromptContext({ req, res, pool, hub, home, config, soul, prompt });
+    const prepared = await preparePromptContext({ req, pool, hub, home, config, soul, prompt });
     if (!prepared.ok) {
       sendJson(res, prepared.status, prepared.body);
       return true;
+    }
+    try {
+      res.setHeader("x-trace-id", prepared.context.traceId);
+    } catch {
+      /* headers já enviados — ignora */
     }
     const { session, promptsUsed, dailyLimit, spentToday, maxTurns, promptSanitized, history, built, traceId, traceStartedAt, emitStep } =
       prepared.context;
