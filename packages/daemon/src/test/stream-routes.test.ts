@@ -80,7 +80,14 @@ async function readAllSSEEvents(res: Response): Promise<Array<Record<string, unk
  * qualquer CI sem Ollama, que é o gate de merge real deste projeto (PR+CI).
  * Apontar `OLLAMA_URL` pra este fake elimina a dependência externa.
  */
-function startFakeOllama(opts: { chatChunks?: object[]; chatStatusCode?: number } = {}): Promise<{ url: string; close: () => Promise<void> }> {
+function startFakeOllama(
+  opts: {
+    chatChunks?: object[];
+    chatStatusCode?: number;
+    /** Chamado com o corpo (JSON parseado) de cada POST /api/chat recebido — usado pelo teste do N3 pra inspecionar o `messages` (system prompt) que o daemon de fato mandou pro provider. */
+    onChatRequest?: (body: any) => void;
+  } = {},
+): Promise<{ url: string; close: () => Promise<void> }> {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       if (req.method === "GET" && req.url === "/api/tags") {
@@ -89,24 +96,36 @@ function startFakeOllama(opts: { chatChunks?: object[]; chatStatusCode?: number 
         return;
       }
       if (req.method === "POST" && req.url === "/api/chat") {
-        if (opts.chatStatusCode && opts.chatStatusCode >= 400) {
-          res.writeHead(opts.chatStatusCode);
-          res.end("erro simulado");
-          return;
-        }
-        res.writeHead(200, { "content-type": "application/x-ndjson" });
-        const chunks = opts.chatChunks ?? [];
-        let i = 0;
-        const sendNext = () => {
-          if (i >= chunks.length) {
-            res.end();
+        let rawBody = "";
+        req.setEncoding("utf8");
+        req.on("data", (chunk: string) => (rawBody += chunk));
+        req.on("end", () => {
+          if (opts.onChatRequest) {
+            try {
+              opts.onChatRequest(JSON.parse(rawBody));
+            } catch {
+              /* corpo malformado — o teste que passou onChatRequest vai notar pela ausência da chamada */
+            }
+          }
+          if (opts.chatStatusCode && opts.chatStatusCode >= 400) {
+            res.writeHead(opts.chatStatusCode);
+            res.end("erro simulado");
             return;
           }
-          res.write(JSON.stringify(chunks[i]) + "\n");
-          i++;
-          setTimeout(sendNext, 5);
-        };
-        sendNext();
+          res.writeHead(200, { "content-type": "application/x-ndjson" });
+          const chunks = opts.chatChunks ?? [];
+          let i = 0;
+          const sendNext = () => {
+            if (i >= chunks.length) {
+              res.end();
+              return;
+            }
+            res.write(JSON.stringify(chunks[i]) + "\n");
+            i++;
+            setTimeout(sendNext, 5);
+          };
+          sendNext();
+        });
         return;
       }
       res.writeHead(404);
@@ -283,6 +302,130 @@ test("stream: provider falha no meio (HTTP 500 do Ollama fake) → emite {type:e
       assert.equal(messages.length, 0, "nenhuma linha (nem a do usuário) deve ser gravada quando a execução falha");
     });
   } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
+test("stream: N2 — um segredo partido entre dois onToken() nunca aparece em texto puro num evento token", async () => {
+  // "sk-" + 36 chars alfanuméricos casa DEFAULT_PATTERNS.OPENAI_API_KEY
+  // (>= 20 chars após "sk-"). Partido no meio ("...PQR" | "STU...") — exatamente
+  // o caso que sanitizar cada onToken() isoladamente (regex sobre uma string só)
+  // deixaria escapar, já que nenhum dos dois pedaços sozinho casa o padrão.
+  const secret = "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const secretHead = secret.slice(0, 22); // primeira metade — sozinha, curta demais pra casar o padrão (precisa de >=20 chars após "sk-")
+  const secretTail = secret.slice(22); // segunda metade — sozinha, não tem o prefixo "sk-" nem casaria
+  const fake = await startFakeOllama({
+    chatChunks: [
+      { message: { content: `A chave e ${secretHead}` } },
+      { message: { content: `${secretTail} ok.` } },
+      { done: true, prompt_eval_count: 5, eval_count: 5 },
+    ],
+  });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-secret@exemplo.com");
+      createSoul(home, "soul-stream-secret", { name: "soul-stream-secret", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-secret", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-secret/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "qual e a chave da API?" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      const tokenEvents = events.filter((e) => e.type === "token") as Array<{ text: string }>;
+      assert.ok(tokenEvents.length > 0, "esperava ao menos um evento token");
+
+      for (const e of tokenEvents) {
+        assert.ok(!e.text.includes(secret), `evento token não deveria conter o segredo em texto puro: ${JSON.stringify(e.text)}`);
+        assert.ok(!e.text.includes(secretHead), `evento token não deveria conter nem a metade do segredo em texto puro: ${JSON.stringify(e.text)}`);
+      }
+      const wireText = tokenEvents.map((e) => e.text).join("");
+      assert.ok(wireText.includes("[REDACTED_OPENAI_KEY]"), `o texto reconstruído da SSE deveria mostrar o marcador de redação: ${JSON.stringify(wireText)}`);
+      assert.ok(!wireText.includes(secret), "o texto reconstruído da SSE não deveria conter o segredo de jeito nenhum");
+
+      // A cópia persistida também deve estar redigida (comportamento já
+      // existente, reconfirmado aqui lado a lado com o texto que saiu na SSE).
+      const messagesRes = await fetch(`${base}/souls/soul-stream-secret/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
+      const assistantMsg = messages.find((m) => m.role === "assistant");
+      assert.ok(assistantMsg, "esperava a resposta do assistente gravada");
+      assert.ok(!assistantMsg!.content.includes(secret), "a mensagem persistida não deveria conter o segredo");
+      assert.ok(assistantMsg!.content.includes("[REDACTED_OPENAI_KEY]"));
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
+test("stream: N3 — histórico da thread sobrevive à rotação de sessão por ociosidade (120min default)", async () => {
+  const { home, cleanup } = await tempHome();
+  const chatRequests: any[] = [];
+  const fake = await startFakeOllama({
+    chatChunks: [{ message: { content: "entendido" } }, { done: true, prompt_eval_count: 1, eval_count: 1 }],
+    onChatRequest: (body) => chatRequests.push(body),
+  });
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  const prevIdleMinutes = process.env.ASSISTENTE_OS_SESSION_IDLE_MINUTES;
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-history@exemplo.com");
+      createSoul(home, "soul-stream-history", { name: "soul-stream-history", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-history", headers);
+
+      const streamOnce = async (prompt: string) => {
+        const r = await fetch(`${base}/souls/soul-stream-history/threads/${threadId}/messages/stream`, {
+          method: "POST",
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ prompt }),
+        });
+        await readAllSSEEvents(r);
+      };
+
+      // Turno 1: planta o fato que o turno 3 (pós-rotação) precisa lembrar.
+      await streamOnce("meu nome eh Zebra987");
+
+      // Força a sessão a girar em TODA chamada seguinte de openSession — sem
+      // isso, esperar 120min de verdade num teste é inviável; 0min faz
+      // qualquer intervalo (mesmo poucos ms) contar como "ocioso".
+      process.env.ASSISTENTE_OS_SESSION_IDLE_MINUTES = "0";
+
+      // Turno 2: sessão já gira aqui (é o próximo openSession depois do ajuste
+      // acima) — prova que mesmo girando a cada turno, o histórico por THREAD
+      // (não mais por sessão) continua entregando o fato ao provider.
+      await streamOnce("qual eh o meu nome?");
+      await streamOnce("e agora, qual eh o meu nome?");
+
+      assert.equal(chatRequests.length, 3, "esperava 3 chamadas a /api/chat, uma por turno");
+      const systemContentOf = (i: number): string => chatRequests[i]?.messages?.find((m: any) => m.role === "system")?.content ?? "";
+
+      assert.ok(systemContentOf(1).includes("Zebra987"), "turno 2 deveria ver o fato do turno 1 no histórico enviado ao provider");
+      assert.ok(
+        systemContentOf(2).includes("Zebra987"),
+        "turno 3 (pós-rotação de sessão) ainda deveria ver o fato do turno 1 — histórico é por THREAD, não por sessão",
+      );
+
+      // GET .../messages continua mostrando a transcrição inteira (nunca
+      // escondeu nada — o bug do N3 era só o que o MODELO via, não a UI).
+      const messagesRes = await fetch(`${base}/souls/soul-stream-history/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as unknown[];
+      assert.equal(messages.length, 6, "3 turnos completos = 6 linhas (user+assistant cada)");
+    });
+  } finally {
+    if (prevIdleMinutes === undefined) delete process.env.ASSISTENTE_OS_SESSION_IDLE_MINUTES;
+    else process.env.ASSISTENTE_OS_SESSION_IDLE_MINUTES = prevIdleMinutes;
     await daemon.close();
     await cleanup();
     await fake.close();

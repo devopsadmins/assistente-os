@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   loadConfig,
   getPool,
   getSoul,
   getThread,
+  getThreadMessages,
   touchThread,
   sanitizeLLMResponse,
   recordCostCall,
@@ -12,6 +14,8 @@ import {
   recordSessionMessage,
   estimateTokens,
   nextZenApiKey,
+  sessionHistoryTurns,
+  sessionHistoryMaxChars,
   logger,
 } from "@assistente-os/core";
 import { readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
@@ -35,14 +39,44 @@ const HEARTBEAT_MS = 15_000;
  */
 const WATCHDOG_MS = 310_000;
 
-function watchdogTimeout(ms: number): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(
+interface Watchdog {
+  promise: Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }>;
+  /** N4: limpa o timer quando o provider vence a corrida (o caso normal) — sem isso o timer de 310s fica armado (unref'd, inofensivo, mas sujo) até estourar sozinho. */
+  cancel: () => void;
+}
+
+function watchdogTimeout(ms: number): Watchdog {
+  let timer: ReturnType<typeof setTimeout>;
+  const promise = new Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }>((resolve) => {
+    timer = setTimeout(
       () => resolve({ code: 1, stdout: "", stderr: "watchdog: provider não respondeu dentro do limite de segurança", timedOut: true }),
       ms,
     );
     timer.unref?.();
   });
+  return { promise, cancel: () => clearTimeout(timer) };
+}
+
+/**
+ * Mesmo orçamento (turnos/chars) que `preparePromptContext` aplicaria via
+ * `getRecentSessionMessages` — reproduzido aqui pra aparar o histórico da
+ * THREAD (N3 da revisão final) da mesma forma que o histórico por SESSÃO já
+ * era aparado, sem alterar `@assistente-os/core`.
+ */
+function trimHistoryToBudget(
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  maxTurns: number,
+  maxChars: number,
+): Array<{ role: "user" | "assistant"; content: string }> {
+  if (maxTurns <= 0) return [];
+  let msgs = messages.slice(-maxTurns * 2);
+  if (!maxChars || maxChars <= 0) return msgs;
+  let total = msgs.reduce((sum, m) => sum + m.content.length, 0);
+  while (msgs.length > 1 && total > maxChars) {
+    total -= msgs[0]!.content.length;
+    msgs = msgs.slice(1);
+  }
+  return msgs;
 }
 
 export async function handleStream(
@@ -121,6 +155,21 @@ export async function handleStream(
   // que sabemos prepared.ok === true e startSSE() já rodou.
   const pendingSteps: StreamEvent[] = [];
 
+  // N3 da revisão final: histórico por THREAD, não por sessão. A sessão por
+  // trás do clientKey sintético (`thread-${threadId}`) gira — fecha e reabre —
+  // depois de `ASSISTENTE_OS_SESSION_IDLE_MINUTES` (default 120min) ociosa
+  // (ver openSession em core/sessions.ts); sem este override, `preparePromptContext`
+  // usaria `getRecentSessionMessages(pool, session.id, …)`, que fica vazio
+  // após a virada — o modelo "esquece" a conversa inteira enquanto
+  // `GET /threads/:id/messages` continua mostrando a transcrição completa.
+  // `getThreadMessages` não gira com a sessão, então a história do modelo
+  // passa a acompanhar a mesma fonte que o usuário vê.
+  const threadHistory = trimHistoryToBudget(
+    (await getThreadMessages(pool, threadId)).map((m) => ({ role: m.role, content: m.content })),
+    sessionHistoryTurns(),
+    sessionHistoryMaxChars(),
+  );
+
   const prepared = await preparePromptContext({
     req: reqWithThreadClientKey,
     pool,
@@ -128,6 +177,7 @@ export async function handleStream(
     config,
     soul,
     prompt,
+    historyOverride: threadHistory,
     createStepSink: () => (module, message) => {
       pendingSteps.push({ type: "step", step: module, message });
     },
@@ -147,6 +197,11 @@ export async function handleStream(
 
   const { session, built, promptSanitized } = prepared.context;
 
+  // N4: um único watchdog por request — cancelado no `finally` de baixo assim
+  // que a rota estabiliza (sucesso, falha, ou catch), pra não deixar o timer
+  // de 310s armado até estourar sozinho no caso normal (provider responde).
+  const watchdog = watchdogTimeout(WATCHDOG_MS);
+
   try {
     const orchDecision = await routeFromPrompt(pool, config, soul, promptSanitized.sanitized, makeLocalFallbackProbe(config.ollamaUrl), undefined);
     const decision = orchDecision.route;
@@ -165,6 +220,27 @@ export async function handleStream(
         baseUrl = baseUrl.replace("host.docker.internal", "192.168.65.254");
       }
       const ollamaModel = (decision.target.model ?? model).replace(/^(ollama|openai)\//, "");
+
+      // N2 da revisão final: os tokens do provider iam direto pro cliente
+      // ANTES de sanitizeLLMResponse rodar (essa função só sanitizava a cópia
+      // gravada no banco) — um segredo ecoado pelo modelo saía em texto puro
+      // na SSE, mesmo com a mensagem persistida corretamente redigida. Como
+      // os tokens chegam picados, sanitizar cada um isoladamente deixaria
+      // escapar um segredo partido entre dois tokens; por isso um buffer com
+      // lookback (128 chars — maior que o maior match de DEFAULT_PATTERNS):
+      // só emitimos, sanitizado, tudo MENOS a cauda dos últimos 128 chars, que
+      // fica pendente pro próximo token (ou pro flush final).
+      const SANITIZE_LOOKBACK = 128;
+      let sanitizePending = "";
+      const emitSanitizedToken = (chunk: string, flush = false): void => {
+        sanitizePending += chunk;
+        const cut = flush ? sanitizePending.length : Math.max(0, sanitizePending.length - SANITIZE_LOOKBACK);
+        if (cut === 0) return;
+        const head = sanitizeLLMResponse(sanitizePending.slice(0, cut), { taskId: String(session.id), soulId: soul.id }).sanitized;
+        sanitizePending = sanitizePending.slice(cut);
+        if (head) writeSSEEvent(res, { type: "token", text: head });
+      };
+
       const result = await Promise.race([
         ollamaChatStream(
           baseUrl,
@@ -176,10 +252,11 @@ export async function handleStream(
             ],
           },
           300_000,
-          (token) => writeSSEEvent(res, { type: "token", text: token }),
+          (token) => emitSanitizedToken(token),
         ),
-        watchdogTimeout(WATCHDOG_MS),
+        watchdog.promise,
       ]);
+      emitSanitizedToken("", true); // flush do que sobrou no buffer de lookback
       stdout = result.stdout;
       code = result.code;
       timedOut = result.timedOut;
@@ -198,7 +275,7 @@ export async function handleStream(
             seedMessages: prepared.context.history,
             useTools: true,
           }),
-          watchdogTimeout(WATCHDOG_MS),
+          watchdog.promise,
         ]);
       } else {
         const env = { ...(process.env as Record<string, string>) };
@@ -213,16 +290,25 @@ export async function handleStream(
             soulId: soul.id,
             env,
           }),
-          watchdogTimeout(WATCHDOG_MS),
+          watchdog.promise,
         ]);
       }
       stdout = result.stdout;
       code = result.code;
       timedOut = result.timedOut;
-      if (stdout) writeSSEEvent(res, { type: "token", text: stdout });
+      // N2: mesma sanitização antes de emitir — este ramo não é progressivo
+      // (um blob só), então não precisa de lookback, só sanitizar antes do write.
+      if (stdout) {
+        const sanitizedForWire = sanitizeLLMResponse(stdout, { taskId: String(session.id), soulId: soul.id }).sanitized;
+        writeSSEEvent(res, { type: "token", text: sanitizedForWire });
+      }
     }
 
-    const succeeded = code === 0 && !timedOut;
+    // N5: um provider que fecha o stream sem emitir nenhum token real ainda
+    // devolve code:0 (ollamaChatStream cai pro placeholder "(sem resposta)")
+    // — sem o `stdout.trim()` abaixo isso virava uma mensagem de assistente
+    // sintética, permanente, na transcrição da thread.
+    const succeeded = code === 0 && !timedOut && stdout.trim().length > 0;
     const finalUsage: ExecUsage = execUsage ?? {
       promptTokens: estimateTokens(built.fullPrompt),
       completionTokens: estimateTokens(stdout),
@@ -243,6 +329,7 @@ export async function handleStream(
       sessionId: session.id,
       soul: soul.id,
       kind: "chat",
+      promptHash: createHash("sha256").update(prompt).digest("hex").slice(0, 16),
       model,
       tier,
       filesLoaded: built.files.filter((f) => f.chars > 0).length,
@@ -295,11 +382,19 @@ export async function handleStream(
     if (succeeded) {
       writeSSEEvent(res, { type: "done", messageId, usage: finalUsage, sources });
     } else {
-      writeSSEEvent(res, { type: "error", message: timedOut ? "tempo esgotado" : `execução falhou (código ${code})` });
+      writeSSEEvent(res, {
+        type: "error",
+        message: timedOut
+          ? "tempo esgotado"
+          : code !== 0
+            ? `execução falhou (código ${code})`
+            : "resposta vazia do provider",
+      });
     }
   } catch (err) {
     writeSSEEvent(res, { type: "error", message: err instanceof Error ? err.message : "erro desconhecido" });
   } finally {
+    watchdog.cancel();
     stopHeartbeat();
     res.end();
   }

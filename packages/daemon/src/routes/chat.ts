@@ -299,8 +299,18 @@ export async function preparePromptContext(params: {
    * é diagnóstico interno, não é o que a spec restringe.
    */
   createStepSink: (traceId: string) => (module: string, message: string, level?: "err") => void;
+  /**
+   * Histórico a usar no lugar de `getRecentSessionMessages(pool, session.id, …)`
+   * (N3 da revisão final do branch): a sessão por trás de `clientKey` gira a
+   * cada `ASSISTENTE_OS_SESSION_IDLE_MINUTES` (default 120min) de ociosidade —
+   * `openSession` fecha e reabre, e o histórico por SESSÃO fica vazio mesmo
+   * que a THREAD (que não gira) continue mostrando a conversa inteira em
+   * `GET /threads/:id/messages`. `/stream` passa o histórico da própria
+   * thread aqui; `/chat` não passa nada e mantém o comportamento de sempre.
+   */
+  historyOverride?: Awaited<ReturnType<typeof getRecentSessionMessages>>;
 }): Promise<PreparePromptContextResult> {
-  const { req, pool, home, config, soul, prompt, createStepSink } = params;
+  const { req, pool, home, config, soul, prompt, createStepSink, historyOverride } = params;
 
   // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
   // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
@@ -404,11 +414,15 @@ export async function preparePromptContext(params: {
     injection?.detected ? `possível prompt injection detectada (${injection.maxSeverity})` : "nenhum padrão de prompt injection detectado",
   );
 
-  // ---- Histórico da conversa (mesma sessão) — memória multi-turno ----
-  const history = await getRecentSessionMessages(pool, session.id, {
-    maxTurns: sessionHistoryTurns(),
-    maxChars: sessionHistoryMaxChars(),
-  });
+  // ---- Histórico da conversa: por thread se historyOverride foi passado
+  // (não gira com a sessão), senão pela sessão (comportamento de /chat,
+  // inalterado) — memória multi-turno. ----
+  const history =
+    historyOverride ??
+    (await getRecentSessionMessages(pool, session.id, {
+      maxTurns: sessionHistoryTurns(),
+      maxChars: sessionHistoryMaxChars(),
+    }));
 
   // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
   const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
