@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Pool } from "pg";
+import type { AssistenteOsConfig, Soul } from "@assistente-os/core";
+import type { WsHub } from "../server.js";
 import {
   loadConfig,
   getPool,
@@ -150,6 +153,266 @@ function ollamaChat(
   });
 }
 
+export interface PreparedPromptContext {
+  session: Awaited<ReturnType<typeof openSession>>;
+  promptsUsed: number;
+  dailyLimit: number | undefined;
+  spentToday: number;
+  maxTurns: number;
+  promptSanitized: ReturnType<typeof sanitizeUserPrompt>;
+  history: Awaited<ReturnType<typeof getRecentSessionMessages>>;
+  built: Awaited<ReturnType<typeof buildPrompt>>;
+  traceId: string;
+  traceStartedAt: number;
+  emitStep: (module: string, message: string, level?: "err") => void;
+}
+
+export type PreparePromptContextResult =
+  | { ok: true; context: PreparedPromptContext }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+/**
+ * Extraído de handleChat (POST /chat): validação de teto/turnos, sanitização,
+ * screening de prompt injection, histórico + RAG. Tudo que roda ANTES de
+ * rotear pro executor — checagem de confiança/escalonamento fica de fora
+ * (depende do resultado da 1ª execução, não é "preparação"). Reaproveitado
+ * pelo /stream futuro; a diferença entre os dois é só a etapa de execução
+ * (uma chamada vs. transmitir).
+ */
+export async function preparePromptContext(params: {
+  req: IncomingMessage;
+  pool: Pool;
+  hub: WsHub;
+  home: string;
+  config: AssistenteOsConfig;
+  soul: Soul;
+  prompt: string;
+}): Promise<PreparePromptContextResult> {
+  const { req, pool, hub, home, config, soul, prompt } = params;
+
+  // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
+  // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
+  // header `x-trace-id` da resposta. `os trace <id>` / `GET /trace/:id`.
+  const traceId = randomUUID();
+  const traceStartedAt = Date.now();
+  let traceSeq = 0;
+  let traceSessionId: number | null = null;
+
+  // Passos do pipeline de chat: ao vivo no WS `chat.step` E persistidos como
+  // spans (diagnóstico — não entram em custo/uso; falha de escrita é ignorada).
+  const emitStep = (module: string, message: string, level?: "err") => {
+    try {
+      hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
+    } catch {
+      /* ws opcional */
+    }
+    void recordExecutionSpan(pool, {
+      traceId,
+      soul: soul.id,
+      sessionId: traceSessionId,
+      seq: traceSeq++,
+      module,
+      message,
+      level: level ?? "info",
+      elapsedMs: Date.now() - traceStartedAt,
+    }).catch(() => {
+      /* span é diagnóstico opcional */
+    });
+  };
+
+  // ---- Limites: teto diário de custo e turnos por sessão ----
+  const dailyLimit = soul.config.dailyLimit;
+  const maxTurns = soul.config.agent?.guardrails?.maxTurns ?? soul.config.maxTurns ?? config.defaultMaxTurns;
+  const spentToday = await sumCostBySoul(pool, soul.id, todayISODate());
+  if (dailyLimit !== undefined && spentToday >= dailyLimit) {
+    return { ok: false, status: 429, body: { error: "teto diário de gastos atingido", limit: dailyLimit, spent: spentToday } };
+  }
+  // Isolamento de sessão por cliente: header X-Client-Id se enviado, senão
+  // hash do token (separa instalações), senão 'default' (single-user).
+  const clientHeader = req.headers["x-client-id"];
+  const authHeader = req.headers["authorization"];
+  const clientKey =
+    (typeof clientHeader === "string" && clientHeader.trim().slice(0, 64)) ||
+    (typeof authHeader === "string" && authHeader
+      ? "tok-" + createHash("sha256").update(authHeader).digest("hex").slice(0, 12)
+      : "default");
+  const session = await openSession(pool, soul.id, maxTurns, dailyLimit, clientKey);
+  traceSessionId = session.id;
+  if (session.promptCount >= session.maxTurns) {
+    return {
+      ok: false,
+      status: 429,
+      body: { error: "limite de turnos da sessão atingido", maxTurns: session.maxTurns, prompts: session.promptCount },
+    };
+  }
+  const promptsUsed = await bumpSessionPrompt(pool, session.id);
+  emitStep("chat", `Prompt recebido (turno ${promptsUsed}/${session.maxTurns})`);
+
+  // ---- Sanitização de secrets no prompt do usuário ----
+  const promptSanitized = sanitizeUserPrompt(prompt, { taskId: String(session.id), soulId: soul.id });
+  if (promptSanitized.count > 0) {
+    logger.warn(`[content-filter] ${promptSanitized.count} secret(s) detectado(s) no prompt da soul ${soul.id}`);
+  }
+  emitStep(
+    "seguranca",
+    promptSanitized.count > 0 ? `${promptSanitized.count} segredo(s) redigido(s) no prompt` : "nenhum segredo detectado no prompt",
+  );
+
+  // ---- Detecção de prompt injection (defesa em profundidade — regex, não bloqueia sozinha) ----
+  const injection = promptSanitized.injection;
+  if (injection?.detected) {
+    logger.warn(
+      `[prompt-injection] ${injection.matches.length} padrão(ões) detectado(s) (severidade máx: ${injection.maxSeverity}) no prompt da soul ${soul.id}`,
+    );
+    logFullAuditEntry({
+      ts: new Date().toISOString(),
+      sessionId: String(session.id),
+      soulId: soul.id,
+      intention: `ALERTA: possível prompt injection (severidade ${injection.maxSeverity})`,
+      toolsCalled: [],
+      params: { patterns: injection.matches.map((m) => m.name) },
+    });
+    promptInjectionAlerts.inc({ severity: injection.maxSeverity, source: "user_input" });
+    const modo = process.env.PROMPT_INJECTION_MODO || "aviso";
+    if (modo === "recusar" && injection.maxSeverity === "high") {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          error: "prompt recusado: padrão de possível prompt injection detectado",
+          patterns: injection.matches.map((m) => m.name),
+        },
+      };
+    }
+  }
+  emitStep(
+    "seguranca",
+    injection?.detected ? `possível prompt injection detectada (${injection.maxSeverity})` : "nenhum padrão de prompt injection detectado",
+  );
+
+  // ---- Histórico da conversa (mesma sessão) — memória multi-turno ----
+  const history = await getRecentSessionMessages(pool, session.id, {
+    maxTurns: sessionHistoryTurns(),
+    maxChars: sessionHistoryMaxChars(),
+  });
+
+  // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
+  const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
+
+  // ---- Skills por soul: registra quais foram ativadas neste turno ----
+  if (built.skills && built.skills.active.length > 0) {
+    logFullAuditEntry({
+      ts: new Date().toISOString(),
+      sessionId: String(session.id),
+      soulId: soul.id,
+      intention: "skills: ativadas",
+      toolsCalled: [],
+      params: { active: built.skills.active, available: built.skills.available },
+    });
+    emitStep("skills", `skill(s) ativada(s): ${built.skills.active.map((s) => s.name).join(", ")}`);
+  }
+  {
+    const verdict = built.verdict as
+      | {
+          ok: boolean;
+          sources?: RagChunk[];
+          motivo?: string;
+          injection?: RagInjectionFinding[];
+          rerank?: { mode: "off" | "cross-encoder" | "llm"; ms?: number };
+          cacheHit?: "miss" | "exact" | "semantic";
+        }
+      | null;
+    if (verdict?.cacheHit) {
+      try {
+        ragCacheEvents.inc({ result: verdict.cacheHit });
+      } catch {
+        /* métrica opcional */
+      }
+    }
+    const filesLoaded = built.files.filter((f) => f.chars > 0).length;
+    const ragMsg =
+      verdict == null
+        ? "RAG não avaliado"
+        : verdict.ok
+          ? `RAG: contexto relevante encontrado (${verdict.sources?.length ?? 0} fonte(s))`
+          : `RAG: ${verdict.motivo ?? "sem contexto relevante"}`;
+    emitStep("rag", `${ragMsg}; ${filesLoaded} arquivo(s) de contexto persistente carregado(s)`);
+
+    // ---- Debug controlado de RAG: method (semantic/literal/hybrid) e score
+    // por fonte já existiam no retorno de retrieveContext mas nunca eram
+    // persistidos — uma degradação silenciosa pra busca literal (ex.:
+    // embedder de indexação incompatível com o de consulta) passava
+    // despercebida. Grava no audit trail já existente, sem infra nova.
+    if (verdict?.sources && verdict.sources.length > 0) {
+      logFullAuditEntry({
+        ts: new Date().toISOString(),
+        sessionId: String(session.id),
+        soulId: soul.id,
+        intention: "RAG: retrieval debug",
+        toolsCalled: [],
+        params: {
+          rerankMode: verdict.rerank?.mode ?? "off",
+          ...(verdict.rerank?.ms !== undefined ? { rerankMs: verdict.rerank.ms } : {}),
+          sources: verdict.sources.map((s) => ({
+            doc: s.doc,
+            path: s.path,
+            method: s.reranked ? "reranked" : s.method,
+            score: s.score,
+            ...(s.reranked ? { baseMethod: s.method } : {}),
+          })),
+        },
+      });
+    }
+    if (verdict?.rerank?.ms !== undefined) {
+      try {
+        ragRerankSeconds.observe({ mode: verdict.rerank.mode }, verdict.rerank.ms / 1000);
+      } catch {
+        /* métrica opcional */
+      }
+    }
+
+    // ---- Indirect prompt injection em conteúdo recuperado (RAG) ----
+    // O screening rodou dentro de retrieveContext; aqui registramos a origem
+    // (`retrieved_chunk`, distinta de `user_input`) no audit trail + métrica.
+    const ragInjection = verdict?.injection ?? [];
+    if (ragInjection.length > 0) {
+      const maxSev = maxFindingSeverity(ragInjection);
+      const excluded = ragInjection.filter((f) => f.excluded).length;
+      logger.warn(
+        `[prompt-injection] ${ragInjection.length} chunk(s) de RAG com padrão de injection (sev. máx ${maxSev}) na soul ${soul.id}`,
+      );
+      logFullAuditEntry({
+        ts: new Date().toISOString(),
+        sessionId: String(session.id),
+        soulId: soul.id,
+        intention: "ALERTA: possível prompt injection em conteúdo recuperado (RAG)",
+        toolsCalled: [],
+        params: {
+          source: "retrieved_chunk",
+          findings: ragInjection.map((f) => ({
+            doc: f.doc,
+            path: f.path,
+            severity: f.severity,
+            patterns: f.patterns,
+            excluded: f.excluded,
+          })),
+        },
+      });
+      promptInjectionAlerts.inc({ severity: maxSev, source: "retrieved_chunk" });
+      emitStep(
+        "seguranca",
+        `RAG: ${ragInjection.length} chunk(s) sinalizado(s) por prompt injection` +
+          (excluded > 0 ? `, ${excluded} descartado(s)` : ""),
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    context: { session, promptsUsed, dailyLimit, spentToday, maxTurns, promptSanitized, history, built, traceId, traceStartedAt, emitStep },
+  };
+}
+
 /** Rotas de execução de prompt: GET /souls/:id/buffer, POST /souls/:id/chat, GET /souls/:id/langgraph/status|history */
 export async function handleChat(
   req: IncomingMessage,
@@ -222,223 +485,19 @@ export async function handleChat(
     const config = await loadConfig({ home });
     const pool = getPool(config.databaseUrl);
 
-    // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
-    // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
-    // header `x-trace-id` da resposta. `os trace <id>` / `GET /trace/:id`.
-    const traceId = randomUUID();
-    const traceStartedAt = Date.now();
-    let traceSeq = 0;
-    let traceSessionId: number | null = null;
+    const prepared = await preparePromptContext({ req, pool, hub, home, config, soul, prompt });
+    if (!prepared.ok) {
+      sendJson(res, prepared.status, prepared.body);
+      return true;
+    }
     try {
-      res.setHeader("x-trace-id", traceId);
+      res.setHeader("x-trace-id", prepared.context.traceId);
     } catch {
       /* headers já enviados — ignora */
     }
-
-    // Passos do pipeline de chat: ao vivo no WS `chat.step` E persistidos como
-    // spans (diagnóstico — não entram em custo/uso; falha de escrita é ignorada).
-    const emitStep = (module: string, message: string, level?: "err") => {
-      try {
-        hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
-      } catch {
-        /* ws opcional */
-      }
-      void recordExecutionSpan(pool, {
-        traceId,
-        soul: soul.id,
-        sessionId: traceSessionId,
-        seq: traceSeq++,
-        module,
-        message,
-        level: level ?? "info",
-        elapsedMs: Date.now() - traceStartedAt,
-      }).catch(() => {
-        /* span é diagnóstico opcional */
-      });
-    };
+    const { session, promptsUsed, dailyLimit, spentToday, maxTurns, promptSanitized, history, built, traceId, traceStartedAt, emitStep } =
+      prepared.context;
     {
-      // ---- Limites: teto diário de custo e turnos por sessão ----
-      const dailyLimit = soul.config.dailyLimit;
-      const maxTurns = soul.config.agent?.guardrails?.maxTurns ?? soul.config.maxTurns ?? config.defaultMaxTurns;
-      const spentToday = await sumCostBySoul(pool, soul.id, todayISODate());
-      if (dailyLimit !== undefined && spentToday >= dailyLimit) {
-        sendJson(res, 429, { error: "teto diário de gastos atingido", limit: dailyLimit, spent: spentToday });
-        return true;
-      }
-      // Isolamento de sessão por cliente: header X-Client-Id se enviado, senão
-      // hash do token (separa instalações), senão 'default' (single-user).
-      const clientHeader = req.headers["x-client-id"];
-      const authHeader = req.headers["authorization"];
-      const clientKey =
-        (typeof clientHeader === "string" && clientHeader.trim().slice(0, 64)) ||
-        (typeof authHeader === "string" && authHeader
-          ? "tok-" + createHash("sha256").update(authHeader).digest("hex").slice(0, 12)
-          : "default");
-      const session = await openSession(pool, soul.id, maxTurns, dailyLimit, clientKey);
-      traceSessionId = session.id;
-      if (session.promptCount >= session.maxTurns) {
-        sendJson(res, 429, { error: "limite de turnos da sessão atingido", maxTurns: session.maxTurns, prompts: session.promptCount });
-        return true;
-      }
-      const promptsUsed = await bumpSessionPrompt(pool, session.id);
-      emitStep("chat", `Prompt recebido (turno ${promptsUsed}/${session.maxTurns})`);
-
-      // ---- Sanitização de secrets no prompt do usuário ----
-      const promptSanitized = sanitizeUserPrompt(prompt, { taskId: String(session.id), soulId: soul.id });
-      if (promptSanitized.count > 0) {
-        logger.warn(`[content-filter] ${promptSanitized.count} secret(s) detectado(s) no prompt da soul ${soul.id}`);
-      }
-      emitStep(
-        "seguranca",
-        promptSanitized.count > 0 ? `${promptSanitized.count} segredo(s) redigido(s) no prompt` : "nenhum segredo detectado no prompt",
-      );
-
-      // ---- Detecção de prompt injection (defesa em profundidade — regex, não bloqueia sozinha) ----
-      const injection = promptSanitized.injection;
-      if (injection?.detected) {
-        logger.warn(
-          `[prompt-injection] ${injection.matches.length} padrão(ões) detectado(s) (severidade máx: ${injection.maxSeverity}) no prompt da soul ${soul.id}`,
-        );
-        logFullAuditEntry({
-          ts: new Date().toISOString(),
-          sessionId: String(session.id),
-          soulId: soul.id,
-          intention: `ALERTA: possível prompt injection (severidade ${injection.maxSeverity})`,
-          toolsCalled: [],
-          params: { patterns: injection.matches.map((m) => m.name) },
-        });
-        promptInjectionAlerts.inc({ severity: injection.maxSeverity, source: "user_input" });
-        const modo = process.env.PROMPT_INJECTION_MODO || "aviso";
-        if (modo === "recusar" && injection.maxSeverity === "high") {
-          sendJson(res, 400, {
-            error: "prompt recusado: padrão de possível prompt injection detectado",
-            patterns: injection.matches.map((m) => m.name),
-          });
-          return true;
-        }
-      }
-      emitStep(
-        "seguranca",
-        injection?.detected ? `possível prompt injection detectada (${injection.maxSeverity})` : "nenhum padrão de prompt injection detectado",
-      );
-
-      // ---- Histórico da conversa (mesma sessão) — memória multi-turno ----
-      const history = await getRecentSessionMessages(pool, session.id, {
-        maxTurns: sessionHistoryTurns(),
-        maxChars: sessionHistoryMaxChars(),
-      });
-
-      // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
-      const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
-
-      // ---- Skills por soul: registra quais foram ativadas neste turno ----
-      if (built.skills && built.skills.active.length > 0) {
-        logFullAuditEntry({
-          ts: new Date().toISOString(),
-          sessionId: String(session.id),
-          soulId: soul.id,
-          intention: "skills: ativadas",
-          toolsCalled: [],
-          params: { active: built.skills.active, available: built.skills.available },
-        });
-        emitStep("skills", `skill(s) ativada(s): ${built.skills.active.map((s) => s.name).join(", ")}`);
-      }
-      {
-        const verdict = built.verdict as
-          | {
-              ok: boolean;
-              sources?: RagChunk[];
-              motivo?: string;
-              injection?: RagInjectionFinding[];
-              rerank?: { mode: "off" | "cross-encoder" | "llm"; ms?: number };
-              cacheHit?: "miss" | "exact" | "semantic";
-            }
-          | null;
-        if (verdict?.cacheHit) {
-          try {
-            ragCacheEvents.inc({ result: verdict.cacheHit });
-          } catch {
-            /* métrica opcional */
-          }
-        }
-        const filesLoaded = built.files.filter((f) => f.chars > 0).length;
-        const ragMsg =
-          verdict == null
-            ? "RAG não avaliado"
-            : verdict.ok
-              ? `RAG: contexto relevante encontrado (${verdict.sources?.length ?? 0} fonte(s))`
-              : `RAG: ${verdict.motivo ?? "sem contexto relevante"}`;
-        emitStep("rag", `${ragMsg}; ${filesLoaded} arquivo(s) de contexto persistente carregado(s)`);
-
-        // ---- Debug controlado de RAG: method (semantic/literal/hybrid) e score
-        // por fonte já existiam no retorno de retrieveContext mas nunca eram
-        // persistidos — uma degradação silenciosa pra busca literal (ex.:
-        // embedder de indexação incompatível com o de consulta) passava
-        // despercebida. Grava no audit trail já existente, sem infra nova.
-        if (verdict?.sources && verdict.sources.length > 0) {
-          logFullAuditEntry({
-            ts: new Date().toISOString(),
-            sessionId: String(session.id),
-            soulId: soul.id,
-            intention: "RAG: retrieval debug",
-            toolsCalled: [],
-            params: {
-              rerankMode: verdict.rerank?.mode ?? "off",
-              ...(verdict.rerank?.ms !== undefined ? { rerankMs: verdict.rerank.ms } : {}),
-              sources: verdict.sources.map((s) => ({
-                doc: s.doc,
-                path: s.path,
-                method: s.reranked ? "reranked" : s.method,
-                score: s.score,
-                ...(s.reranked ? { baseMethod: s.method } : {}),
-              })),
-            },
-          });
-        }
-        if (verdict?.rerank?.ms !== undefined) {
-          try {
-            ragRerankSeconds.observe({ mode: verdict.rerank.mode }, verdict.rerank.ms / 1000);
-          } catch {
-            /* métrica opcional */
-          }
-        }
-
-        // ---- Indirect prompt injection em conteúdo recuperado (RAG) ----
-        // O screening rodou dentro de retrieveContext; aqui registramos a origem
-        // (`retrieved_chunk`, distinta de `user_input`) no audit trail + métrica.
-        const ragInjection = verdict?.injection ?? [];
-        if (ragInjection.length > 0) {
-          const maxSev = maxFindingSeverity(ragInjection);
-          const excluded = ragInjection.filter((f) => f.excluded).length;
-          logger.warn(
-            `[prompt-injection] ${ragInjection.length} chunk(s) de RAG com padrão de injection (sev. máx ${maxSev}) na soul ${soul.id}`,
-          );
-          logFullAuditEntry({
-            ts: new Date().toISOString(),
-            sessionId: String(session.id),
-            soulId: soul.id,
-            intention: "ALERTA: possível prompt injection em conteúdo recuperado (RAG)",
-            toolsCalled: [],
-            params: {
-              source: "retrieved_chunk",
-              findings: ragInjection.map((f) => ({
-                doc: f.doc,
-                path: f.path,
-                severity: f.severity,
-                patterns: f.patterns,
-                excluded: f.excluded,
-              })),
-            },
-          });
-          promptInjectionAlerts.inc({ severity: maxSev, source: "retrieved_chunk" });
-          emitStep(
-            "seguranca",
-            `RAG: ${ragInjection.length} chunk(s) sinalizado(s) por prompt injection` +
-              (excluded > 0 ? `, ${excluded} descartado(s)` : ""),
-          );
-        }
-      }
-
       // route() sonda cada degrau (sem executar o prompt) e cai para o próximo se o
       // degrau local não responder; a execução real acontece uma única vez, abaixo,
       // no degrau vencedor.
