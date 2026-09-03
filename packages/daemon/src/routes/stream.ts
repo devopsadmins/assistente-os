@@ -270,15 +270,41 @@ export async function handleStream(
       //     em risco (não só até ela) — mantém keyword+valor pendentes juntos
       //     até o valor resolver, aí os dois saem sanitizados na MESMA chamada.
       //
-      // Garantia final: o corte nunca cai no meio de nenhuma sequência sem
-      // espaço do buffer, com margem extra de contexto antes dela (cobre
-      // JWT/DATABASE_URL/senha/token, com ou sem prefixo de palavra-chave); e
-      // nunca cai dentro de um bloco PEM a menos que já inclua o
-      // "-----END...-----" de fechamento por inteiro (cobre PRIVATE_KEY).
-      // Válvula de segurança: um stream patológico sem nenhum espaço força o
-      // corte aos 64KB pendentes, pra não bufferizar sem limite.
+      //  c) S1 da re-revisão final (rodada 2): a margem extra de (b)
+      //     (`wordStart - SANITIZE_LOOKBACK`) NÃO verificava se a posição
+      //     resultante estava, ela própria, dentro de uma sequência sem
+      //     espaço. Quando texto comum chega DEPOIS do segredo (>= ~128
+      //     chars), a palavra em risco passa a ser esse texto comum e recuar
+      //     128 chars a partir do início dela cai exatamente DENTRO do
+      //     segredo — o JWT/URL de banco/senha saía cru na SSE enquanto a
+      //     cópia persistida ficava redigida (divergência silenciosa de
+      //     auditoria). Corrigido arredondando o corte pra BAIXO até uma
+      //     fronteira de espaço de verdade e, aí sim, continuando a recuar
+      //     palavra a palavra enquanto o head a emitir terminar em uma
+      //     palavra-chave de padrão ("token:", "senha:", "Authorization:",
+      //     ...) — o que resolve (b) sem reabrir (a). Só arredondar pra
+      //     fronteira de espaço NÃO basta: reabre (b) pro caso "token: <JWT>".
+      //
+      // O que o código garante de fato (nem mais, nem menos):
+      //  1. o corte nunca cai no meio de uma sequência sem espaço de texto
+      //     comum — ele sempre pousa EM uma fronteira de espaço em branco;
+      //  2. o corte nunca separa uma palavra-chave de padrão do valor que a
+      //     segue (recuo palavra a palavra, limitado a 8 iterações pelo
+      //     `guard` — uma pilha de mais de 8 palavras-chave consecutivas
+      //     antes do valor para de recuar);
+      //  3. o corte nunca cai dentro de um bloco PEM aberto, a menos que o
+      //     "-----END...-----" de fechamento já esteja inteiro no buffer.
+      // O que ele NÃO garante: um stream patológico SEM NENHUM espaço em
+      // branco por mais de 64KB. Aí a válvula de segurança
+      // (SANITIZE_MAX_PENDING) força o corte pra não bufferizar sem limite, e
+      // nesse caso específico um segredo PODE, sim, sair cru na SSE. É uma
+      // troca deliberada (memória limitada > cobertura total nesse caso).
       const SANITIZE_LOOKBACK = 128;
       const SANITIZE_MAX_PENDING = 64 * 1024;
+      // palavras-chave que os padrões de DEFAULT_PATTERNS exigem ADJACENTES ao
+      // valor (GENERIC_TOKEN, GENERIC_PASSWORD, AWS_SECRET_KEY, ENV_VAR).
+      const SANITIZE_KEYWORD_TAIL =
+        /(?:token|bearer|authorization|password|passwd|pwd|senha|secret|api_key|credential|aws_secret_access_key|secret_key)['":\s]*$/i;
       let sanitizePending = "";
       const emitSanitizedToken = (chunk: string, flush = false): void => {
         sanitizePending += chunk;
@@ -287,17 +313,25 @@ export async function handleStream(
         // nunca corta no meio de QUALQUER sequência sem espaço (não só a
         // última) — recua pra ANTES do início dela, com uma margem extra de
         // SANITIZE_LOOKBACK chars pra manter um possível prefixo de
-        // palavra-chave ("token:", "senha:", ...) junto do valor.
+        // palavra-chave ("token:", "senha:", ...) junto do valor; e então
+        // arredonda esse recuo pra baixo até uma fronteira de espaço REAL
+        // (S1: a margem extra, sozinha, podia pousar dentro do segredo).
         if (cut > 0 && cut < sanitizePending.length) {
-          let ws = -1;
-          for (let i = cut - 1; i >= 0; i--) {
-            if (/\s/.test(sanitizePending[i]!)) {
-              ws = i;
-              break;
+          const lastWsBefore = (p: number): number => {
+            for (let i = p - 1; i >= 0; i--) {
+              if (/\s/.test(sanitizePending[i]!)) return i;
             }
-          }
-          const wordStart = ws + 1;
+            return -1;
+          };
+          const wordStart = lastWsBefore(cut) + 1;
           cut = Math.max(0, wordStart - SANITIZE_LOOKBACK);
+          // pousa EM uma fronteira de palavra, nunca no meio de uma
+          if (cut > 0) cut = lastWsBefore(cut) + 1;
+          // e nunca emite uma palavra-chave sem o valor que vem depois dela
+          let guard = 0;
+          while (cut > 0 && guard++ < 8 && SANITIZE_KEYWORD_TAIL.test(sanitizePending.slice(0, cut))) {
+            cut = lastWsBefore(cut - 1) + 1;
+          }
         }
 
         // nunca corta dentro de um bloco PEM cujo "-----END...-----" de

@@ -490,6 +490,141 @@ test("stream: R1 — token/JWT longo (400+ chars, sem espaço interno) transmiti
   }
 });
 
+test("stream: S1 — JWT longo SEGUIDO de mais de 128 chars de texto comum nunca vaza (exercita o corte no meio do stream)", async () => {
+  // As 4 rodadas anteriores de testes só cobriram segredo NO FIM da resposta,
+  // com trailer curto (< 128 chars) — nesse formato o corte ingênuo nunca
+  // passa do segredo e tudo sai num flush só (1 evento token), sem NUNCA
+  // exercitar a lógica de corte no meio do stream. Aqui o trailer tem > 128
+  // chars de propósito: o corte ingênuo AVANÇA pra dentro do texto comum e,
+  // sem o arredondamento pra fronteira de espaço, cairia dentro do JWT.
+  const jwtBody = `ey${"A".repeat(60)}.${"B".repeat(300)}.${"C".repeat(80)}`; // > 400 chars, sem nenhum espaço
+  const trailer =
+    " palavraxx e depois mais texto normal lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud.";
+  assert.ok(trailer.length > 128, "o trailer PRECISA ser maior que o lookback de 128 — é o ponto do teste");
+  const fullText = `Aqui esta o token: ${jwtBody}${trailer}`;
+  const CHUNK_SIZE = 30;
+  const chatChunks: object[] = [];
+  for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
+    chatChunks.push({ message: { content: fullText.slice(i, i + CHUNK_SIZE) } });
+  }
+  chatChunks.push({ done: true, prompt_eval_count: 5, eval_count: 5 });
+
+  const fake = await startFakeOllama({ chatChunks });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-jwt-tail@exemplo.com");
+      createSoul(home, "soul-stream-jwt-tail", { name: "soul-stream-jwt-tail", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-jwt-tail", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-jwt-tail/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "qual e o token de acesso?" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      const tokenEvents = events.filter((e) => e.type === "token") as Array<{ text: string }>;
+      assert.ok(tokenEvents.length > 1, `com trailer > 128 chars o corte no meio do stream TEM que acontecer (esperava mais de 1 evento token, veio ${tokenEvents.length})`);
+
+      // 1) nenhum evento token isolado pode conter pedaço reconhecível do JWT
+      for (const e of tokenEvents) {
+        assert.ok(!e.text.includes(jwtBody), `evento token não deveria conter o JWT completo: ${JSON.stringify(e.text.slice(0, 80))}`);
+        assert.ok(!e.text.includes("A".repeat(60)), `evento token não deveria conter a 1ª seção do JWT: ${JSON.stringify(e.text.slice(0, 80))}`);
+        assert.ok(!e.text.includes("B".repeat(60)), `evento token não deveria conter corpo do JWT: ${JSON.stringify(e.text.slice(0, 80))}`);
+        assert.ok(!e.text.includes("C".repeat(60)), `evento token não deveria conter a 3ª seção do JWT: ${JSON.stringify(e.text.slice(0, 80))}`);
+      }
+      // 2) nem a concatenação de TODOS eles (o que o cliente realmente vê)
+      const wireText = tokenEvents.map((e) => e.text).join("");
+      assert.ok(!wireText.includes(jwtBody), "o texto reconstruído da SSE não deveria conter o JWT");
+      assert.ok(!wireText.includes("B".repeat(60)), "o texto reconstruído da SSE não deveria conter corpo cru do JWT");
+      assert.ok(wireText.includes("[REDACTED_TOKEN]"), `esperava o marcador de redação no texto reconstruído: ${JSON.stringify(wireText.slice(0, 200))}`);
+      assert.ok(wireText.includes("palavraxx"), "o texto comum depois do segredo tem que chegar ao cliente normalmente");
+
+      // 3) o que saiu na SSE é o MESMO texto que ficou persistido (sem
+      //    divergência silenciosa entre o que o cliente viu e a auditoria)
+      const messagesRes = await fetch(`${base}/souls/soul-stream-jwt-tail/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
+      const assistantMsg = messages.find((m) => m.role === "assistant");
+      assert.ok(assistantMsg, "esperava a resposta do assistente gravada");
+      assert.ok(!assistantMsg!.content.includes(jwtBody), "a mensagem persistida não deveria conter o JWT");
+      assert.equal(wireText.trim(), assistantMsg!.content.trim());
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
+test("stream: S1 — DATABASE_URL (postgres://user:pass@host) seguida de texto comum nunca vaza na SSE", async () => {
+  // Classe de falha distinta da do JWT: quando o corte caía dentro do
+  // "postgres://...", NENHUM dos dois pedaços casava o regex de DATABASE_URL —
+  // ou seja, a redação não disparava de jeito nenhum no caminho ao vivo e a
+  // URL inteira, senha incluída, chegava crua ao cliente.
+  const dbUrl = "postgres://admin:SuperSecretPassword123@db.internal.example.com:5432/producao?sslmode=require";
+  const trailer =
+    " palavraxx e depois mais texto normal lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud.";
+  assert.ok(trailer.length > 128, "o trailer PRECISA ser maior que o lookback de 128");
+  const fullText = `Use esta url: ${dbUrl}${trailer}`;
+  const CHUNK_SIZE = 30;
+  const chatChunks: object[] = [];
+  for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
+    chatChunks.push({ message: { content: fullText.slice(i, i + CHUNK_SIZE) } });
+  }
+  chatChunks.push({ done: true, prompt_eval_count: 5, eval_count: 5 });
+
+  const fake = await startFakeOllama({ chatChunks });
+  const { home, cleanup } = await tempHome();
+  const daemon = await startDaemon({ port: 0, home, token: ADMIN_TOKEN });
+  try {
+    await withFakeOllama(fake, async () => {
+      const base = `http://127.0.0.1:${daemon.port}`;
+      const alice = await signup(base, "alice-stream-dburl@exemplo.com");
+      createSoul(home, "soul-stream-dburl", { name: "soul-stream-dburl", ownerAccountId: alice.accountId });
+      const headers = { authorization: `Bearer ${alice.token}` };
+      const threadId = await createThreadViaApi(base, "soul-stream-dburl", headers);
+
+      const res = await fetch(`${base}/souls/soul-stream-dburl/threads/${threadId}/messages/stream`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "qual e a url do banco?" }),
+      });
+      assert.equal(res.status, 200);
+
+      const events = await readAllSSEEvents(res);
+      const tokenEvents = events.filter((e) => e.type === "token") as Array<{ text: string }>;
+      assert.ok(tokenEvents.length > 1, `com trailer > 128 chars o corte no meio do stream TEM que acontecer (veio ${tokenEvents.length} evento(s))`);
+
+      for (const e of tokenEvents) {
+        assert.ok(!e.text.includes(dbUrl), `evento token não deveria conter a URL completa: ${JSON.stringify(e.text.slice(0, 80))}`);
+        assert.ok(!e.text.includes("SuperSecretPassword123"), `evento token não deveria conter a senha da URL: ${JSON.stringify(e.text.slice(0, 80))}`);
+        assert.ok(!e.text.includes("postgres://"), `evento token não deveria conter o esquema cru da URL: ${JSON.stringify(e.text.slice(0, 80))}`);
+      }
+      const wireText = tokenEvents.map((e) => e.text).join("");
+      assert.ok(!wireText.includes(dbUrl), "o texto reconstruído da SSE não deveria conter a URL do banco");
+      assert.ok(!wireText.includes("SuperSecretPassword123"), "o texto reconstruído da SSE não deveria conter a senha");
+      assert.ok(wireText.includes("[REDACTED_DB_URL]"), `esperava o marcador de redação no texto reconstruído: ${JSON.stringify(wireText.slice(0, 200))}`);
+      assert.ok(wireText.includes("palavraxx"), "o texto comum depois do segredo tem que chegar ao cliente normalmente");
+
+      const messagesRes = await fetch(`${base}/souls/soul-stream-dburl/threads/${threadId}/messages`, { headers });
+      const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
+      const assistantMsg = messages.find((m) => m.role === "assistant");
+      assert.ok(assistantMsg, "esperava a resposta do assistente gravada");
+      assert.ok(!assistantMsg!.content.includes("SuperSecretPassword123"), "a mensagem persistida não deveria conter a senha");
+      assert.equal(wireText.trim(), assistantMsg!.content.trim());
+    });
+  } finally {
+    await daemon.close();
+    await cleanup();
+    await fake.close();
+  }
+});
+
 test("stream: R2 — provider que só emite {done:true} (nenhum conteúdo real) não vira sucesso sintético '(sem resposta)'", async () => {
   const fake = await startFakeOllama({
     chatChunks: [{ done: true, prompt_eval_count: 3, eval_count: 0 }],
