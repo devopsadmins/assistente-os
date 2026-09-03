@@ -1,7 +1,15 @@
 // packages/core/src/test/threads.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createThread, listThreads, getThread, renameThread, deleteThread, touchThread } from "../threads.js";
+import {
+  createThread,
+  listThreads,
+  getThread,
+  renameThread,
+  deleteThread,
+  touchThread,
+  getThreadMessages,
+} from "../threads.js";
 import { createAccount } from "../accounts.js";
 import { isAssistenteOsError } from "../errors.js";
 import { createTestSchema } from "./pgTestHelper.js";
@@ -248,6 +256,110 @@ test("createThread: accountId inexistente rejeita com E_VALIDATION", async () =>
       () => createThread(testDb.pool, "fiscal", 999_999),
       (err: unknown) => isAssistenteOsError(err) && err.code === "E_VALIDATION",
     );
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("listThreads: accountId undefined (admin) vê threads de todas as contas e do operador", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const accountA = await createAccount(testDb.pool, "admin1@exemplo.com", "senha-forte-123");
+    const accountB = await createAccount(testDb.pool, "admin2@exemplo.com", "senha-forte-123");
+    const threadA = await createThread(testDb.pool, "fiscal", accountA.id, "da conta A");
+    const threadB = await createThread(testDb.pool, "fiscal", accountB.id, "da conta B");
+    const threadOp = await createThread(testDb.pool, "fiscal", null, "do operador");
+
+    const asAdmin = await listThreads(testDb.pool, "fiscal", undefined);
+    assert.deepEqual(
+      asAdmin.map((t) => t.id).sort((a, b) => a - b),
+      [threadA.id, threadB.id, threadOp.id].sort((a, b) => a - b),
+    );
+
+    // Contas continuam vendo só as próprias — sem regressão.
+    assert.equal((await listThreads(testDb.pool, "fiscal", accountA.id)).length, 1);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("getThread/renameThread/deleteThread: accountId undefined (admin) alcança qualquer thread", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "admin3@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", account.id, "da conta");
+
+    const found = await getThread(testDb.pool, thread.id, undefined);
+    assert.equal(found?.id, thread.id);
+
+    const renamed = await renameThread(testDb.pool, thread.id, undefined, "renomeada pelo admin");
+    assert.equal(renamed?.title, "renomeada pelo admin");
+
+    assert.equal(await deleteThread(testDb.pool, thread.id, undefined), true);
+    assert.equal(await getThread(testDb.pool, thread.id, undefined), null);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("getThreadMessages: devolve as mensagens da thread em ordem cronológica", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "msgs@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", account.id);
+
+    const { rows: sessionRows } = await testDb.pool.query(
+      "INSERT INTO sessions (soul, client_key, started_at) VALUES ($1, $2, now()) RETURNING id",
+      ["fiscal", "test-client"],
+    );
+    const sessionId = sessionRows[0].id;
+    await testDb.pool.query(
+      "INSERT INTO session_messages (session_id, soul, role, content, thread_id) VALUES ($1, $2, $3, $4, $5)",
+      [sessionId, "fiscal", "user", "primeira pergunta", thread.id],
+    );
+    await testDb.pool.query(
+      "INSERT INTO session_messages (session_id, soul, role, content, thread_id) VALUES ($1, $2, $3, $4, $5)",
+      [sessionId, "fiscal", "assistant", "primeira resposta", thread.id],
+    );
+
+    const messages = await getThreadMessages(testDb.pool, thread.id);
+    assert.equal(messages.length, 2);
+    assert.equal(messages[0]!.role, "user");
+    assert.equal(messages[0]!.content, "primeira pergunta");
+    assert.ok(Number.isInteger(messages[0]!.id) && messages[0]!.id > 0);
+    assert.equal(messages[1]!.role, "assistant");
+    assert.ok(messages[0]!.ts);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("getThreadMessages: thread sem mensagens devolve array vazio", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "nomsgs@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", account.id);
+    assert.deepEqual(await getThreadMessages(testDb.pool, thread.id), []);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("getThread/renameThread/deleteThread: soul informado rejeita thread de outra soul", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const account = await createAccount(testDb.pool, "soulcheck@exemplo.com", "senha-forte-123");
+    const thread = await createThread(testDb.pool, "fiscal", account.id, "da soul fiscal");
+
+    assert.equal(await getThread(testDb.pool, thread.id, account.id, "outra-soul"), null);
+    const foundWithCorrectSoul = await getThread(testDb.pool, thread.id, account.id, "fiscal");
+    assert.equal(foundWithCorrectSoul?.id, thread.id);
+    assert.equal(await renameThread(testDb.pool, thread.id, account.id, "tentativa", "outra-soul"), null);
+    assert.equal(await deleteThread(testDb.pool, thread.id, account.id, "outra-soul"), false);
+
+    // Sem soul informado (chamadas antigas), continua funcionando como antes.
+    const found = await getThread(testDb.pool, thread.id, account.id);
+    assert.equal(found?.id, thread.id);
   } finally {
     await testDb.cleanup();
   }
