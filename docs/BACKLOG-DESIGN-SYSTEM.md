@@ -38,6 +38,10 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS9 | Reformular a Global Constraint de `forwardRef` no spec do A1 | A1 (doc) | P3 | S | TODO | — |
 | DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | TODO | A2b-1 |
 | DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | TODO | A2b-1 |
+| DS12 | `ScrollArea`'s `tabIndex={0}` sem `role`/`aria-label` — região focável sem nome acessível | A2b-2 | P3 | S | TODO | A2b-2 |
+| DS13 | `MessageList` só usa `MutationObserver`; reflow puro sem mutação de DOM não dispara auto-follow | A2b-2 | P3 | M | TODO | A2b-2 |
+| DS14 | `StreamingText` não tem como sinalizar "stream terminou" — cursor pisca pra sempre | A2b-2 | P2 | S | TODO | A2b-2 |
+| DS15 | `MessageList`/`StreamingText` sem `aria-live`/`role="log"` — leitor de tela não é avisado de conteúdo novo | A2b-2 | P2 | M | TODO | A2b-2 |
 
 ---
 
@@ -132,6 +136,30 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 **Arquivos**: `packages/ui/src/lib/sanitize.ts`, `packages/ui/src/components/markdown.tsx`.
 **Relacionado**: A2b-1 (`docs/superpowers/plans/2026-09-02-design-system-content-components.md`).
 
+### DS12 — `ScrollArea`'s `tabIndex={0}` sem nome acessível  ·  P3
+**Objetivo**: o fix de `tabIndex={0}` (nesta branch) torna toda região rolável um tab stop de teclado, mas uma região já focável sem nome acessível é pior experiência de leitor de tela que uma região não-focável — não tem `role="region"`/`aria-label`, e `ScrollArea` não deixa quem consome optar por sair disso nem fornecer um rótulo (não espalha props extras no Viewport).
+**Estado atual (verificado pela revisão final do A2b-2)**: `ScrollAreaPrimitive.Viewport` em `scroll-area.tsx` recebe `tabIndex={0}` fixo, sem `role`/`aria-label` condicionais.
+**Aceitação**: prop opcional `viewportLabel?: string` em `ScrollArea` que emite `role="region" aria-label={viewportLabel}` no Viewport junto com o `tabIndex` já existente.
+**Arquivos**: `packages/ui/src/components/scroll-area.tsx`.
+
+### DS13 — `MessageList` não cobre reflow puro sem mutação de DOM  ·  P3
+**Objetivo**: o auto-follow de `MessageList` depende de `MutationObserver` (escolhido em vez de `ResizeObserver` especificamente porque o `jsdom` deste repo stuba o segundo como no-op no setup de teste — ver Tarefa 2). Isso deixa passar crescimento de conteúdo por reflow puro sem mutação de DOM (um avatar carregando tarde, troca de web-font se acomodando).
+**Estado atual (verificado pela revisão final do A2b-2)**: exposição real baixa hoje, já que o sanitizer do `Markdown` remove `<img>` inteiramente (DS11), mas vale rastrear.
+**Aceitação**: adicionar um `ResizeObserver` junto do `MutationObserver` já existente em `MessageList`, cobertura belt-and-braces, aceitando que a metade do `ResizeObserver` fica sem teste no `jsdom` (documentado como lacuna de ambiente de teste, não de produção).
+**Arquivos**: `packages/ui/src/components/message-list.tsx`.
+
+### DS14 — `StreamingText` sem sinal de "stream terminou"  ·  P2
+**Objetivo**: `StreamingText` não tem como sinalizar "o stream terminou" — seu cursor pisca pra sempre enquanto o componente estiver montado. Um consumidor `ThreadScreen` (spec B) vai ter que trocar `<StreamingText>` por `<Markdown>` na conclusão, o que remonta a subárvore e causa flicker visível.
+**Estado atual (verificado pela revisão final do A2b-2)**: `streaming-text.tsx` não tem prop de conclusão; o cursor (`.ds-streaming-caret`) é renderizado incondicionalmente enquanto o componente existir.
+**Aceitação**: prop opcional `done?: boolean` (default `false`) que esconde o cursor sem desmontar/remontar o conteúdo renderizado, deixando quem consome trocar uma prop em vez de trocar componentes.
+**Arquivos**: `packages/ui/src/components/streaming-text.tsx`.
+
+### DS15 — `MessageList`/`StreamingText` sem `aria-live`  ·  P2
+**Objetivo**: nem `MessageList` nem `StreamingText` anunciam conteúdo novo/em streaming pra leitor de tela (sem `role="log"`/`aria-live` em lugar nenhum desta fatia) — deliberadamente fora de escopo deste plano (bate com os não-objetivos declarados dele), mas vale uma linha rastreada já que o `ThreadScreen` da spec B é o próximo consumidor e vai expor a lacuna imediatamente pra usuários de leitor de tela acompanhando uma conversa ao vivo.
+**Estado atual (verificado pela revisão final do A2b-2)**: nenhum dos dois componentes usa `aria-live`/`role="log"`.
+**Aceitação**: decidir e implementar uma estratégia de região `aria-live` apropriada (provavelmente `polite` em `MessageList`, com cuidado pra não reanunciar a mensagem inteira crescendo a cada token) quando `ThreadScreen` for construído.
+**Arquivos**: `packages/ui/src/components/message-list.tsx`, `packages/ui/src/components/streaming-text.tsx`.
+
 ---
 
 ## Observação — não é item de backlog, é pra vigiar
@@ -153,3 +181,7 @@ nesses tempos — pode precisar reduzir escopo dos testes ou paralelizar menos.
 | 2026-09-02 | DS10 | Adicionado item tracking `CodeBlock` highlight + `Citation` interativa em `Markdown`. |
 | 2026-09-02 | DS10 | Estendido com achado de spoofing (revisão final do A2b-1): marcadores `[[n]]` sem checagem de fonte, a decidir no design deste item. |
 | 2026-09-02 | DS11 | Adicionado (revisão final do A2b-1): perda silenciosa de imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual. |
+| 2026-09-02 | DS12 | Adicionado (revisão final do A2b-2): `ScrollArea`'s `tabIndex={0}` sem `role`/`aria-label`, região focável sem nome acessível. |
+| 2026-09-02 | DS13 | Adicionado (revisão final do A2b-2): `MessageList` só cobre auto-follow via `MutationObserver`, reflow puro sem mutação de DOM escapa. |
+| 2026-09-02 | DS14 | Adicionado (revisão final do A2b-2): `StreamingText` sem prop `done` para sinalizar fim do stream sem remontar. |
+| 2026-09-02 | DS15 | Adicionado (revisão final do A2b-2): `MessageList`/`StreamingText` sem `aria-live`/`role="log"`, fora de escopo deliberado deste plano. |

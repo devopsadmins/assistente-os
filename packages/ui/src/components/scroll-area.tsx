@@ -14,7 +14,14 @@ export interface ScrollAreaProps extends React.ComponentPropsWithoutRef<typeof S
 export const ScrollArea = React.forwardRef<React.ElementRef<typeof ScrollAreaPrimitive.Root>, ScrollAreaProps>(
   ({ className, children, viewportRef, ...props }, ref) => (
     <ScrollAreaPrimitive.Root ref={ref} className={cn("relative overflow-hidden", className)} {...props}>
-      <ScrollAreaPrimitive.Viewport ref={viewportRef} className="h-full w-full rounded-[inherit]">
+      {/*
+        tabIndex makes the scrollable region itself keyboard-focusable so
+        arrow/Page Up/Page Down scrolling works without a mouse — Radix's
+        Viewport doesn't set this by default, and axe-core's
+        scrollable-region-focusable rule (WCAG 2.1.1/2.1.3) flags its
+        absence. Surfaced by MessageList's a11y test (task-2).
+      */}
+      <ScrollAreaPrimitive.Viewport ref={viewportRef} className="h-full w-full rounded-[inherit]" tabIndex={0}>
         {children}
       </ScrollAreaPrimitive.Viewport>
       <ScrollAreaPrimitive.Scrollbar
