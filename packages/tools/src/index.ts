@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
+import { runOpenCode, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -15,6 +15,7 @@ import { WorkItem, WorkItemExpand } from "azure-devops-node-api/interfaces/WorkI
 import { BuildDefinitionReference } from "azure-devops-node-api/interfaces/BuildInterfaces.js";
 import { Operation } from "azure-devops-node-api/interfaces/common/VSSInterfaces.js";
 import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
+import { BROWSER_TOOLS, BROWSER_HANDLERS } from "./browser/index.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
@@ -272,6 +273,7 @@ const TOOLS: Tool[] = [
     },
   },
   ...GUARDIAN_TOOLS,
+  ...BROWSER_TOOLS,
   {
     name: "sales_ingest_meeting",
     description: "Ingere uma transcrição de reunião/call (vtt/srt/txt), extrai decisões/ações/objeções via LLM local e persiste em souls/<soul>/sessoes/YYYY-MM-DD-meeting.md.",
@@ -478,98 +480,6 @@ const TOOLS: Tool[] = [
         reviewers: { type: "array", items: { type: "string" }, description: "Emails dos reviewers" },
       },
       required: ["soul", "project", "repositoryId", "sourceRefName", "targetRefName", "title"],
-    },
-  },
-  // Browser Automation Tools (Flow OS)
-  {
-    name: "browser_navigate",
-    description: "Abre uma URL em um navegador headless. Retorna título e status HTTP. Cada tarefa tem uma sessão isolada.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        url: { type: "string", description: "URL completa para navegar" },
-        taskId: { type: "string", description: "ID da tarefa (opcional, default: 'default')" },
-      },
-      required: ["url"],
-    },
-  },
-  {
-    name: "browser_click",
-    description: "Clica em um elemento CSS na página do navegador da tarefa.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        selector: { type: "string", description: "Seletor CSS do elemento" },
-        taskId: { type: "string", description: "ID da tarefa (opcional)" },
-      },
-      required: ["selector"],
-    },
-  },
-  {
-    name: "browser_extract_text",
-    description: "Extrai texto estruturado da página. Use 'table' ou 'tables' para extrair tabelas como JSON/Markdown. Use 'body' ou omita para texto completo.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        selector: { type: "string", description: "Seletor CSS ('body', 'table', 'tables', ou qualquer seletor)", default: "body" },
-        taskId: { type: "string", description: "ID da tarefa (opcional)" },
-      },
-    },
-  },
-  {
-    name: "browser_screenshot",
-    description: "Captura screenshot da página como PNG (base64). Útil para auditoria multimodal.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string", description: "ID da tarefa (opcional)" },
-        fullPage: { type: "boolean", description: "Screenshot da página inteira (default: false)", default: false },
-      },
-    },
-  },
-  {
-    name: "browser_close",
-    description: "Fecha a sessão do navegador da tarefa e libera recursos.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string", description: "ID da tarefa (opcional)" },
-      },
-    },
-  },
-  {
-    name: "browser_get_accessibility_tree",
-    description: "Retorna a árvore de acessibilidade (AccessibilityNode) da página ativa — navegação semântica resiliente a variações de CSS/IDs.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string", description: "ID da tarefa (opcional, default: 'default')" },
-      },
-    },
-  },
-  {
-    name: "browser_execute_fix",
-    description: "Injeta um trecho de JavaScript na página ativa para contornar um bloqueio (overlay, popup, z-index). Scripts bem-sucedidos ficam em cache e a estratégia é registrada em licoes.md da soul.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string", description: "ID da tarefa" },
-        scriptContent: { type: "string", description: "código JavaScript a executar no contexto da página" },
-        reason: { type: "string", description: "motivo/objetivo da injeção" },
-      },
-      required: ["taskId", "scriptContent", "reason"],
-    },
-  },
-  {
-    name: "browser_audited_screenshot",
-    description: "Captura screenshot da página ativa com timestamp, hash SHA-256 e metadata para auditoria/relatórios.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string", description: "ID da tarefa (opcional, default: 'default')" },
-        fullPage: { type: "boolean", description: "Screenshot da página inteira (default: false)", default: false },
-        metadata: { type: "object", description: "metadata adicional a anexar ao registro de auditoria" },
-      },
     },
   },
   // Worktree Management Tools
@@ -809,6 +719,7 @@ export type ToolHandler = (ctx: ToolContext, args: Record<string, unknown>) => P
 export const FAMILY_HANDLERS: Record<string, ToolHandler> = {};
 
 Object.assign(FAMILY_HANDLERS, GUARDIAN_HANDLERS);
+Object.assign(FAMILY_HANDLERS, BROWSER_HANDLERS);
 
 export class McpServer {
   private config;
@@ -1599,68 +1510,6 @@ export class McpServer {
           url: pr.url,
           isDraft: pr.isDraft,
         };
-      }
-
-      // Browser Automation Tools (Flow OS)
-      case "browser_navigate": {
-        const url = typeof args.url === "string" && args.url.trim() ? args.url.trim() : null;
-        if (!url) throw new Error("parâmetro url é obrigatório");
-        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        this.authorizeAgentSoul(name);
-        return await browserNavigate(url, taskId);
-      }
-
-      case "browser_click": {
-        const selector = typeof args.selector === "string" && args.selector.trim() ? args.selector.trim() : null;
-        if (!selector) throw new Error("parâmetro selector é obrigatório");
-        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        this.authorizeAgentSoul(name);
-        return await browserClick(selector, taskId);
-      }
-
-      case "browser_extract_text": {
-        const selector = typeof args.selector === "string" ? args.selector.trim() : "body";
-        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        this.authorizeAgentSoul(name);
-        return await browserExtractText(selector, taskId);
-      }
-
-      case "browser_screenshot": {
-        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        const fullPage = typeof args.fullPage === "boolean" ? args.fullPage : false;
-        this.authorizeAgentSoul(name);
-        return await browserScreenshot(taskId, fullPage);
-      }
-
-      case "browser_close": {
-        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        this.authorizeAgentSoul(name);
-        return await browserClose(taskId);
-      }
-
-      case "browser_get_accessibility_tree": {
-        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        this.authorizeAgentSoul(name);
-        return await getAccessibilityTree(taskId);
-      }
-
-      case "browser_execute_fix": {
-        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
-        const scriptContent = typeof args.scriptContent === "string" && args.scriptContent.trim() ? args.scriptContent.trim() : null;
-        const reason = typeof args.reason === "string" && args.reason.trim() ? args.reason.trim() : null;
-        if (!taskId || !scriptContent || !reason) {
-          throw new Error("parâmetros taskId, scriptContent e reason são obrigatórios");
-        }
-        this.authorizeAgentSoul(name);
-        return await executeDynamicFix(taskId, scriptContent, reason);
-      }
-
-      case "browser_audited_screenshot": {
-        const taskId = typeof args.taskId === "string" ? args.taskId.trim() : "default";
-        const fullPage = typeof args.fullPage === "boolean" ? args.fullPage : false;
-        const metadata = args.metadata && typeof args.metadata === "object" ? args.metadata as Record<string, unknown> : undefined;
-        this.authorizeAgentSoul(name);
-        return await captureAuditedScreenshot(taskId, metadata, fullPage);
       }
 
       // Worktree Management Tools

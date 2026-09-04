@@ -769,3 +769,18 @@ test("mcp: skill_list/skill_create/mission_run rejeitam soul id inválido (path 
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("browser_navigate: tools/list inclui a família browser_* (smoke — sem execução real de browser)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 240, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    const names = tools.map((t) => t.name);
+    for (const n of ["browser_navigate", "browser_click", "browser_extract_text", "browser_screenshot", "browser_close", "browser_get_accessibility_tree", "browser_execute_fix", "browser_audited_screenshot"]) {
+      assert.ok(names.includes(n), `tools/list deveria incluir ${n}`);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
