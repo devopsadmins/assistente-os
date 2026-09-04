@@ -495,8 +495,8 @@ export async function auditExecution(input: AuditExecutionInput): Promise<AuditE
       const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
       content = data.choices?.[0]?.message?.content || "{}";
     } else {
-      const ollamaUrl = process.env.OLLAMA_URL || config.ollamaUrl;
-      const chatModel = process.env.OLLAMA_CHAT_MODEL || config.ollamaChatModel;
+      const ollamaUrl = config.ollamaUrl;
+      const chatModel = config.ollamaChatModel;
       const resp = await fetch(`${ollamaUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
