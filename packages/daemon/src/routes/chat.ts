@@ -51,6 +51,7 @@ import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragReran
 
 export { ollamaChatStream, preparePromptContext, type ExecUsage, type PreparedPromptContext, type PreparePromptContextResult } from "../promptPipeline.js";
 import { ollamaChat, handleChatDegraded, preparePromptContext, type ExecUsage } from "../promptPipeline.js";
+import { handleChatBuffer } from "./chat/buffer.js";
 
 /** Rotas de execução de prompt: GET /souls/:id/buffer, POST /souls/:id/chat, GET /souls/:id/langgraph/status|history */
 export async function handleChat(
@@ -62,27 +63,7 @@ export async function handleChat(
 ): Promise<boolean> {
   const { home, run, hub } = context;
 
-  const bufferMatch = path.match(/^\/souls\/([^/]+)\/buffer$/);
-  if (bufferMatch && req.method === "GET") {
-    const soul = getSoul(home, decodeURIComponent(bufferMatch[1]!));
-    if (!soul) {
-      sendJson(res, 404, { error: "soul não encontrada" });
-      return true;
-    }
-    const config = loadConfig({ home });
-    const prompt = url.searchParams.get("prompt") ?? "";
-    const built = await buildPrompt({ home, soul, prompt, config, withRag: prompt.trim().length > 0 });
-    sendJson(res, 200, {
-      soul: soul.id,
-      builtAt: new Date().toISOString(),
-      files: built.files,
-      contextChars: built.contextChars,
-      tokenEstimate: Math.ceil(built.contextChars / 4),
-      ragVerdict: built.verdict,
-      systemPrompt: built.fullPrompt,
-    });
-    return true;
-  }
+  if (await handleChatBuffer(req, res, url, path, context)) return true;
 
   const chatMatch = path.match(/^\/souls\/([^/]+)\/chat$/);
   if (chatMatch && req.method === "POST") {
