@@ -39,38 +39,26 @@ if (typeof window !== "undefined") {
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
   }
+}
 
-  // Work around jsdom AbortSignal fetch validation bug
-  // jsdom's fetch validates AbortSignal but doesn't properly recognize signals from jsdom's own AbortController
-  // This is a known issue in jsdom. We work around it by using Node.js's global AbortController/AbortSignal
-  try {
-    if (typeof globalThis.AbortController !== "undefined") {
-      // Replace jsdom's AbortController/Signal with Node.js versions for compatibility with fetch
-      const NodeAbortController = globalThis.AbortController;
-      const NodeAbortSignal = globalThis.AbortSignal;
-
-      Object.defineProperty(window, "AbortController", {
-        value: NodeAbortController,
-        configurable: true,
-        writable: true,
-      });
-
-      Object.defineProperty(window, "AbortSignal", {
-        value: NodeAbortSignal,
-        configurable: true,
-        writable: true,
-      });
-
-      // Also replace fetch to use Node.js fetch which properly handles Node.js AbortSignal
-      Object.defineProperty(window, "fetch", {
-        value: globalThis.fetch,
-        configurable: true,
-        writable: true,
-      });
-    }
-  } catch (e) {
-    // If setup fails, continue with default jsdom behavior
-  }
+// jsdom's own window.fetch is a lightweight shim that lazily requires its
+// OWN private bundled copy of undici and validates `signal` against THAT
+// module's internal AbortSignal class — not the ambient global one. So
+// literally any AbortSignal (even a bare `AbortSignal.timeout(...)`, no
+// AbortController involved) fails with "Expected signal to be an instance
+// of AbortSignal" under vitest's jsdom environment. Replacing fetch/
+// Headers/Request/Response with the real `undici` package's exports fixes
+// this: undici's own fetch validates against undici's own AbortSignal,
+// which the ambient global AbortController's `.signal` genuinely is an
+// instance of (confirmed empirically: `new AbortController().signal
+// instanceof AbortSignal` is true against the global class — the mismatch
+// is only inside jsdom's private fetch shim, not the ambient realm).
+if (typeof window !== "undefined") {
+  const undici = await import("undici");
+  globalThis.fetch = undici.fetch as unknown as typeof fetch;
+  globalThis.Headers = undici.Headers as unknown as typeof Headers;
+  globalThis.Request = undici.Request as unknown as typeof Request;
+  globalThis.Response = undici.Response as unknown as typeof Response;
 }
 
 afterEach(() => {

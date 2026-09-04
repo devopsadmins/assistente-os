@@ -3,7 +3,12 @@ import { getThreadMessages, type ApiClientConfig } from "../api/client";
 import { streamThreadMessage, type StreamEvent } from "../api/stream";
 
 export type DisplayMessage =
-  | { kind: "persisted"; id: number; role: "user" | "assistant"; content: string }
+  // `id` is a real server row id for assistant turns (`done.messageId`),
+  // but the user's own row id is never sent back over SSE — only its
+  // local id is available once its `pending` entry graduates to
+  // `persisted` on `done`. Consumers only use `id` as a React `key`, so
+  // `number | string` costs nothing downstream.
+  | { kind: "persisted"; id: number | string; role: "user" | "assistant"; content: string }
   | { kind: "streaming"; id: string; role: "assistant"; chunks: string[] }
   | { kind: "pending"; id: string; role: "user"; content: string }
   | { kind: "error"; id: string; message: string };
@@ -28,7 +33,13 @@ export function useThreadStream(config: ApiClientConfig, soulId: string, threadI
     let cancelled = false;
     void getThreadMessages(config, soulId, threadId).then((history) => {
       if (cancelled) return;
-      setMessages(history.map((m) => ({ kind: "persisted" as const, id: m.id, role: m.role, content: m.content })));
+      // If send() already started before this (mount-time) history load
+      // resolved, don't clobber what it already put on screen — a slow
+      // initial GET racing a fast first message would otherwise wipe out
+      // the in-flight/just-finished turn the instant it resolves.
+      setMessages((prev) =>
+        prev.length > 0 ? prev : history.map((m) => ({ kind: "persisted" as const, id: m.id, role: m.role, content: m.content })),
+      );
     });
     return () => {
       cancelled = true;
@@ -58,11 +69,15 @@ export function useThreadStream(config: ApiClientConfig, soulId: string, threadI
               );
             } else if (event.type === "done") {
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === streamId && m.kind === "streaming"
-                    ? { kind: "persisted" as const, id: event.messageId, role: "assistant" as const, content: m.chunks.join("") }
-                    : m,
-                ),
+                prev.map((m) => {
+                  if (m.id === streamId && m.kind === "streaming") {
+                    return { kind: "persisted" as const, id: event.messageId, role: "assistant" as const, content: m.chunks.join("") };
+                  }
+                  if (m.id === userId && m.kind === "pending") {
+                    return { kind: "persisted" as const, id: userId, role: "user" as const, content: m.content };
+                  }
+                  return m;
+                }),
               );
             } else if (event.type === "error") {
               setMessages((prev) => prev.map((m) => (m.id === streamId ? { kind: "error" as const, id: streamId, message: event.message } : m)));
