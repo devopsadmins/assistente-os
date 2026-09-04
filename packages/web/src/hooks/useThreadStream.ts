@@ -33,13 +33,20 @@ export function useThreadStream(config: ApiClientConfig, soulId: string, threadI
     let cancelled = false;
     void getThreadMessages(config, soulId, threadId).then((history) => {
       if (cancelled) return;
-      // If send() already started before this (mount-time) history load
-      // resolved, don't clobber what it already put on screen — a slow
-      // initial GET racing a fast first message would otherwise wipe out
-      // the in-flight/just-finished turn the instant it resolves.
-      setMessages((prev) =>
-        prev.length > 0 ? prev : history.map((m) => ({ kind: "persisted" as const, id: m.id, role: m.role, content: m.content })),
-      );
+      // Merge, never replace: `send()` may already have added local
+      // (pending/streaming/persisted) messages by the time this
+      // mount-time GET resolves — a `prev.length > 0` guard would treat
+      // that as "history already loaded" and silently drop a thread's
+      // real prior messages the instant a user sends a fast follow-up
+      // before the GET returns. Prepending keeps chronological order
+      // regardless of which resolves first: if history wins the race,
+      // `prev` is still `[]` here and this is a no-op difference; if
+      // send() wins, its local entries are correctly appended after the
+      // real history instead of being clobbered by it.
+      setMessages((prev) => [
+        ...history.map((m) => ({ kind: "persisted" as const, id: m.id, role: m.role, content: m.content })),
+        ...prev,
+      ]);
     });
     return () => {
       cancelled = true;

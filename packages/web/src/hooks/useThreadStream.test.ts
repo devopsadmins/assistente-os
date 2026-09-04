@@ -88,4 +88,40 @@ describe("useThreadStream", () => {
     const assistantMessage = result.current.messages[1];
     expect(assistantMessage).toMatchObject({ kind: "error", message: "provider falhou" });
   });
+
+  it("mantém o histórico real da thread mesmo quando send() vence a corrida contra o GET de montagem", async () => {
+    daemon = await startFakeDaemon((req, res) => {
+      if (req.method === "GET" && req.url === "/souls/soul-a/threads/3/messages") {
+        // Atraso deliberado pra garantir que send() vença a corrida.
+        setTimeout(() => {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify([{ id: 1, role: "user", content: "mensagem antiga", ts: "2026-01-01T00:00:00.000Z" }]));
+        }, 50);
+        return;
+      }
+      if (req.method === "POST" && req.url === "/souls/soul-a/threads/3/messages/stream") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write('data: {"type":"token","text":"nova"}\n\n');
+        res.write('data: {"type":"done","messageId":9,"usage":{"promptTokens":1,"completionTokens":1,"source":"provider"}}\n\n');
+        res.end();
+        return;
+      }
+      res.writeHead(404, {});
+      res.end();
+    });
+    const config: ApiClientConfig = { baseUrl: daemon.url, token: "dev-token" };
+    const { result } = renderHook(() => useThreadStream(config, "soul-a", 3));
+
+    await act(async () => {
+      await result.current.send("mensagem nova");
+    });
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+
+    expect(result.current.messages).toMatchObject([
+      { kind: "persisted", role: "user", content: "mensagem antiga" },
+      { kind: "persisted", role: "user", content: "mensagem nova" },
+      { kind: "persisted", role: "assistant", content: "nova" },
+    ]);
+  });
 });
