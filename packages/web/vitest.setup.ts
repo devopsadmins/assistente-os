@@ -39,6 +39,38 @@ if (typeof window !== "undefined") {
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
   }
+
+  // Work around jsdom AbortSignal fetch validation bug
+  // jsdom's fetch validates AbortSignal but doesn't properly recognize signals from jsdom's own AbortController
+  // This is a known issue in jsdom. We work around it by using Node.js's global AbortController/AbortSignal
+  try {
+    if (typeof globalThis.AbortController !== "undefined") {
+      // Replace jsdom's AbortController/Signal with Node.js versions for compatibility with fetch
+      const NodeAbortController = globalThis.AbortController;
+      const NodeAbortSignal = globalThis.AbortSignal;
+
+      Object.defineProperty(window, "AbortController", {
+        value: NodeAbortController,
+        configurable: true,
+        writable: true,
+      });
+
+      Object.defineProperty(window, "AbortSignal", {
+        value: NodeAbortSignal,
+        configurable: true,
+        writable: true,
+      });
+
+      // Also replace fetch to use Node.js fetch which properly handles Node.js AbortSignal
+      Object.defineProperty(window, "fetch", {
+        value: globalThis.fetch,
+        configurable: true,
+        writable: true,
+      });
+    }
+  } catch (e) {
+    // If setup fails, continue with default jsdom behavior
+  }
 }
 
 afterEach(() => {
