@@ -784,3 +784,18 @@ test("browser_navigate: tools/list inclui a família browser_* (smoke — sem ex
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("ado_list_projects: tools/list inclui a família ado_* (smoke — sem execução real de Azure DevOps)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 250, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    const names = tools.map((t) => t.name);
+    for (const n of ["ado_list_projects", "ado_list_repositories", "ado_list_work_items", "ado_create_work_item", "ado_get_work_item", "ado_update_work_item", "ado_list_pipelines", "ado_run_pipeline", "ado_list_pull_requests", "ado_create_pull_request"]) {
+      assert.ok(names.includes(n), `tools/list deveria incluir ${n}`);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
