@@ -799,3 +799,61 @@ test("ado_list_projects: tools/list inclui a família ado_* (smoke — sem execu
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("worktree_create: tools/list inclui a ferramenta (smoke — sem execução real de git)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 260, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    const names = tools.map((t) => t.name);
+    assert.ok(names.includes("worktree_create"), "worktree_create deveria estar em tools/list");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("worktree_merge_locally: tools/list inclui a ferramenta (smoke — sem execução real de git)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 261, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    const names = tools.map((t) => t.name);
+    assert.ok(names.includes("worktree_merge_locally"), "worktree_merge_locally deveria estar em tools/list");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("worktree_destroy: tools/list inclui a ferramenta (smoke — sem execução real de git)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 262, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    const names = tools.map((t) => t.name);
+    assert.ok(names.includes("worktree_destroy"), "worktree_destroy deveria estar em tools/list");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mission_list: tools/list inclui a ferramenta e responde (smoke — sem execução real)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 263, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    const names = tools.map((t) => t.name);
+    assert.ok(names.includes("mission_list"), "mission_list deveria estar em tools/list");
+
+    const ml = await server.handleMessage({
+      jsonrpc: "2.0", id: 264, method: "tools/call", params: { name: "mission_list", arguments: {} },
+    });
+    const missions = JSON.parse((ml?.result as { content?: { text: string }[] }).content?.[0]?.text ?? "{}") as { missions: unknown[] };
+    assert.ok(Array.isArray(missions.missions), "mission_list deveria retornar um array de missões");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

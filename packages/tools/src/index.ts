@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoOrg, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
+import { runOpenCode, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, setupEnvironment } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -11,6 +11,7 @@ import { EOL, tmpdir } from "node:os";
 import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
 import { BROWSER_TOOLS, BROWSER_HANDLERS } from "./browser/index.js";
 import { ADO_TOOLS, ADO_HANDLERS } from "./ado/index.js";
+import { WORKTREE_TOOLS, WORKTREE_HANDLERS } from "./worktree/index.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
@@ -333,67 +334,7 @@ const TOOLS: Tool[] = [
     },
   },
   ...ADO_TOOLS,
-  // Worktree Management Tools
-  {
-    name: "worktree_create",
-    description: "Cria worktree isolada para tarefa agêntica paralela.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        taskId: { type: "string", description: "id da tarefa" },
-        baseBranch: { type: "string", description: "branch base (default: main)", default: "main" },
-      },
-      required: ["soul", "taskId"],
-    },
-  },
-  {
-    name: "worktree_merge_locally",
-    description: "Valida testes e faz merge local da worktree na branch alvo.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        taskId: { type: "string", description: "id da tarefa" },
-        targetBranch: { type: "string", description: "branch alvo (default: main)", default: "main" },
-      },
-      required: ["soul", "taskId"],
-    },
-  },
-  {
-    name: "worktree_destroy",
-    description: "Destrói worktree e limpa referências git.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        taskId: { type: "string", description: "id da tarefa" },
-      },
-      required: ["soul", "taskId"],
-    },
-  },
-  {
-    name: "worktree_list",
-    description: "Lista as worktrees de tarefa ativas (branch/HEAD reais via git worktree list).",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "mission_list",
-    description: "Lista as missões compostas do Mission Runner (ORCA) — id, modo (headless/guarded/full) e nº de etapas.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "mission_run",
-    description: "Executa uma missão composta do Mission Runner. Efeito externo (browser/agenda/ingest) — L3.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        mission_id: { type: "string", description: "id da missão (ver mission_list)" },
-        soul: { type: "string", description: "soul para sobrescrever a das etapas (opcional)" },
-      },
-      required: ["mission_id"],
-    },
-  },
+  ...WORKTREE_TOOLS,
   {
     name: "skill_list",
     description:
@@ -572,6 +513,7 @@ export const FAMILY_HANDLERS: Record<string, ToolHandler> = {};
 Object.assign(FAMILY_HANDLERS, GUARDIAN_HANDLERS);
 Object.assign(FAMILY_HANDLERS, BROWSER_HANDLERS);
 Object.assign(FAMILY_HANDLERS, ADO_HANDLERS);
+Object.assign(FAMILY_HANDLERS, WORKTREE_HANDLERS);
 
 export class McpServer {
   private config;
@@ -1057,45 +999,6 @@ export class McpServer {
         return { items: await getAgendaItems(pool, status, scopeSoul) };
       }
 
-      // Worktree Management Tools
-      case "worktree_create": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
-        const baseBranch = typeof args.baseBranch === "string" && args.baseBranch.trim() ? args.baseBranch.trim() : "main";
-        if (!taskId) throw new Error("parâmetro taskId é obrigatório");
-        return await createWorktree(taskId, baseBranch);
-      }
-
-      case "worktree_merge_locally": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
-        const targetBranch = typeof args.targetBranch === "string" && args.targetBranch.trim() ? args.targetBranch.trim() : "main";
-        if (!taskId) throw new Error("parâmetro taskId é obrigatório");
-        return await mergeLocally(taskId, targetBranch);
-      }
-
-      case "worktree_destroy": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
-        if (!taskId) throw new Error("parâmetro taskId é obrigatório");
-        await destroyWorktree(taskId);
-        return { ok: true };
-      }
-
-      case "worktree_list": {
-        return { worktrees: await listWorktrees() };
-      }
-
-      case "mission_list": {
-        return { missions: listMissions() };
-      }
-
       case "skill_list": {
         const soulId =
           (typeof args.soul === "string" && args.soul.trim()) || process.env.AGENT_SOUL_ID || "main";
@@ -1161,15 +1064,6 @@ export class McpServer {
         const r = writeSkillFile(this.config.home, scope, scope === "soul" ? soulId : undefined, fm, body);
         if (!r.ok) throw new Error(`skill_create: ${r.code} — ${r.reason}`);
         return { dry_run: false, created: true, path: r.path, plan_hash: planHash };
-      }
-
-      case "mission_run": {
-        this.authorizeAgentSoul(name); // efeito externo: L3 pela política da soul chamadora
-        const missionId = typeof args.mission_id === "string" && args.mission_id.trim() ? args.mission_id.trim() : null;
-        if (!missionId) throw new Error("parâmetro mission_id é obrigatório");
-        const soul = typeof args.soul === "string" && args.soul.trim() ? args.soul.trim() : undefined;
-        if (soul !== undefined && !isValidSoulId(soul)) throw new Error(`mission_run: soul inválida: ${soul}`);
-        return await runMission(missionId, { soulOverride: soul });
       }
 
       case "soul_create": {
