@@ -141,3 +141,16 @@ test("has no a11y violations once the jump-to-latest button is visible", async (
   viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
   await expectNoA11yViolations(container);
 });
+
+// DS15: without role="log"/aria-live, a screen reader is never told a new
+// message arrived — the transcript grows silently under it.
+test("DS15: content region is announced as a log (role=log, aria-live=polite)", () => {
+  const { container } = render(
+    <MessageList>
+      <div>msg 1</div>
+    </MessageList>,
+  );
+  const log = screen.getByRole("log");
+  expect(log).toHaveAttribute("aria-live", "polite");
+  expect(container.querySelector('[role="log"]')?.textContent).toContain("msg 1");
+});

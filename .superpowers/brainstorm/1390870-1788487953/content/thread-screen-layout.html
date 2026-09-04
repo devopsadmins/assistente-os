@@ -1,0 +1,52 @@
+<h2>ThreadScreen — qual layout?</h2>
+<p class="subtitle">Primeira fatia: só essa tela existe (sem AuthScreen/SoulListScreen ainda). Qual estrutura faz mais sentido pra ver o streaming funcionando?</p>
+
+<div class="options">
+  <div class="option" data-choice="sidebar" onclick="toggleSelect(this)">
+    <div class="content">
+      <h3>A — Sidebar clássica</h3>
+      <p>Lista de threads sempre visível à esquerda, área de chat à direita. Padrão Slack/ChatGPT.</p>
+      <div class="mockup">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body">
+          <div class="mock-nav">assistant-os</div>
+          <div style="display:flex; min-height:280px;">
+            <div class="mock-sidebar" style="width:180px; display:flex; flex-direction:column; gap:6px;">
+              <button class="mock-button" style="width:100%;">+ Nova thread</button>
+              <div class="placeholder" style="padding:8px; background:rgba(255,255,255,0.08); border-radius:6px;">Dúvida sobre NF-e</div>
+              <div class="placeholder" style="padding:8px; font-weight:600;">Onboarding Dimastec</div>
+              <div class="placeholder" style="padding:8px; background:rgba(255,255,255,0.08); border-radius:6px;">Config router</div>
+            </div>
+            <div class="mock-content" style="flex:1; display:flex; flex-direction:column; justify-content:flex-end; gap:8px;">
+              <div style="align-self:flex-end; max-width:70%; background:rgba(100,150,255,0.25); padding:8px 12px; border-radius:10px;">como configuro o tier local?</div>
+              <div style="align-self:flex-start; max-width:70%; background:rgba(255,255,255,0.10); padding:8px 12px; border-radius:10px;">Pra ativar o tier local você precisa▊</div>
+              <input class="mock-input" placeholder="Escreva uma mensagem..." style="margin-top:8px;">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="focused" onclick="toggleSelect(this)">
+    <div class="content">
+      <h3>B — Foco único, sem sidebar</h3>
+      <p>Um seletor de thread no topo (dropdown/botão), coluna central concentrada na conversa. Menos escopo pra construir agora.</p>
+      <div class="mockup">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Thread: Onboarding Dimastec ▾ &nbsp; <span style="opacity:.7">+ Nova</span></div>
+          <div style="min-height:280px; display:flex; flex-direction:column; align-items:center;">
+            <div style="width:80%; flex:1; display:flex; flex-direction:column; justify-content:flex-end; gap:8px;">
+              <div style="align-self:flex-end; max-width:70%; background:rgba(100,150,255,0.25); padding:8px 12px; border-radius:10px;">como configuro o tier local?</div>
+              <div style="align-self:flex-start; max-width:70%; background:rgba(255,255,255,0.10); padding:8px 12px; border-radius:10px;">Pra ativar o tier local você precisa▊</div>
+              <input class="mock-input" placeholder="Escreva uma mensagem..." style="margin-top:8px; width:100%;">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Em ambos, a bolha do assistente usa o <code>StreamingText</code> já pronto (cursor piscando ▊ enquanto token a token chega) dentro do <code>MessageList</code> com auto-scroll.</p>

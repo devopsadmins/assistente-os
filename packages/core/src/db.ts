@@ -42,6 +42,23 @@ export async function closePool(databaseUrl?: string): Promise<void> {
   }
 }
 
+/**
+ * SPEC-HR1: sonda rápida e barata pra decidir degradar pra Markdown-only sem
+ * esperar o `connectionTimeoutMillis` cheio do pool (5s) — uma query trivial
+ * com corrida contra um timer próprio, bem mais curto.
+ */
+export async function isDbHealthy(pool: Pool, timeoutMs = 1500): Promise<boolean> {
+  try {
+    await Promise.race([
+      pool.query("SELECT 1"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("db health probe timeout")), timeoutMs)),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Roda um SELECT/INSERT/UPDATE parametrizado no pool. Atalho fino sobre pool.query. */
 export function query<T extends QueryResultRow = QueryResultRow>(
   pool: Pool,

@@ -113,3 +113,59 @@ test("ollamaChatStream: timeout devolve timedOut=true", async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("BUG-01: signal.abort() derruba a conexão de verdade — o servidor vê o socket fechar, não fica preso gerando sozinho", async () => {
+  // Simula o watchdog externo do /stream vencendo a corrida (Promise.race)
+  // contra ollamaChatStream: o "provider" (fake Ollama) nunca teria terminado
+  // sozinho (fica gerando pra sempre, como um llama-server -np 1 lento de
+  // verdade) — sem o signal, essa conexão ficava presa no ar mesmo depois do
+  // /stream já ter desistido e respondido ao cliente.
+  let serverSawClose = false;
+  const server = createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/x-ndjson" });
+    res.write(JSON.stringify({ message: { content: "primeiro token" } }) + "\n");
+    req.on("close", () => {
+      serverSawClose = true;
+    });
+    // nunca chama res.end() — como um provider preso gerando pra sempre.
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const addr = server.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
+  try {
+    const controller = new AbortController();
+    const tokens: string[] = [];
+    const promise = ollamaChatStream(
+      `http://127.0.0.1:${port}`,
+      { model: "x", messages: [] },
+      20_000, // timeout interno bem maior que o teste — só o abort deve resolver
+      (t) => tokens.push(t),
+      controller.signal,
+    );
+
+    // Espera o primeiro token chegar (prova que a conexão está de fato em
+    // andamento) antes de simular o watchdog desistindo.
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(tokens, ["primeiro token"]);
+
+    controller.abort();
+    const result = await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("abort() não resolveu a promise — a chamada ficou presa")), 2000)),
+    ]);
+    assert.equal(result.timedOut, true);
+    assert.notEqual(result.code, 0);
+
+    await new Promise((r) => setTimeout(r, 100)); // dá tempo do "close" do lado do servidor propagar
+    assert.equal(serverSawClose, true, "o servidor deveria ver a conexão fechar — não pode ficar gerando pra ninguém");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("BUG-01: signal já abortado antes de iniciar nunca chega a conectar", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const result = await ollamaChatStream("http://127.0.0.1:1", { model: "x", messages: [] }, 5000, () => {}, controller.signal);
+  assert.equal(result.timedOut, true);
+});

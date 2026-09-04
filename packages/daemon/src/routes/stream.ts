@@ -8,6 +8,7 @@ import {
   getThreadMessages,
   touchThread,
   sanitizeLLMResponse,
+  purgeCredentials,
   recordCostCall,
   recordExecution,
   recordRouterSelection,
@@ -385,6 +386,11 @@ export async function handleStream(
         if (head) writeSSEEvent(res, { type: "token", text: head });
       };
 
+      // BUG-01: se o watchdog vencer a corrida abaixo, sem isto a chamada ao
+      // Ollama continuaria rodando abandonada — presa no único slot
+      // (`-np 1`) até ele mesmo desistir sozinho, minutos depois, bloqueando
+      // qualquer request novo nesse meio tempo.
+      const ollamaAbort = new AbortController();
       const result = await Promise.race([
         ollamaChatStream(
           baseUrl,
@@ -397,9 +403,11 @@ export async function handleStream(
           },
           300_000,
           (token) => emitSanitizedToken(token),
+          ollamaAbort.signal,
         ),
         watchdog.promise,
       ]);
+      ollamaAbort.abort(); // no-op se ollamaChatStream já resolveu sozinha
       emitSanitizedToken("", true); // flush do que sobrou no buffer de lookback
       stdout = result.stdout;
       code = result.code;
@@ -545,6 +553,11 @@ export async function handleStream(
     watchdog.cancel();
     stopHeartbeat();
     res.end();
+    // SPEC-HR2: sanitizeLLMResponse (acima) guarda segredo detectado no
+    // temp-vault sob taskId=session.id — nada lê esse valor de volta, então
+    // purga aqui garante que não fica em memória além do necessário, mesmo
+    // em timeout/erro (este finally roda sempre).
+    purgeCredentials(String(session.id));
   }
 
   return true;

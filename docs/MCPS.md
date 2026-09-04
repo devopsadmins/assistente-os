@@ -4,12 +4,12 @@ Servidores MCP configurados no `opencode.json` global (`~/.config/opencode/openc
 
 ## assistente-os (local)
 
-Exposição do kernel via MCP sobre stdio (`packages/tools`). **56 tools**, todas
+Exposição do kernel via MCP sobre stdio (`packages/tools`). **59 tools**, todas
 protegidas por Zero Trust (só disponíveis para uma soul se estiverem em
 `DEFAULT_ALLOWED_TOOLS` ou no `agent.permissions.tools` do `config.json` da soul)
 e classificadas por nível de risco L1/L2/L3 em `packages/core/src/policy.ts`.
 
-A lista completa e categorizada vive no [README](../README.md#mcp-tools-56-tools)
+A lista completa e categorizada vive no [README](../README.md#mcp-tools-59-tools)
 (fonte da verdade). Resumo por família:
 
 | Família | Tools |
@@ -26,6 +26,7 @@ A lista completa e categorizada vive no [README](../README.md#mcp-tools-56-tools
 | **Spec Grill** | `spec_grill_plan` |
 | **Azure DevOps** | `ado_list_projects`, `ado_list_repositories`, `ado_list_work_items`, `ado_create_work_item`, `ado_get_work_item`, `ado_update_work_item`, `ado_list_pipelines`, `ado_run_pipeline`, `ado_list_pull_requests`, `ado_create_pull_request` |
 | **Browser** | `browser_navigate`, `browser_click`, `browser_extract_text`, `browser_screenshot`, `browser_close`, `browser_get_accessibility_tree`, `browser_execute_fix`, `browser_audited_screenshot` |
+| **Editorial** | `editorial_add_idea`, `editorial_get_pipeline_status`, `editorial_generate_drafts` |
 
 Config (`command` aponta para o `dist/` deste clone):
 ```jsonc

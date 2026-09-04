@@ -147,7 +147,10 @@ export async function handleMemory(
       }
     }
     try {
-      hub.broadcast({ type: "upload.done", soul: soul.id, saved: result.saved.length, rejected: result.rejected.length });
+      hub.broadcast(
+        { type: "upload.done", soul: soul.id, saved: result.saved.length, rejected: result.rejected.length },
+        { accountId: soul.config.ownerAccountId ?? null },
+      );
     } catch {
       /* ws opcional */
     }
@@ -166,7 +169,10 @@ export async function handleMemory(
           }
         }
         try {
-          hub.broadcast({ type: "index.done", soul: soul.id, indexed, files: newFiles.length });
+          hub.broadcast(
+            { type: "index.done", soul: soul.id, indexed, files: newFiles.length },
+            { accountId: soul.config.ownerAccountId ?? null },
+          );
         } catch {
           /* ws opcional */
         }

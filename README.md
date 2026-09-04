@@ -33,7 +33,7 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ opencode                                                     │
-│   ├─ MCP assistente-os ─── packages/tools (stdio, 56 tools) │
+│   ├─ MCP assistente-os ─── packages/tools (stdio, 59 tools) │
 │   └─ provider zen ──────── chaves OpenCode Zen em rodízio    │
 └─────────────────────┬────────────────────────────────────────┘
                       │
@@ -69,7 +69,7 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 | `core` | Kernel | Config, souls (criação atômica + validação `SoulSpec`), kernel.db (agenda/costs/events/sessions), roteador local-first com fallback probado (fast e pro), agregação de uso/tokens por soul/mode/model (`getUsageSummary`), cache em camadas (Redis + fallback em memória, `cache.ts`), migração, content filter (12 padrões de segredo + detector de prompt injection: entrada + chunks de RAG), temp vault, ADO client, sessões, monitores, auditoria ISO/IEC 42001, golden rules com aprovação humana por código, gerador de AIIA.md, [Prompt Garden](docs/PROMPT-GARDEN.md) (prompts de pipeline versionados, hash no manifesto), [canvas de arquitetura por soul](docs/ARCHITECTURE-CANVAS-TEMPLATE.md) (`os soul <id> canvas`), catálogo de capabilities L1/L2/L3 (`policy.ts`), códigos de erro estáveis (`errors.ts`) |
 | `memory` | RAG + Grafo | Chunks + embeddings (Ollama ou fallback Xenova/ILIKE), LangChain LCEL RAG, LangGraph agent workflow com tool-calling, grafo de entidades/relações/observações, gate de relevância |
 | `daemon` | REST + WS | API HTTP (40+ endpoints, todos autenticados por Bearer token exceto `/health`), WebSocket autenticado, orquestrador ORCA (modo fast/pro dinâmico + mission runner), worktree manager (git worktree isolado por tarefa, merge local L3-gated), terminal sanitizer, LangGraph runner, agenda dispatch, events, canais WhatsApp/Telegram, pipeline de voz, browser automation, upload com zip-slip protection, log de debug de retrieval RAG (method/score por fonte) no audit trail |
-| `tools` | MCP server | 56 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill |
+| `tools` | MCP server | 59 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill, editorial |
 | `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs, agenda, worktree, guardian, skill, daemon, voice, backup, help |
 | `voice` | Pipeline de voz | VAD (hysteresis), AudioRecorder (sox), STT (Whisper local via @xenova/transformers), TTS (say.js) |
 
@@ -246,7 +246,7 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 | POST | `/api/pipelines/meeting-ingest` \| `/email-ingest` | Ingestão de reuniões/e-mails |
 | WS | `/` | WebSocket de eventos em tempo real (token via `?token=`) |
 
-### MCP Tools (56 tools)
+### MCP Tools (59 tools)
 
 **Soul**: `souls_list`, `soul_context`, `soul_chat`, `soul_create` (L3, dry-run/commit por `plan_hash`), `soul_anotar`, `soul_licao`, `soul_decidir`, `soul_record_lesson`, `soul_get_lessons`, `soul_generate_aiia`
 **Skills**: `skill_list`, `skill_create` (L3, dry-run/`plan_hash`, scope soul|global)
@@ -261,6 +261,7 @@ Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (si
 **Spec Grill**: `spec_grill_plan` (refinamento de requisitos em duas fases antes de autorizar modo build)
 **Azure DevOps**: `ado_list_projects`, `ado_list_repositories`, `ado_list_work_items`, `ado_create_work_item`, `ado_get_work_item`, `ado_update_work_item`, `ado_list_pipelines`, `ado_run_pipeline`, `ado_list_pull_requests`, `ado_create_pull_request`
 **Browser**: `browser_navigate`, `browser_click`, `browser_extract_text`, `browser_screenshot`, `browser_close`, `browser_get_accessibility_tree`, `browser_execute_fix`, `browser_audited_screenshot`
+**Editorial**: `editorial_add_idea`, `editorial_get_pipeline_status`, `editorial_generate_drafts`
 
 Tools novas entram protegidas por Zero Trust: só ficam disponíveis pra uma soul se estiverem em `DEFAULT_ALLOWED_TOOLS` (core) ou explicitamente no `agent.permissions.tools` do `config.json` da soul.
 

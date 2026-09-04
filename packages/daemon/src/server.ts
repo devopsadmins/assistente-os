@@ -45,60 +45,103 @@ import { setRequestAccountId, bearerToken, resolveAccountBearer } from "./routes
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
- * Sem dependências: `node:http`/`node:crypto`/`node:net`. Envia eventos JSON
- * a todos os clientes conectados. Frames servidor->cliente são SEM máscara
- * (RFC6455 exige máscara apenas cliente->servidor).
+ * Sem dependências: `node:http`/`node:crypto`/`node:net`. Frames
+ * servidor->cliente são SEM máscara (RFC6455 exige máscara apenas
+ * cliente->servidor).
+ *
+ * SPEC-HR6 (fix): cada cliente conectado carrega uma identidade —
+ * `accountId: null` (token admin, vê tudo, é o caso do HUD do operador) ou
+ * `accountId: number` (sessão de conta, resolvida do mesmo jeito que a REST
+ * — `resolveAccountBearer`). `broadcast()` só entrega a um cliente de conta
+ * quando o chamador passa `scope.accountId` batendo com o dele; eventos sem
+ * `scope` (sistêmicos: voice/monitor/agenda/whatsapp/telegram/mission) vão só
+ * para admin — antes, qualquer cliente que alcançasse a porta recebia tudo
+ * (chat, custos, passos do grafo, texto parcial de resposta) de qualquer
+ * conta.
  */
 export class WsHub {
-  private clients = new Set<Duplex>();
+  private clients = new Map<Duplex, { accountId: number | null }>();
   private server: ReturnType<typeof createServer>;
 
-  /**
-   * `token`, se fornecido, exige `?token=` na URL de conexão — o handshake WS
-   * do browser não permite headers customizados, então o Bearer usado no
-   * fetch() não se aplica aqui. Sem isso, qualquer cliente que alcançasse a
-   * porta recebia todos os broadcasts (chat, custos, passos do grafo) mesmo
-   * com ASSISTENTE_OS_DAEMON_TOKEN configurado.
-   */
-  constructor(server: ReturnType<typeof createServer>, token?: string) {
+  constructor(server: ReturnType<typeof createServer>, token?: string, home?: string) {
     this.server = server;
     server.on("upgrade", (req, socket) => {
-      const key = req.headers["sec-websocket-key"];
-      if (typeof key !== "string" || req.headers["sec-websocket-version"] !== "13") {
-        socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-        socket.destroy();
-        return;
-      }
-      if (token && !isWsAuthorized(req, token)) {
-        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-        socket.destroy();
-        return;
-      }
-      const accept = createHash("sha1")
-        .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-        .digest("base64");
-      socket.write(
-        "HTTP/1.1 101 Switching Protocols\r\n" +
-          "Upgrade: websocket\r\n" +
-          "Connection: Upgrade\r\n" +
-          `Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
-      );
-      this.clients.add(socket);
-      socket.on("close", () => this.clients.delete(socket));
-      socket.on("error", () => this.clients.delete(socket));
+      void this.handleUpgrade(req, socket, token, home);
     });
   }
 
-  /** Envia um evento JSON a todos os clientes (sem máscara, como exige o servidor). */
-  broadcast(event: Record<string, unknown>): void {
+  private async handleUpgrade(req: IncomingMessage, socket: Duplex, token: string | undefined, home: string | undefined): Promise<void> {
+    const key = req.headers["sec-websocket-key"];
+    if (typeof key !== "string" || req.headers["sec-websocket-version"] !== "13") {
+      socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    let accountId: number | null = null;
+    if (token) {
+      if (isWsAuthorized(req, token)) {
+        accountId = null; // token admin — vê tudo, sem escopo de conta
+      } else {
+        const provided = wsProvidedToken(req);
+        const resolved = provided && home ? await resolveAccountBearer(provided, home).catch(() => null) : null;
+        if (resolved == null) {
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+        accountId = resolved;
+      }
+    }
+    // Verificação tardia: se o socket já fechou/errou durante o await acima
+    // (resolveAccountBearer é assíncrono), não completar o handshake nele.
+    if (!socket.writable) return;
+    const accept = createHash("sha1")
+      .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+      .digest("base64");
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n" +
+        "Upgrade: websocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        `Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
+    );
+    this.clients.set(socket, { accountId });
+    socket.on("close", () => this.clients.delete(socket));
+    socket.on("error", () => this.clients.delete(socket));
+    // Este hub é só push (nenhuma rota lê mensagem de cliente) — qualquer
+    // dado recebido só pode ser um frame de close (ou ping) do cliente.
+    // Sem isto, um close frame chega e nunca é lido: o socket fica
+    // pendurado em `clients` até o SO derrubar a conexão por timeout.
+    socket.once("data", () => socket.destroy());
+  }
+
+  /**
+   * Envia um evento JSON aos clientes autorizados. Sem `scope`: só clientes
+   * admin (`accountId: null`) recebem — é o default seguro para eventos
+   * sistêmicos de operador. Com `scope: { accountId }`: admin + clientes da
+   * mesma conta recebem; `scope.accountId: null` (soul sem dono) também fica
+   * admin-only.
+   */
+  broadcast(event: Record<string, unknown>, scope?: { accountId: number | null }): void {
     const frame = encodeTextFrame(JSON.stringify(event));
-    for (const client of this.clients) {
-      if (client.writable) client.write(frame);
+    for (const [client, info] of this.clients) {
+      const authorized = info.accountId === null || (scope !== undefined && scope.accountId !== null && scope.accountId === info.accountId);
+      if (authorized && client.writable) client.write(frame);
     }
   }
 
   get clientCount(): number {
     return this.clients.size;
+  }
+
+  /**
+   * Fecha todos os sockets rastreados. Necessário no shutdown do daemon:
+   * este hub nunca lê/parseia frames que chegam do cliente (só escreve),
+   * então um frame de close do cliente não é notado — o socket fica
+   * pendurado e `server.close()` do Node espera indefinidamente por ele.
+   */
+  closeAll(): void {
+    for (const client of this.clients.keys()) client.destroy();
+    this.clients.clear();
   }
 }
 
@@ -211,7 +254,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
   });
-  const hub = new WsHub(server, token);
+  const hub = new WsHub(server, token, home);
 
   // Run migrations in background (non-blocking)
   runMigrationsWithRetry().catch((err) => {
@@ -388,6 +431,7 @@ export async function startDaemon(options: DaemonOptions): Promise<DaemonHandle>
         void telegramChannel?.stop();
         void browserShutdown();
         if (cache.isRedisAvailable()) void cache.close();
+        hub.closeAll();
         server.close(() => resolve());
       }),
   };
@@ -605,10 +649,15 @@ function isAuthorized(req: IncomingMessage, token: string, path: string): boolea
   return false;
 }
 
-/** Equivalente a isAuthorized() para o handshake WS, que não permite headers customizados. */
-function isWsAuthorized(req: IncomingMessage, token: string): boolean {
+/** Token recebido via `?token=` no handshake WS (browser não permite headers customizados). */
+function wsProvidedToken(req: IncomingMessage): string {
   const url = new URL(req.url ?? "/", "http://localhost");
-  const provided = Buffer.from(url.searchParams.get("token") ?? "", "utf8");
+  return url.searchParams.get("token") ?? "";
+}
+
+/** Equivalente a isAuthorized() para o handshake WS: `?token=` bate com o token admin. */
+function isWsAuthorized(req: IncomingMessage, token: string): boolean {
+  const provided = Buffer.from(wsProvidedToken(req), "utf8");
   const expected = Buffer.from(token, "utf8");
   return provided.length === expected.length && timingSafeEqual(provided, expected);
 }

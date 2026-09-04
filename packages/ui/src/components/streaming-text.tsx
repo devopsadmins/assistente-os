@@ -4,6 +4,13 @@ import { Markdown } from "./markdown";
 
 export interface StreamingTextProps extends React.HTMLAttributes<HTMLDivElement> {
   chunks: string[];
+  /**
+   * DS14: sinaliza que o stream terminou. Sem isto o cursor pisca pra
+   * sempre, mesmo depois da última mensagem já ter chegado — não há como o
+   * consumidor dizer "acabou". Default `false` (compat: caller que ainda não
+   * atualizou continua vendo o comportamento de sempre).
+   */
+  done?: boolean;
 }
 
 // `Markdown` wraps every top-level token in its own div (see `HtmlBlock` in
@@ -93,10 +100,18 @@ const CARET_CLASSES = cn(
 );
 
 export const StreamingText = React.forwardRef<HTMLDivElement, StreamingTextProps>(
-  ({ chunks, className, ...props }, ref) => {
+  ({ chunks, done = false, className, ...props }, ref) => {
     const source = React.useMemo(() => chunks.join(""), [chunks]);
     return (
-      <div ref={ref} className={cn("ds-streaming-text ds-streaming-caret", CARET_CLASSES, className)} {...props}>
+      <div
+        ref={ref}
+        // DS15: aria-busy sinaliza pra leitor de tela que este nó ainda está
+        // mudando — evita anunciar cada fragmento parcial conforme chega;
+        // some quando `done` vira true, junto do cursor (DS14).
+        aria-busy={!done}
+        className={cn("ds-streaming-text", !done && cn("ds-streaming-caret", CARET_CLASSES), className)}
+        {...props}
+      >
         <Markdown source={source} />
       </div>
     );

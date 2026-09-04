@@ -5,7 +5,7 @@
  * Sem DSN, `initSentry()` não faz nada e `captureError()` só loga.
  */
 import * as Sentry from "@sentry/node";
-import { logger, sanitizeLLMResponse } from "@assistente-os/core";
+import { logger, sanitizeLLMResponse, purgeCredentials } from "@assistente-os/core";
 
 let enabled = false;
 
@@ -18,11 +18,17 @@ export function initSentry(): void {
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1"),
     beforeSend(event) {
       // Mascara segredos em message e exception values.
-      if (event.message) event.message = sanitizeLLMResponse(event.message, { taskId: "sentry", soulId: "-" }).sanitized;
-      for (const ex of event.exception?.values ?? []) {
-        if (ex.value) ex.value = sanitizeLLMResponse(ex.value, { taskId: "sentry", soulId: "-" }).sanitized;
+      try {
+        if (event.message) event.message = sanitizeLLMResponse(event.message, { taskId: "sentry", soulId: "-" }).sanitized;
+        for (const ex of event.exception?.values ?? []) {
+          if (ex.value) ex.value = sanitizeLLMResponse(ex.value, { taskId: "sentry", soulId: "-" }).sanitized;
+        }
+        return event;
+      } finally {
+        // SPEC-HR2: taskId fixo ("sentry") — sem purga, o vault acumularia
+        // segredo de todo evento de erro pra sempre, já que nada lê de volta.
+        purgeCredentials("sentry");
       }
-      return event;
     },
   });
   enabled = true;

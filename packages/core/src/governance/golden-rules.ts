@@ -29,6 +29,8 @@ import { randomInt, createHash, timingSafeEqual } from "node:crypto";
 import { todayISODate, nowISO, registrarLicao } from "../alma.js";
 import { soulDir } from "../souls.js";
 import { guardianAudit } from "../prompts/garden/index.js";
+import { loadConfig } from "../config.js";
+import { nextZenApiKey } from "../zen-keys.js";
 
 const PROMOTION_THRESHOLD = 3;
 const AUDIT_SCORE_THRESHOLD = 95;
@@ -450,10 +452,16 @@ export function getLessons(dir: string, limit = 20): { dateISO: string; texto: s
 /**
  * Julga uma execução de agente via LLM (0-100). Aprova apenas com score >= 95.
  * Falha segura: se o Guardian estiver indisponível, não aprova por omissão.
+ *
+ * SPEC-GR4: usado pelo `os discriminator` no CI, onde não há Ollama local no
+ * runner. Mesmo critério "useZen" de `rag-chain.ts`/`agent-workflow.ts`:
+ * prefere o OpenCode Zen (cloud, OpenAI-compatible) quando `ZEN_API_KEY[S]`
+ * está configurada; cai pro Ollama local (`/api/chat`, formato próprio) senão
+ * — é o caso de rodar o gate localmente numa máquina de dev.
  */
 export async function auditExecution(input: AuditExecutionInput): Promise<AuditExecutionResult> {
-  const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
-  const chatModel = process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free";
+  const config = loadConfig({});
+  const useZen = Boolean(config.zenApiKey);
 
   const prompt = guardianAudit.render({
     taskId: input.taskId,
@@ -463,23 +471,47 @@ export async function auditExecution(input: AuditExecutionInput): Promise<AuditE
   });
 
   const ac = new AbortController();
-  const timeoutId = setTimeout(() => ac.abort(), 30000);
+  // 60s, não 30s: achado ao vivo rodando `os discriminator` contra Ollama
+  // local com o modelo descarregado — cold-start (carregar o modelo do
+  // disco antes do 1º token) já estourava 30s sozinho, mesmo com prompt
+  // vazio, numa máquina de CPU limitada. Zen (cloud, sem esse problema) é o
+  // caminho recomendado pra CI — isto é rede de segurança pro caminho local.
+  const timeoutId = setTimeout(() => ac.abort(), 60_000);
 
   try {
-    const resp = await fetch(`${ollamaUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: chatModel, messages: [{ role: "user", content: prompt }], stream: false }),
-      signal: ac.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!resp.ok) {
-      return { approved: false, score: 0, feedback: "Guardian indisponível (Ollama respondeu erro) — revisão manual necessária." };
+    let content: string;
+    if (useZen) {
+      const apiKey = nextZenApiKey(config)!;
+      const resp = await fetch(`${config.zenBaseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: config.zenChatModel, messages: [{ role: "user", content: prompt }] }),
+        signal: ac.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!resp.ok) {
+        return { approved: false, score: 0, feedback: `Guardian indisponível (Zen HTTP ${resp.status}) — revisão manual necessária.` };
+      }
+      const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      content = data.choices?.[0]?.message?.content || "{}";
+    } else {
+      const ollamaUrl = process.env.OLLAMA_URL || config.ollamaUrl;
+      const chatModel = process.env.OLLAMA_CHAT_MODEL || config.ollamaChatModel;
+      const resp = await fetch(`${ollamaUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: chatModel, messages: [{ role: "user", content: prompt }], stream: false }),
+        signal: ac.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!resp.ok) {
+        return { approved: false, score: 0, feedback: "Guardian indisponível (Ollama respondeu erro) — revisão manual necessária." };
+      }
+      const data = (await resp.json()) as { message?: { content?: string } };
+      content = data.message?.content || "{}";
     }
 
-    const data = (await resp.json()) as { message?: { content?: string } };
-    const parsed = JSON.parse(data.message?.content || "{}") as { score?: number; feedback?: string };
+    const parsed = JSON.parse(content) as { score?: number; feedback?: string };
     const score = Number(parsed.score) || 0;
     return { approved: score >= AUDIT_SCORE_THRESHOLD, score, feedback: String(parsed.feedback || "") };
   } catch (err) {

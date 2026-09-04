@@ -14,6 +14,30 @@ test("shows a caret while mounted", () => {
   expect(container.querySelector(".ds-streaming-caret")).not.toBeNull();
 });
 
+// DS14: without a way to signal "the stream is over", the caret blinked
+// forever even on a message that finished minutes ago.
+test("DS14: stops showing the caret once done=true", () => {
+  const { container, rerender } = render(<StreamingText chunks={["Hi"]} done={false} />);
+  expect(container.querySelector(".ds-streaming-caret")).not.toBeNull();
+  rerender(<StreamingText chunks={["Hi"]} done={true} />);
+  expect(container.querySelector(".ds-streaming-caret")).toBeNull();
+});
+
+test("DS14: done defaults to false (no caret regression for existing callers)", () => {
+  const { container } = render(<StreamingText chunks={["Hi"]} />);
+  expect(container.querySelector(".ds-streaming-caret")).not.toBeNull();
+});
+
+// DS15: aria-busy lets assistive tech know this node is still mutating —
+// without it, a screen reader has no signal to hold off announcing partial
+// fragments as they stream in.
+test("DS15: aria-busy tracks done — true while streaming, false once finished", () => {
+  const { container, rerender } = render(<StreamingText chunks={["Hi"]} done={false} />);
+  expect(container.firstElementChild).toHaveAttribute("aria-busy", "true");
+  rerender(<StreamingText chunks={["Hi"]} done={true} />);
+  expect(container.firstElementChild).toHaveAttribute("aria-busy", "false");
+});
+
 test("tolerates an unclosed code fence mid-stream without crashing", () => {
   expect(() =>
     render(<StreamingText chunks={["Here's the fix:\n\n```ts\nconst x = 1;"]} />),

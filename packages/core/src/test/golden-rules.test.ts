@@ -13,6 +13,7 @@ import {
   resendApprovalCode,
   listActiveGoldenRules,
   proposeRule,
+  auditExecution,
 } from "../governance/golden-rules.js";
 
 function tempSetup(): { configHome: string; repoRoot: string; soulId: string } {
@@ -291,5 +292,112 @@ test("getLessons retorna as últimas N entradas na ordem certa", () => {
     assert.match(lessons[1]!.texto, /t3/);
   } finally {
     cleanup(configHome, repoRoot);
+  }
+});
+
+// ── auditExecution (SPEC-GR4 — usado pelo `os discriminator` no CI) ────────
+
+/**
+ * `loadConfig({})` sem override de `home` lê o `.env` real da máquina — se
+ * ela já tiver ZEN_API_KEY[S] configurada (normal numa máquina de dev),
+ * "sem Zen" deixaria de ser verdade dentro do teste. Isola as 9 variáveis
+ * possíveis (lista + numeradas 1-7 + única) e restaura no finally.
+ */
+const ZEN_ENV_VARS = ["ZEN_API_KEYS", "ZEN_API_KEY", ...Array.from({ length: 7 }, (_, i) => `ZEN_API_KEY_${i + 1}`)];
+function withZenEnv<T>(vars: Record<string, string> | null, fn: () => T): T {
+  const saved = new Map(ZEN_ENV_VARS.map((k) => [k, process.env[k]]));
+  // String vazia, não delete: loadConfig -> loadDotEnv só define a var se
+  // `undefined` — um delete seria recarregado do .env real da máquina no
+  // meio do teste. String vazia sobrevive porque já está "definida".
+  for (const k of ZEN_ENV_VARS) process.env[k] = "";
+  if (vars) Object.assign(process.env, vars);
+  try {
+    return fn();
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+test("auditExecution: sem ZEN_API_KEY, chama Ollama (/api/chat) e aprova score >= 95", async () => {
+  const originalFetch = globalThis.fetch;
+  let calledUrl = "";
+  globalThis.fetch = (async (url: unknown) => {
+    calledUrl = String(url);
+    return {
+      ok: true,
+      json: async () => ({ message: { content: JSON.stringify({ score: 97, feedback: "ok" }) } }),
+    } as Response;
+  }) as typeof fetch;
+  try {
+    const result = await withZenEnv(null, () =>
+      auditExecution({ taskId: "t1", targetAgent: "agent-x", changesSummary: "diff pequeno" }),
+    );
+    assert.match(calledUrl, /\/api\/chat$/, "deve chamar o endpoint específico do Ollama sem ZEN_API_KEY");
+    assert.equal(result.approved, true);
+    assert.equal(result.score, 97);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("auditExecution: score < 95 não aprova, mesmo com resposta válida", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    ({
+      ok: true,
+      json: async () => ({ message: { content: JSON.stringify({ score: 80, feedback: "faltou teste" }) } }),
+    }) as Response) as typeof fetch;
+  try {
+    const result = await withZenEnv(null, () =>
+      auditExecution({ taskId: "t1", targetAgent: "agent-x", changesSummary: "diff" }),
+    );
+    assert.equal(result.approved, false);
+    assert.equal(result.score, 80);
+    assert.equal(result.feedback, "faltou teste");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("auditExecution: com ZEN_API_KEY configurada, chama Zen (/chat/completions, formato OpenAI) em vez de Ollama", async () => {
+  const originalFetch = globalThis.fetch;
+  let calledUrl = "";
+  let sentAuth = "";
+  globalThis.fetch = (async (url: unknown, opts?: { headers?: Record<string, string> }) => {
+    calledUrl = String(url);
+    sentAuth = opts?.headers?.Authorization ?? "";
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ score: 96, feedback: "bom" }) } }] }),
+    } as Response;
+  }) as typeof fetch;
+  try {
+    const result = await withZenEnv({ ZEN_API_KEY: "test-zen-key" }, () =>
+      auditExecution({ taskId: "t1", targetAgent: "agent-x", changesSummary: "diff" }),
+    );
+    assert.match(calledUrl, /\/chat\/completions$/, "com ZEN_API_KEY deve chamar o endpoint OpenAI-compatible do Zen, não o do Ollama");
+    assert.equal(sentAuth, "Bearer test-zen-key");
+    assert.equal(result.approved, true);
+    assert.equal(result.score, 96);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("auditExecution: HTTP de erro do provider não aprova por omissão (falha segura)", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => ({ ok: false, status: 500, json: async () => ({}) }) as Response) as typeof fetch;
+  try {
+    const result = await withZenEnv(null, () =>
+      auditExecution({ taskId: "t1", targetAgent: "agent-x", changesSummary: "diff" }),
+    );
+    assert.equal(result.approved, false);
+    assert.equal(result.score, 0);
+    assert.match(result.feedback, /indisponível/);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

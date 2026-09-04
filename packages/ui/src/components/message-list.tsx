@@ -70,7 +70,14 @@ export const MessageList = React.forwardRef<HTMLDivElement, MessageListProps>(
     return (
       <div ref={ref} className={cn("relative h-full min-h-0", className)} {...props}>
         <ScrollArea className="h-full" viewportRef={viewportRef}>
-          <div ref={contentRef} className="flex flex-col gap-4 p-4">
+          {/* DS15: sem isto, leitor de tela nunca é avisado de mensagem nova
+              chegando — role="log" + aria-live="polite" é o padrão ARIA pra
+              região que recebe conteúdo anexado ao longo do tempo (chat,
+              feed). Fica no container de conteúdo, não em cada bolha — uma
+              StreamingText marcando aria-busy nesse meio tempo (ver
+              streaming-text.tsx) evita que o leitor de tela tente anunciar
+              cada fragmento parcial conforme chega. */}
+          <div ref={contentRef} role="log" aria-live="polite" className="flex flex-col gap-4 p-4">
             {children}
           </div>
         </ScrollArea>

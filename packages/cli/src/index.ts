@@ -6,6 +6,7 @@ import {
   getActiveSoul,
   setActiveSoul,
   getPool,
+  isDbHealthy,
   closePool,
   runMigrations,
   sumCostBySoul,
@@ -48,6 +49,7 @@ import { createFullBackup, pruneOldBackups } from "./backup.js";
 import { runSkillCommand } from "./skill.js";
 import { runRagCommand, isIndexStale } from "./rag.js";
 import { runPromptCommand } from "./prompt.js";
+import { runDiscriminatorCommand } from "./discriminator.js";
 
 const BACKUP_RETENTION_DAYS = 7;
 
@@ -135,7 +137,9 @@ async function main(): Promise<void> {
     case "status": {
       const souls = listSouls(config.home);
       const active = getActiveSoul(config.home);
+      const dbOk = await isDbHealthy(getPool(config.databaseUrl));
       console.log(`home: ${config.home}`);
+      console.log(`postgres: ${dbOk ? "ok" : "DEGRADED — /chat cai em modo Markdown-only (SPEC-HR1), sem sessão/RAG/limites"}`);
       console.log(`ollama: ${config.ollamaUrl} (chat: ${config.ollamaChatModel}, embed: ${config.ollamaEmbedModel})`);
       console.log(`degraus: ${config.routerTiers.join(" -> ")}`);
       console.log(`souls: ${souls.length} (ativa: ${active ?? "(nenhuma)"})`);
@@ -459,6 +463,12 @@ async function main(): Promise<void> {
 
     case "rag": {
       const code = await runRagCommand(config, args);
+      if (code !== 0) process.exitCode = 1;
+      return;
+    }
+
+    case "discriminator": {
+      const code = await runDiscriminatorCommand(args);
       if (code !== 0) process.exitCode = 1;
       return;
     }
