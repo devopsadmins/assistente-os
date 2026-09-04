@@ -79,6 +79,21 @@ export function resolveLangGraphMaxIterations(): number {
   return Number.isFinite(n) && n > 0 ? n : 5;
 }
 
+/**
+ * Onda 3d: gate de relevância de RAG era parseado de forma independente em
+ * daemon/relevance.ts e tools/index.ts — mesma lógica escrita duas vezes,
+ * risco de uma cópia divergir da outra ao ser editada.
+ */
+export function resolveRelevanceGate(): { modo: "recusar" | "aviso" | "libre"; minScore: number; minTerms: number } {
+  const raw = process.env.ASSISTENTE_OS_RELEVANCE_MODO;
+  const modo: "recusar" | "aviso" | "libre" = raw === "recusar" || raw === "libre" ? raw : "aviso";
+  return {
+    modo,
+    minScore: Number(process.env.ASSISTENTE_OS_RELEVANCE_MIN_SCORE) || 0.35,
+    minTerms: Number(process.env.ASSISTENTE_OS_RELEVANCE_MIN_TERMS) || 1,
+  };
+}
+
 /** Carrega variáveis de <dir>/.env (formato KEY=value, linhas, # comentários). */
 export function loadDotEnv(dir: string): void {
   const p = join(dir, ".env");

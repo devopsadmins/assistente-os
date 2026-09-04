@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveLangGraphMaxIterations } from "../config.js";
+import { resolveLangGraphMaxIterations, resolveRelevanceGate } from "../config.js";
 
 function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
   const saved = new Map(Object.keys(vars).map((k) => [k, process.env[k]]));
@@ -44,4 +44,24 @@ test("resolveLangGraphMaxIterations: valor inválido/não-numérico cai pro defa
     resolveLangGraphMaxIterations(),
   );
   assert.equal(n, 5);
+});
+
+test("resolveRelevanceGate: default aviso/0.35/1 sem env setada", () => {
+  const g = withEnv(
+    { ASSISTENTE_OS_RELEVANCE_MODO: undefined, ASSISTENTE_OS_RELEVANCE_MIN_SCORE: undefined, ASSISTENTE_OS_RELEVANCE_MIN_TERMS: undefined },
+    () => resolveRelevanceGate(),
+  );
+  assert.deepEqual(g, { modo: "aviso", minScore: 0.35, minTerms: 1 });
+});
+
+test("resolveRelevanceGate: modo inválido cai pra aviso", () => {
+  const g = withEnv({ ASSISTENTE_OS_RELEVANCE_MODO: "modo-invalido" }, () => resolveRelevanceGate());
+  assert.equal(g.modo, "aviso");
+});
+
+test("resolveRelevanceGate: aceita recusar/libre", () => {
+  const g1 = withEnv({ ASSISTENTE_OS_RELEVANCE_MODO: "recusar" }, () => resolveRelevanceGate());
+  assert.equal(g1.modo, "recusar");
+  const g2 = withEnv({ ASSISTENTE_OS_RELEVANCE_MODO: "libre" }, () => resolveRelevanceGate());
+  assert.equal(g2.modo, "libre");
 });
