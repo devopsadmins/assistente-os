@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter } from "@assistente-os/core";
+import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, getAdoConnection, getAdoOrg, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, auditExecution, proposeRule, listPendingRules, approveRule, rejectRule, resendApprovalCode, listActiveGoldenRules, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
 import { runOpenCode, browserNavigate, browserClick, browserExtractText, browserScreenshot, browserClose, getAccessibilityTree, captureAuditedScreenshot, executeDynamicFix, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, createWorktree, setupEnvironment, mergeLocally, destroyWorktree, listWorktrees, listMissions, runMission } from "@assistente-os/daemon";
 import { join } from "node:path";
@@ -864,6 +864,30 @@ function extractOpenCodeText(stdout: string): string {
   return textLines.filter(Boolean).join("\n");
 }
 
+/**
+ * Contexto passado aos handlers de família de tool (ToolHandler).
+ * Expõe config, requireSoul e authorizeAgentSoul para que cada módulo
+ * possa reusar a lógica sem duplicação.
+ */
+export interface ToolContext {
+  config: AssistenteOsConfig;
+  requireSoul: (id: unknown) => { id: string } | { error: string };
+  authorizeAgentSoul: (toolName: string) => void;
+}
+
+/**
+ * Assinatura de um handler que executa uma tool de uma família.
+ * Recebe o contexto compartilhado e os argumentos, retorna o resultado da tool.
+ */
+export type ToolHandler = (ctx: ToolContext, args: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * Tabela de dispatch por família de tool. Populada pelos módulos migrados
+ * em Tasks 2-5. Consultada em executeTool antes do switch legado — se uma
+ * tool estiver aqui, seu handler roda; senão, cai no switch.
+ */
+export const FAMILY_HANDLERS: Record<string, ToolHandler> = {};
+
 export class McpServer {
   private config;
   private closed = false;
@@ -1019,6 +1043,18 @@ export class McpServer {
   }
 
   private async executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+    // Consulta à tabela de dispatch por família. Se há um handler registrado,
+    // executa-o e retorna. Senão, cai no switch legado.
+    const familyHandler = FAMILY_HANDLERS[name];
+    if (familyHandler) {
+      const ctx: ToolContext = {
+        config: this.config,
+        requireSoul: (id) => this.requireSoul(id),
+        authorizeAgentSoul: (toolName) => this.authorizeAgentSoul(toolName),
+      };
+      return familyHandler(ctx, args);
+    }
+
     switch (name) {
       case "souls_list": {
         return listSouls(this.config.home).map((s) => ({ id: s.id, description: s.config.description ?? null }));
