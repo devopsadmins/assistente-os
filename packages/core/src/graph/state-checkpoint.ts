@@ -21,7 +21,7 @@ import {
   Soul, soulDir
 } from "../souls.js";
 import { todayISODate, anotar } from "../alma.js";
-import { resolveHome } from "../config.js";
+import { resolveHome, resolveLangGraphMaxIterations } from "../config.js";
 import { clampMaxPermissive } from "../types/agent.js";
 import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,9 +29,7 @@ import { join } from "node:path";
 // ── Flag Environment ──────────────────────────────────────────────────
 
 const LANGGRAPH_ENABLED = process.env.LANGGRAPH_ENABLED === "true";
-const LANGGRAPH_MAX_ITERATIONS = Number(
-  process.env.LANGGRAPH_MAX_ITERATIONS || "5"
-);
+const LANGGRAPH_MAX_ITERATIONS = resolveLangGraphMaxIterations();
 
 // ── Checkpoint Persistence ────────────────────────────────────────────
 

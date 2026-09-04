@@ -65,6 +65,20 @@ export function resolveHome(): string {
   return process.env.ASSISTENTE_OS_HOME || join(homedir(), ".assistant-os");
 }
 
+/**
+ * Onda 3d: LANGGRAPH_MAX_ITERATIONS e ASSISTENTE_OS_MAX_ITERATIONS eram lidas
+ * como se fossem conceitos diferentes em 6 lugares (2 pacotes) — na prática
+ * controlam o mesmo teto (guardrail de recursão do LangGraph). Um operador
+ * setando só uma das duas via env não afetava a outra, silenciosamente.
+ * LANGGRAPH_MAX_ITERATIONS tem precedência (nome mais específico, e é o que
+ * os call-sites de core/memory já usavam antes desta função existir).
+ */
+export function resolveLangGraphMaxIterations(): number {
+  const raw = process.env.LANGGRAPH_MAX_ITERATIONS ?? process.env.ASSISTENTE_OS_MAX_ITERATIONS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
 /** Carrega variáveis de <dir>/.env (formato KEY=value, linhas, # comentários). */
 export function loadDotEnv(dir: string): void {
   const p = join(dir, ".env");
@@ -139,7 +153,7 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
     whatsappFamiliasEnabled: overrides.whatsappFamiliasEnabled ?? process.env.WHATSAPP_FAMILIAS_ENABLED === "true",
     globalGuardrails: overrides.globalGuardrails ?? {
       maxTurns: overrides.defaultMaxTurns ?? (Number(process.env.ASSISTENTE_OS_MAX_TURNS) || 10),
-      maxIterations: Number(process.env.ASSISTENTE_OS_MAX_ITERATIONS) || 5,
+      maxIterations: resolveLangGraphMaxIterations(),
       ragRelevanceThreshold: Number(process.env.ASSISTENTE_OS_RAG_THRESHOLD) || 0.70,
       dailyLimitTokens: process.env.ASSISTENTE_OS_DAILY_LIMIT_TOKENS
         ? Number(process.env.ASSISTENTE_OS_DAILY_LIMIT_TOKENS)

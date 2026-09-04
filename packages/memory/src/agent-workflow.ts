@@ -13,7 +13,7 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage, type AIMessageChun
 import type { StructuredTool } from "@langchain/core/tools";
 import { runRagChain } from "./rag-chain.js";
 import { AgentState, type AgentStateType } from "./agent-state.js";
-import { loadConfig, nextZenApiKey, agentReactSystem, type Pool } from "@assistente-os/core";
+import { loadConfig, nextZenApiKey, agentReactSystem, resolveLangGraphMaxIterations, type Pool } from "@assistente-os/core";
 
 export type { AgentStateType };
 
@@ -331,7 +331,7 @@ export async function runAgent(
     relations: undefined,
     iterationCount: 0,
     usage: { inputTokens: 0, outputTokens: 0 },
-    maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
+    maxIterations: resolveLangGraphMaxIterations(),
   };
 
   const config = { configurable: { thread_id: threadId ?? `soul-${soul}` } };
@@ -373,7 +373,7 @@ export async function* runAgentStream(
     relations: undefined,
     iterationCount: 0,
     usage: { inputTokens: 0, outputTokens: 0 },
-    maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
+    maxIterations: resolveLangGraphMaxIterations(),
   };
 
   const config = { configurable: { thread_id: threadId ?? `soul-${soul}` } };

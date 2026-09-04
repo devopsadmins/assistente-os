@@ -5,7 +5,7 @@
  * reducers automaticamente e serializa/deserializa o estado entre nós.
  */
 import { Annotation } from "@langchain/langgraph";
-import { agentReactSystem } from "@assistente-os/core";
+import { agentReactSystem, resolveLangGraphMaxIterations } from "@assistente-os/core";
 
 export interface AgentToolCall {
   id: string;
@@ -71,7 +71,7 @@ export const AgentState = Annotation.Root({
 
   maxIterations: Annotation<number>({
     reducer: (_prev, next) => next,
-    default: () => Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
+    default: () => resolveLangGraphMaxIterations(),
   }),
 });
 
@@ -92,6 +92,6 @@ export function createInitialState(soul: string): AgentStateType {
     relations: undefined,
     iterationCount: 0,
     usage: { inputTokens: 0, outputTokens: 0 },
-    maxIterations: Number(process.env.LANGGRAPH_MAX_ITERATIONS) || 5,
+    maxIterations: resolveLangGraphMaxIterations(),
   };
 }
