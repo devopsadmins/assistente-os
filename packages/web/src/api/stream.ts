@@ -1,5 +1,7 @@
 import type { ApiClientConfig } from "./client";
 
+export type { ApiClientConfig };
+
 export type StreamEvent =
   | { type: "step"; step: string; message?: string; tool?: string }
   | { type: "token"; text: string }
