@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Pool } from "pg";
 import type { AssistenteOsConfig, Soul } from "@assistente-os/core";
-import type { WsHub } from "../server.js";
 import {
   loadConfig,
   getPool,
@@ -54,7 +53,7 @@ import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragReran
  * modelo local em CPU pode exceder só no prompt eval. Aqui o único limite é o
  * timeoutMs do chamador (o timeoutSeconds da requisição de chat).
  */
-interface ExecUsage {
+export interface ExecUsage {
   promptTokens: number;
   completionTokens: number;
   source: "provider" | "estimate";
@@ -153,6 +152,108 @@ function ollamaChat(
   });
 }
 
+/**
+ * Igual a `ollamaChat`, mas com `stream: true` real contra o `/api/chat` do
+ * Ollama — cada linha da resposta é um objeto NDJSON com `message.content`
+ * (um token/fragmento) até a linha final `{done: true, ...}` com as
+ * contagens de uso. `onToken` é chamado uma vez por fragmento, na ordem de
+ * chegada; o texto acumulado ainda é devolvido inteiro no final (mesmo
+ * formato de retorno de `ollamaChat`) — quem chama não precisa reconstruir
+ * o texto sozinho a partir dos tokens, tem os dois.
+ */
+export function ollamaChatStream(
+  baseUrl: string,
+  payload: { model: string; messages: Array<{ role: string; content: string }> },
+  timeoutMs: number,
+  onToken: (text: string) => void,
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }> {
+  return new Promise((resolvePromise) => {
+    let url: URL;
+    try {
+      url = new URL("/api/chat", baseUrl);
+    } catch {
+      resolvePromise({ code: 1, stdout: "", stderr: `OLLAMA_URL inválida: ${baseUrl}`, timedOut: false });
+      return;
+    }
+    const body = JSON.stringify({ ...payload, stream: true });
+    let timedOut = false;
+    let settled = false;
+    let accumulated = "";
+    let usage: ExecUsage | undefined;
+    let buffer = "";
+
+    const finish = (result: { code: number; stdout: string; stderr: string; timedOut: boolean; usage?: ExecUsage }) => {
+      if (settled) return;
+      settled = true;
+      resolvePromise(result);
+    };
+
+    const req = httpRequest(
+      {
+        hostname: url.hostname,
+        port: url.port || 80,
+        path: url.pathname,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        // Sem isso, um peer que derruba o socket DEPOIS dos headers (restart do
+        // container do Ollama, OOM-kill do processo do modelo, NAT/proxy
+        // cortando uma conexão ociosa) nunca dispara "end" nem "error" no
+        // ClientRequest — só handlers na RESPOSTA veem esse tipo de falha. Sem
+        // eles a Promise nunca resolve: quem chama (o /stream) fica com a
+        // conexão SSE aberta pra sempre, sem "done" nem "error", vazando o
+        // heartbeat interval e a mensagem do turno.
+        res.on("aborted", () => finish({ code: 1, stdout: accumulated, stderr: "conexão com Ollama encerrada no meio do stream", timedOut }));
+        res.on("error", (err) => finish({ code: 1, stdout: accumulated, stderr: err.message, timedOut }));
+        if ((res.statusCode ?? 0) >= 400) {
+          let errData = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk: string) => (errData += chunk));
+          res.on("end", () => finish({ code: 1, stdout: "", stderr: `Ollama HTTP ${res.statusCode}: ${errData.slice(0, 300)}`, timedOut: false }));
+          return;
+        }
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => {
+          buffer += chunk;
+          let newlineIdx: number;
+          while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIdx).trim();
+            buffer = buffer.slice(newlineIdx + 1);
+            if (!line) continue;
+            try {
+              const parsed = JSON.parse(line) as {
+                message?: { content?: string };
+                done?: boolean;
+                prompt_eval_count?: number;
+                eval_count?: number;
+              };
+              if (parsed.message?.content) {
+                accumulated += parsed.message.content;
+                onToken(parsed.message.content);
+              }
+              if (parsed.done && (typeof parsed.prompt_eval_count === "number" || typeof parsed.eval_count === "number")) {
+                usage = { promptTokens: parsed.prompt_eval_count ?? 0, completionTokens: parsed.eval_count ?? 0, source: "provider" };
+              }
+            } catch {
+              /* linha NDJSON inválida — ignora, o stream de Ollama pode ter linhas parciais entre reads */
+            }
+          }
+        });
+        res.on("end", () => {
+          finish({ code: 0, stdout: accumulated || "(sem resposta)", stderr: "", timedOut: false, usage });
+        });
+      },
+    );
+    req.setTimeout(timeoutMs, () => {
+      timedOut = true;
+      req.destroy(new Error(`Ollama não respondeu em ${Math.round(timeoutMs / 1000)}s`));
+    });
+    req.on("error", (err) => finish({ code: 1, stdout: accumulated, stderr: err.message, timedOut }));
+    req.end(body);
+  });
+}
+
 export interface PreparedPromptContext {
   session: Awaited<ReturnType<typeof openSession>>;
   promptsUsed: number;
@@ -182,13 +283,34 @@ export type PreparePromptContextResult =
 export async function preparePromptContext(params: {
   req: IncomingMessage;
   pool: Pool;
-  hub: WsHub;
   home: string;
   config: AssistenteOsConfig;
   soul: Soul;
   prompt: string;
+  /**
+   * Fábrica do sink de notificação "ao vivo" pra cada `emitStep` — recebe o
+   * traceId real (gerado aqui dentro) e devolve a função que efetivamente
+   * notifica. `/chat` passa uma que reproduz o hub.broadcast de sempre;
+   * `/stream` passa uma que escreve/enfileira eventos SSE — NUNCA o hub
+   * (decisão da spec: hub faz broadcast sem escopo de conta, inaceitável pra
+   * conteúdo de stream). Por isso esta função não recebe `hub` — cada
+   * chamador já embute o que precisa dentro do próprio sink que fornece. A
+   * persistência em `execution_spans` abaixo roda sempre, pros dois casos —
+   * é diagnóstico interno, não é o que a spec restringe.
+   */
+  createStepSink: (traceId: string) => (module: string, message: string, level?: "err") => void;
+  /**
+   * Histórico a usar no lugar de `getRecentSessionMessages(pool, session.id, …)`
+   * (N3 da revisão final do branch): a sessão por trás de `clientKey` gira a
+   * cada `ASSISTENTE_OS_SESSION_IDLE_MINUTES` (default 120min) de ociosidade —
+   * `openSession` fecha e reabre, e o histórico por SESSÃO fica vazio mesmo
+   * que a THREAD (que não gira) continue mostrando a conversa inteira em
+   * `GET /threads/:id/messages`. `/stream` passa o histórico da própria
+   * thread aqui; `/chat` não passa nada e mantém o comportamento de sempre.
+   */
+  historyOverride?: Awaited<ReturnType<typeof getRecentSessionMessages>>;
 }): Promise<PreparePromptContextResult> {
-  const { req, pool, hub, home, config, soul, prompt } = params;
+  const { req, pool, home, config, soul, prompt, createStepSink, historyOverride } = params;
 
   // Trace unificado (Onda 2): um id por turno. Correlaciona os spans por
   // estágio (`execution_spans`) à linha canônica de `execution_logs` e ao
@@ -197,14 +319,16 @@ export async function preparePromptContext(params: {
   const traceStartedAt = Date.now();
   let traceSeq = 0;
   let traceSessionId: number | null = null;
+  const onStep = createStepSink(traceId);
 
-  // Passos do pipeline de chat: ao vivo no WS `chat.step` E persistidos como
-  // spans (diagnóstico — não entram em custo/uso; falha de escrita é ignorada).
+  // Passos do pipeline de chat: notificados ao chamador via createStepSink E
+  // persistidos como spans (diagnóstico — não entram em custo/uso; falha de
+  // escrita é ignorada).
   const emitStep = (module: string, message: string, level?: "err") => {
     try {
-      hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
+      onStep(module, message, level);
     } catch {
-      /* ws opcional */
+      /* sink é fornecido pelo chamador; falha lá não deve derrubar o pipeline */
     }
     void recordExecutionSpan(pool, {
       traceId,
@@ -290,11 +414,15 @@ export async function preparePromptContext(params: {
     injection?.detected ? `possível prompt injection detectada (${injection.maxSeverity})` : "nenhum padrão de prompt injection detectado",
   );
 
-  // ---- Histórico da conversa (mesma sessão) — memória multi-turno ----
-  const history = await getRecentSessionMessages(pool, session.id, {
-    maxTurns: sessionHistoryTurns(),
-    maxChars: sessionHistoryMaxChars(),
-  });
+  // ---- Histórico da conversa: por thread se historyOverride foi passado
+  // (não gira com a sessão), senão pela sessão (comportamento de /chat,
+  // inalterado) — memória multi-turno. ----
+  const history =
+    historyOverride ??
+    (await getRecentSessionMessages(pool, session.id, {
+      maxTurns: sessionHistoryTurns(),
+      maxChars: sessionHistoryMaxChars(),
+    }));
 
   // ---- Buffer da soul: contexto persistente + RAG com gate de relevância ----
   const built = await buildPrompt({ home, soul, prompt: promptSanitized.sanitized, config, history });
@@ -485,7 +613,21 @@ export async function handleChat(
     const config = await loadConfig({ home });
     const pool = getPool(config.databaseUrl);
 
-    const prepared = await preparePromptContext({ req, pool, hub, home, config, soul, prompt });
+    const prepared = await preparePromptContext({
+      req,
+      pool,
+      home,
+      config,
+      soul,
+      prompt,
+      createStepSink: (traceId) => (module, message, level) => {
+        try {
+          hub.broadcast({ type: "chat.step", soul: soul.id, ts: Date.now(), module, message, level, traceId });
+        } catch {
+          /* ws opcional */
+        }
+      },
+    });
     if (!prepared.ok) {
       sendJson(res, prepared.status, prepared.body);
       return true;

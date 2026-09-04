@@ -134,8 +134,26 @@ export interface ThreadMessage {
   ts: string;
 }
 
-/** Não checa posse — quem chama já confirmou via getThread antes (mesmo padrão de touchThread). */
-export async function getThreadMessages(pool: Pool, threadId: number): Promise<ThreadMessage[]> {
+/**
+ * Não checa posse — quem chama já confirmou via getThread antes (mesmo padrão de touchThread).
+ *
+ * `limit` opcional (R3 da re-revisão final do branch streaming-ollama): sem
+ * ele, devolve a transcrição inteira em ordem cronológica — o que
+ * `GET /threads/:id/messages` (uso original desta função) precisa mostrar
+ * tudo mesmo. Com `limit`, busca só as últimas `limit` linhas (mesmo padrão
+ * de `getRecentSessionMessages` em sessions.ts: `ORDER BY id DESC LIMIT`,
+ * depois reverte pra ordem cronológica) — usado por `/stream` pra montar o
+ * histórico do prompt sem ler a thread inteira do Postgres a cada turno numa
+ * conversa longa.
+ */
+export async function getThreadMessages(pool: Pool, threadId: number, limit?: number): Promise<ThreadMessage[]> {
+  if (limit && limit > 0) {
+    const { rows } = await pool.query<{ id: number; role: string; content: string; ts: unknown }>(
+      "SELECT id, role, content, ts FROM session_messages WHERE thread_id = $1 ORDER BY id DESC LIMIT $2",
+      [threadId, limit],
+    );
+    return rows.reverse().map((r) => ({ id: Number(r.id), role: r.role as ThreadMessage["role"], content: r.content, ts: String(r.ts) }));
+  }
   const { rows } = await pool.query<{ id: number; role: string; content: string; ts: unknown }>(
     "SELECT id, role, content, ts FROM session_messages WHERE thread_id = $1 ORDER BY id ASC",
     [threadId],

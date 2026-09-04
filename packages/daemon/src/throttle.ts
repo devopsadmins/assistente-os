@@ -96,8 +96,19 @@ export function __resetExecSlots(): void {
  * /auth/signup e /auth/login entram porque scrypt é deliberadamente pesado
  * de CPU (custo do hash) — sem o cap, um flood de tentativas concorrentes
  * vira negação de serviço via exaustão de CPU, não só de banda.
+ *
+ * /souls/:id/threads/:id/messages/stream (F2 da revisão da task 5) segura o
+ * MESMO slot que /chat — mesmo cap, primeira fatia (só Ollama progressivo).
+ * Sem isso um cliente abria dezenas de streams concorrentes (cada um: uma
+ * geração de até 300s, um socket SSE de vida longa, uma conexão do pool do
+ * Postgres) sem nenhum limite, exatamente o esgotamento de CPU/memória/pool
+ * que este semáforo existe pra evitar. Um stream segura o slot por mais
+ * tempo que um /chat normal (a resposta inteira, não só a chamada síncrona)
+ * — aceito como tradeoff desta fatia; um cap dedicado maior é um refinamento
+ * futuro, não um requisito agora.
  */
-const EXPENSIVE_RE = /^\/souls\/[^/]+\/chat$|^\/api\/missions\/|^\/api\/pipelines\/|^\/auth\/(signup|login)$/;
+const EXPENSIVE_RE =
+  /^\/souls\/[^/]+\/chat$|^\/souls\/[^/]+\/threads\/\d+\/messages\/stream$|^\/api\/missions\/|^\/api\/pipelines\/|^\/auth\/(signup|login)$/;
 
 export function isExpensivePath(path: string): boolean {
   return EXPENSIVE_RE.test(path);
