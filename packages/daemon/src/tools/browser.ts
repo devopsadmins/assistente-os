@@ -21,9 +21,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
-import { registrarLicao, soulDir } from "@assistente-os/core";
+import { registrarLicao, soulDir, resolveHome } from "@assistente-os/core";
 
 // ── Tipos ──────────────────────────────────────────────────────────────
 
@@ -528,7 +528,7 @@ export async function executeDynamicFix(
     // Store the successful helper in the tools cache
     const soulId = process.env.AGENT_SOUL_ID || "default";
     const toolsCacheDir = join(
-      process.env.ASSISTENTE_OS_HOME || `${homedir()}/.assistant-os`,
+      resolveHome(),
       "souls",
       soulId,
       "tools_cache"
@@ -569,7 +569,7 @@ export async function executeDynamicFix(
     // já apareçam no contexto persistente da alma.
     try {
       const domain = new URL(page.url()).hostname;
-      const home = process.env.ASSISTENTE_OS_HOME || `${homedir()}/.assistant-os`;
+      const home = resolveHome();
       const dir = soulDir(join(home, "souls"), soulId);
       registrarLicao(dir, `[browser-fix:${domain}] ${reason} → ${scriptContent.slice(0, 300)}`);
     } catch (lessonErr) {

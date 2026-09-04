@@ -17,8 +17,7 @@ import {
   readFileSync
 } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
-import { todayISODate, emailIngestExtraction } from "@assistente-os/core";
+import { todayISODate, emailIngestExtraction, resolveHome } from "@assistente-os/core";
 import { ollamaUsage, recordLlmCall, type LlmUsage } from "../observability/record-llm-call.js";
 
 // ── Tipos de saída estruturada ───────────────────────────────────────
@@ -263,8 +262,7 @@ export async function emailIngestPipeline(
   extractionResult: EmailExtractionResult;
   triggeredReindex: Promise<void>;
 }> {
-  const homeDir =
-    process.env.ASSISTENTE_OS_HOME || join(homedir() || "~", ".assistant-os");
+  const homeDir = resolveHome();
 
   const _core = await import("@assistente-os/core");
   const targetSoulId =

@@ -20,9 +20,8 @@ import {
   appendFileSync
 } from "node:fs";
 import { join, basename } from "node:path";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { todayISODate, meetingIngestExtraction } from "@assistente-os/core";
+import { todayISODate, meetingIngestExtraction, resolveHome } from "@assistente-os/core";
 import { recordLlmCall } from "../observability/record-llm-call.js";
 
 // ── Funções auxiliares de parse (inline - baseadas no meeting-ingest original) ──
@@ -258,7 +257,7 @@ export async function meetingIngestPipeline(
   meetingPath: string;
   meetingPayload: MeetingPayload;
 }> {
-  const homeDir = process.env.ASSISTENTE_OS_HOME || `${homedir()}/.assistant-os`;
+  const homeDir = resolveHome();
 
   const _core = await import("@assistente-os/core");
   let targetSoulId = soulId || _core.getActiveSoul(homeDir) || "main";
