@@ -421,7 +421,7 @@ export async function preparePromptContext(params: {
       params: { patterns: injection.matches.map((m) => m.name) },
     });
     promptInjectionAlerts.inc({ severity: injection.maxSeverity, source: "user_input" });
-    const modo = process.env.PROMPT_INJECTION_MODO || "aviso";
+    const modo = config.ragInjectionMode;
     if (modo === "recusar" && injection.maxSeverity === "high") {
       return {
         ok: false,
