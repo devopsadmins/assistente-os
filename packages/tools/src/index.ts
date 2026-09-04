@@ -14,6 +14,7 @@ import { TeamProjectReference } from "azure-devops-node-api/interfaces/CoreInter
 import { WorkItem, WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js";
 import { BuildDefinitionReference } from "azure-devops-node-api/interfaces/BuildInterfaces.js";
 import { Operation } from "azure-devops-node-api/interfaces/common/VSSInterfaces.js";
+import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
@@ -49,16 +50,6 @@ const SOUL_SCOPED_TOOLS = new Set([
   "editorial_add_idea", "editorial_get_pipeline_status", "editorial_generate_drafts",
 ]);
 
-/**
- * DTO de PendingRule exposto ao agente LLM via MCP: nunca inclui o hash do
- * código de aprovação. O hash em si não permite forjar o código (é
- * unidirecional), mas omiti-lo evita expor material criptográfico
- * desnecessário à mesma sessão que a aprovação pretende controlar.
- */
-function pendingRuleForAgent<T extends { approvalCodeHash: string }>(rule: T): Omit<T, "approvalCodeHash"> {
-  const { approvalCodeHash, ...rest } = rule;
-  return rest;
-}
 
 /**
  * Verifica se a soul tem permissão para usar a tool.
@@ -83,7 +74,7 @@ function authorizeTool(configHome: string, soulId: string, toolName: string): vo
   }
 }
 
-interface Tool {
+export interface Tool {
   name: string;
   description: string;
   inputSchema: {
@@ -280,78 +271,7 @@ const TOOLS: Tool[] = [
       required: ["soul"],
     },
   },
-  {
-    name: "guardian_audit_execution",
-    description: "Julga a qualidade de uma execução de agente via LLM (score 0-100, ISO/IEC 42001); aprova apenas com score >= 95.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string", description: "id da tarefa avaliada" },
-        targetAgent: { type: "string", description: "id/nome do agente avaliado" },
-        changesSummary: { type: "string", description: "resumo das mudanças feitas" },
-        testResults: { type: "string", description: "resultado dos testes (opcional)" },
-      },
-      required: ["taskId", "targetAgent", "changesSummary"],
-    },
-  },
-  {
-    name: "guardian_promote_golden_rule",
-    description: "Propõe manualmente uma regra de ouro (fora do gatilho automático de 3 reincidências). A proposta fica pendente em guardian_pending_rules até ser aprovada com guardian_approve_rule — nada é aplicado automaticamente.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        topic: { type: "string", description: "tópico normalizado da regra" },
-        ruleText: { type: "string", description: "texto da regra proposta" },
-        reason: { type: "string", description: "motivo/justificativa da proposta" },
-      },
-      required: ["topic", "ruleText", "reason"],
-    },
-  },
-  {
-    name: "guardian_pending_rules",
-    description: "Lista propostas de regra de ouro aguardando aprovação ou rejeição humana.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "guardian_approve_rule",
-    description: "Aprova uma proposta pendente: grava a regra em .opencode/rules/golden-rules.md, AGENTS.md e no índice ativo consumido pelo prompt de todas as souls. Exige o código de aprovação enviado por Telegram (não é devolvido por guardian_promote_golden_rule/guardian_pending_rules) — prova de revisão humana, não pode ser satisfeito pelo próprio agente.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "id da proposta pendente (ver guardian_pending_rules)" },
-        code: { type: "string", description: "código de aprovação de 6 dígitos enviado por Telegram/CLI" },
-      },
-      required: ["id", "code"],
-    },
-  },
-  {
-    name: "guardian_reject_rule",
-    description: "Rejeita uma proposta pendente: marca como decidida sem aplicar nem propagar nada. Exige o mesmo código de aprovação de guardian_approve_rule.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "id da proposta pendente (ver guardian_pending_rules)" },
-        code: { type: "string", description: "código de aprovação de 6 dígitos enviado por Telegram/CLI" },
-      },
-      required: ["id", "code"],
-    },
-  },
-  {
-    name: "guardian_resend_approval_code",
-    description: "Gera um novo código de aprovação para uma proposta pendente (invalida o anterior) e reenvia a notificação por Telegram — use se a notificação original falhou ou o código expirou.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "id da proposta pendente (ver guardian_pending_rules)" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "guardian_get_golden_rules",
-    description: "Retorna a lista consolidada de regras de ouro já aprovadas e em vigor.",
-    inputSchema: { type: "object", properties: {} },
-  },
+  ...GUARDIAN_TOOLS,
   {
     name: "sales_ingest_meeting",
     description: "Ingere uma transcrição de reunião/call (vtt/srt/txt), extrai decisões/ações/objeções via LLM local e persiste em souls/<soul>/sessoes/YYYY-MM-DD-meeting.md.",
@@ -888,6 +808,8 @@ export type ToolHandler = (ctx: ToolContext, args: Record<string, unknown>) => P
  */
 export const FAMILY_HANDLERS: Record<string, ToolHandler> = {};
 
+Object.assign(FAMILY_HANDLERS, GUARDIAN_HANDLERS);
+
 export class McpServer {
   private config;
   private closed = false;
@@ -1271,65 +1193,6 @@ export class McpServer {
           globalGuardrails: this.config.globalGuardrails,
         });
         return { ok: true, path };
-      }
-
-      case "guardian_audit_execution": {
-        const taskId = typeof args.taskId === "string" && args.taskId.trim() ? args.taskId.trim() : null;
-        const targetAgent = typeof args.targetAgent === "string" && args.targetAgent.trim() ? args.targetAgent.trim() : null;
-        const changesSummary = typeof args.changesSummary === "string" && args.changesSummary.trim() ? args.changesSummary.trim() : null;
-        if (!taskId || !targetAgent || !changesSummary) {
-          throw new Error("parâmetros taskId, targetAgent e changesSummary são obrigatórios");
-        }
-        const testResults = typeof args.testResults === "string" ? args.testResults : undefined;
-        const result = await auditExecution({ taskId, targetAgent, changesSummary, testResults });
-        return { ok: true, ...result };
-      }
-
-      case "guardian_promote_golden_rule": {
-        const topic = typeof args.topic === "string" && args.topic.trim() ? args.topic.trim() : null;
-        const ruleText = typeof args.ruleText === "string" && args.ruleText.trim() ? args.ruleText.trim() : null;
-        const reason = typeof args.reason === "string" && args.reason.trim() ? args.reason.trim() : null;
-        if (!topic || !ruleText || !reason) {
-          throw new Error("parâmetros topic, ruleText e reason são obrigatórios");
-        }
-        // O código de aprovação NUNCA volta pro agente aqui — só chega em
-        // claro via notificação Telegram (ou `os guardian pending` + reenvio).
-        const { rule } = proposeRule(this.config.home, topic, ruleText, reason);
-        return { ok: true, rule: pendingRuleForAgent(rule) };
-      }
-
-      case "guardian_pending_rules": {
-        return { ok: true, pending: listPendingRules(this.config.home).map(pendingRuleForAgent) };
-      }
-
-      case "guardian_approve_rule": {
-        const id = typeof args.id === "string" && args.id.trim() ? args.id.trim() : null;
-        const code = typeof args.code === "string" && args.code.trim() ? args.code.trim() : null;
-        if (!id) throw new Error("parâmetro id é obrigatório");
-        if (!code) throw new Error("parâmetro code é obrigatório (código de aprovação enviado por Telegram/CLI)");
-        const repoRoot = process.env.ASSISTENTE_OS_REPO_ROOT || process.cwd();
-        const rule = approveRule(this.config.home, repoRoot, id, code);
-        return { ok: true, rule };
-      }
-
-      case "guardian_reject_rule": {
-        const id = typeof args.id === "string" && args.id.trim() ? args.id.trim() : null;
-        const code = typeof args.code === "string" && args.code.trim() ? args.code.trim() : null;
-        if (!id) throw new Error("parâmetro id é obrigatório");
-        if (!code) throw new Error("parâmetro code é obrigatório (código de aprovação enviado por Telegram/CLI)");
-        rejectRule(this.config.home, id, code);
-        return { ok: true };
-      }
-
-      case "guardian_resend_approval_code": {
-        const id = typeof args.id === "string" && args.id.trim() ? args.id.trim() : null;
-        if (!id) throw new Error("parâmetro id é obrigatório");
-        resendApprovalCode(this.config.home, id);
-        return { ok: true, message: "novo código enviado por Telegram (se configurado); consulte guardian_pending_rules ou o dono do sistema" };
-      }
-
-      case "guardian_get_golden_rules": {
-        return { ok: true, rules: listActiveGoldenRules(this.config.home) };
       }
 
       case "sales_ingest_meeting": {
