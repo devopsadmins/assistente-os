@@ -3,12 +3,7 @@ import { request as httpRequest, type IncomingMessage, type ServerResponse } fro
 import type { Pool } from "pg";
 import type { AssistenteOsConfig, Soul } from "@assistente-os/core";
 import {
-  loadConfig,
-  getPool,
-  isDbHealthy,
-  recordCostCall,
   anotar,
-  getSoul,
   todayISODate,
   sumCostBySoul,
   openSession,
@@ -17,37 +12,19 @@ import {
   getRecentSessionMessages,
   sessionHistoryTurns,
   sessionHistoryMaxChars,
-  recordExecution,
   recordExecutionSpan,
   logger,
   sanitizeUserPrompt,
   sanitizeLLMResponse,
   purgeCredentials,
-  resolveTarget,
-  recordRouterSelection,
   logFullAuditEntry,
-  estimateTokens,
-  nextZenApiKey,
 } from "@assistente-os/core";
 import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
-import { maxFindingSeverity, scoreAnswerFaithfulness } from "@assistente-os/memory";
-import { recordRagEvalRun } from "@assistente-os/core";
+import { maxFindingSeverity } from "@assistente-os/memory";
 import { buildPrompt } from "./context.js";
-import { runLangGraphAgentStream } from "./langgraph-runner.js";
-import { routeFromPrompt, type ExecutionMode } from "./orchestrator/router.js";
-import {
-  escalationConfig,
-  shouldEscalate,
-  shouldRunJudge,
-  judgeAnswer,
-  nextEscalationTier,
-  looksLikeRefusal,
-  canEscalateSession,
-  recordSessionEscalation,
-} from "./orchestrator/escalation.js";
-import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./routes/shared.js";
-import { getRequestAccountId } from "./routes/accountAuth.js";
-import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents, routerEscalation, ollamaPrefillSeconds, ollamaPromptEvalTokens } from "./observability/metrics.js";
+import { routeFromPrompt } from "./orchestrator/router.js";
+import { sendJson } from "./routes/shared.js";
+import { promptInjectionAlerts, ragRerankSeconds, ragCacheEvents } from "./observability/metrics.js";
 
 /**
  * Chama o /api/chat do Ollama via node:http. O fetch() do Node (undici) aborta
@@ -439,7 +416,7 @@ export async function preparePromptContext(params: {
   );
 
   // ---- Histórico da conversa: por thread se historyOverride foi passado
-  // (não gira com a sessão), denso pela sessão (comportamento de /chat,
+  // (não gira com a sessão), senão pela sessão (comportamento de /chat,
   // inalterado) — memória multi-turno. ----
   const history =
     historyOverride ??

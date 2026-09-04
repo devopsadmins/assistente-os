@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Pool } from "pg";
-import type { AssistenteOsConfig, Soul } from "@assistente-os/core";
 import {
   loadConfig,
   getPool,
@@ -9,30 +7,22 @@ import {
   recordCostCall,
   anotar,
   getSoul,
-  todayISODate,
   sumCostBySoul,
   openSession,
   bumpSessionPrompt,
   recordSessionMessage,
-  getRecentSessionMessages,
-  sessionHistoryTurns,
-  sessionHistoryMaxChars,
   recordExecution,
-  recordExecutionSpan,
   logger,
   sanitizeUserPrompt,
   sanitizeLLMResponse,
   purgeCredentials,
   resolveTarget,
   recordRouterSelection,
-  logFullAuditEntry,
   estimateTokens,
   nextZenApiKey,
 } from "@assistente-os/core";
-import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
 import { maxFindingSeverity, scoreAnswerFaithfulness } from "@assistente-os/memory";
 import { recordRagEvalRun } from "@assistente-os/core";
-import { buildPrompt } from "../../context.js";
 import { runLangGraphAgentStream } from "../../langgraph-runner.js";
 import { routeFromPrompt, type ExecutionMode } from "../../orchestrator/router.js";
 import {
@@ -47,7 +37,7 @@ import {
 } from "../../orchestrator/escalation.js";
 import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "../shared.js";
 import { getRequestAccountId } from "../accountAuth.js";
-import { chatRequests, chatLatency, tokensTotal, promptInjectionAlerts, ragRerankSeconds, ragCacheEvents, routerEscalation, ollamaPrefillSeconds, ollamaPromptEvalTokens } from "../../observability/metrics.js";
+import { chatRequests, chatLatency, tokensTotal, routerEscalation, ollamaPrefillSeconds, ollamaPromptEvalTokens } from "../../observability/metrics.js";
 import { ollamaChat, handleChatDegraded, preparePromptContext, type ExecUsage } from "../../promptPipeline.js";
 
 export async function handlePostChat(
