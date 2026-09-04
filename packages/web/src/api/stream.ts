@@ -1,5 +1,8 @@
 import type { ApiClientConfig } from "./client";
 
+// Re-exported only so `./stream` can stand in for `./client` in an existing
+// test import path — not an intentional public re-export barrel. Import
+// `ApiClientConfig` from `./client` directly in new code.
 export type { ApiClientConfig };
 
 export type StreamEvent =
@@ -21,6 +24,19 @@ export type StreamEvent =
  */
 export class SSEFrameParser {
   #buffer = "";
+
+  /**
+   * Bytes recebidos mas ainda não fechados por um `\n\n` — um frame SSE
+   * partido que nunca se completou. Não-vazio (ignorando espaço em branco)
+   * depois que o corpo da resposta termina significa que o stream foi
+   * cortado no meio de um frame (ex.: conexão derrubada) — o chamador trata
+   * isso como erro em vez de descartar silenciosamente (o mesmo tipo de
+   * falha do achado principal desta revisão: um `done` perdido deixa o
+   * cursor de streaming piscando pra sempre).
+   */
+  get pendingIncompleteFrame(): string {
+    return this.#buffer;
+  }
 
   push(chunk: string): StreamEvent[] {
     this.#buffer += chunk;
@@ -89,5 +105,14 @@ export async function streamThreadMessage(
     for (const event of parser.push(decoder.decode(value, { stream: true }))) {
       callbacks.onEvent(event);
     }
+  }
+
+  // O corpo terminou (EOF limpo, sem rejeição) mas sobrou um frame partido
+  // no buffer — o servidor fechou a conexão no meio de um `data: ...\n\n`.
+  // Silenciar isso equivaleria a um `done` perdido: quem chama nunca saberia
+  // que o stream não terminou de verdade (mesma classe de falha do caso em
+  // que `fetch`/`reader.read()` rejeita — ver o `try/catch` em `send()`).
+  if (parser.pendingIncompleteFrame.trim().length > 0) {
+    callbacks.onEvent({ type: "error", message: "stream terminado com frame incompleto" });
   }
 }

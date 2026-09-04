@@ -89,6 +89,43 @@ describe("useThreadStream", () => {
     expect(assistantMessage).toMatchObject({ kind: "error", message: "provider falhou" });
   });
 
+  it("send transiciona a mensagem streaming pra error quando a conexão morre no meio do stream (sem done)", async () => {
+    // Reprodução do achado principal da revisão final: `fetch()` já resolveu
+    // (o header 200 + o primeiro frame já saíram), mas a conexão morre antes
+    // de qualquer `done` chegar — `reader.read()` REJEITA. Sem o catch em
+    // `send()`, essa rejeição escapava sem tratamento e a mensagem `streaming`
+    // nunca transicionava — o cursor piscando pra sempre que o plano
+    // explicitamente proíbe.
+    daemon = await startFakeDaemon((req, res) => {
+      if (req.method === "GET" && req.url === "/souls/soul-a/threads/3/messages") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify([]));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/souls/soul-a/threads/3/messages/stream") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write('data: {"type":"token","text":"parc"}\n\n');
+        // Termina a conexão abruptamente (sem res.end() nem done) — simula
+        // daemon caindo ou conexão derrubada no meio do body.
+        res.socket?.destroy();
+        return;
+      }
+      res.writeHead(404, {});
+      res.end();
+    });
+    const config: ApiClientConfig = { baseUrl: daemon.url, token: "dev-token" };
+    const { result } = renderHook(() => useThreadStream(config, "soul-a", 3));
+    await waitFor(() => expect(result.current.sending).toBe(false));
+
+    await act(async () => {
+      await result.current.send("pergunta");
+    });
+
+    await waitFor(() => expect(result.current.sending).toBe(false));
+    const assistantMessage = result.current.messages[1];
+    expect(assistantMessage?.kind).toBe("error");
+  });
+
   it("mantém o histórico real da thread mesmo quando send() vence a corrida contra o GET de montagem", async () => {
     daemon = await startFakeDaemon((req, res) => {
       if (req.method === "GET" && req.url === "/souls/soul-a/threads/3/messages") {

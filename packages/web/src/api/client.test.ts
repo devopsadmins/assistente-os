@@ -10,10 +10,17 @@ afterEach(async () => {
 });
 
 describe("listThreads", () => {
+  // Capturada pelo handler, verificada no corpo do teste — não dentro do
+  // handler. Uma expect() lá dentro que falha vira um throw não-tratado no
+  // servidor HTTP do node, e o teste trava/estoura em vez de mostrar um
+  // diff de falha normal do vitest.
+  let capturedAuthHeader: string | string[] | undefined;
+
   beforeEach(async () => {
+    capturedAuthHeader = undefined;
     daemon = await startFakeDaemon((req, res) => {
       if (req.method === "GET" && req.url === "/souls/soul-a/threads") {
-        expect(req.headers.authorization).toBe("Bearer dev-token");
+        capturedAuthHeader = req.headers.authorization;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify([
@@ -32,6 +39,7 @@ describe("listThreads", () => {
     const threads = await listThreads(config, "soul-a");
     expect(threads).toHaveLength(1);
     expect(threads[0]!.title).toBe("Primeira");
+    expect(capturedAuthHeader).toBe("Bearer dev-token");
   });
 });
 

@@ -31,27 +31,37 @@ export function useThreadStream(config: ApiClientConfig, soulId: string, threadI
     setMessages([]);
     if (threadId === null) return;
     let cancelled = false;
-    void getThreadMessages(config, soulId, threadId).then((history) => {
-      if (cancelled) return;
-      // Merge, never replace: `send()` may already have added local
-      // (pending/streaming/persisted) messages by the time this
-      // mount-time GET resolves — a `prev.length > 0` guard would treat
-      // that as "history already loaded" and silently drop a thread's
-      // real prior messages the instant a user sends a fast follow-up
-      // before the GET returns. Prepending keeps chronological order
-      // regardless of which resolves first: if history wins the race,
-      // `prev` is still `[]` here and this is a no-op difference; if
-      // send() wins, its local entries are correctly appended after the
-      // real history instead of being clobbered by it.
-      setMessages((prev) => [
-        ...history.map((m) => ({ kind: "persisted" as const, id: m.id, role: m.role, content: m.content })),
-        ...prev,
-      ]);
-    });
+    void getThreadMessages(config, soulId, threadId)
+      .then((history) => {
+        if (cancelled) return;
+        // Merge, never replace: `send()` may already have added local
+        // (pending/streaming/persisted) messages by the time this
+        // mount-time GET resolves — a `prev.length > 0` guard would treat
+        // that as "history already loaded" and silently drop a thread's
+        // real prior messages the instant a user sends a fast follow-up
+        // before the GET returns. Prepending keeps chronological order
+        // regardless of which resolves first: if history wins the race,
+        // `prev` is still `[]` here and this is a no-op difference; if
+        // send() wins, its local entries are correctly appended after the
+        // real history instead of being clobbered by it.
+        setMessages((prev) => [
+          ...history.map((m) => ({ kind: "persisted" as const, id: m.id, role: m.role, content: m.content })),
+          ...prev,
+        ]);
+      })
+      .catch((err: unknown) => {
+        // Sem isso, uma GET que falha (thread apagada, 401, daemon fora do
+        // ar) renderiza uma thread vazia — indistinguível de uma thread
+        // genuinamente sem histórico. Igual ao resto do hook: erro sempre
+        // visível, nunca silencioso.
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "falha ao carregar histórico da thread";
+        setMessages((prev) => [...prev, { kind: "error", id: `local-${nextLocalId++}`, message }]);
+      });
     return () => {
       cancelled = true;
     };
-  }, [config, soulId, threadId]);
+  }, [config.baseUrl, config.token, soulId, threadId]);
 
   const send = useCallback(
     async (prompt: string) => {
@@ -91,11 +101,25 @@ export function useThreadStream(config: ApiClientConfig, soulId: string, threadI
             }
           },
         });
+      } catch (err) {
+        // `streamThreadMessage` only synthesizes {type:"error"} for non-2xx
+        // HTTP responses — it never catches a REJECTED fetch()/reader.read()
+        // (daemon down, connection refused, socket dropped mid-body). Without
+        // this catch, that rejection propagates uncaught and the `streaming`
+        // message never resolves — its caret blinks forever, exactly the
+        // failure the plan's Global Constraints warn against. An AbortError
+        // is the one exception: that's `send()` being deliberately cancelled
+        // (switching threads unmounts and calls `abortRef.current?.abort()`
+        // in the next effect run), not a real failure — nothing to surface.
+        if (!(err instanceof Error && err.name === "AbortError")) {
+          const message = err instanceof Error ? err.message : "falha de rede";
+          setMessages((prev) => prev.map((m) => (m.id === streamId ? { kind: "error" as const, id: streamId, message } : m)));
+        }
       } finally {
         setSending(false);
       }
     },
-    [config, soulId, threadId],
+    [config.baseUrl, config.token, soulId, threadId],
   );
 
   return { messages, sending, send };

@@ -53,6 +53,17 @@ if (typeof window !== "undefined") {
 // instance of (confirmed empirically: `new AbortController().signal
 // instanceof AbortSignal` is true against the global class — the mismatch
 // is only inside jsdom's private fetch shim, not the ambient realm).
+// Known limits of this swap (doc-only, no test currently depends on either):
+//  - undici's fetch has no `window.location` to resolve a RELATIVE URL
+//    against. Production's real `ApiClientConfig.baseUrl: ""` (same-origin,
+//    proxied by Vite — see client.ts) would throw under this test fetch. So
+//    the actual production fetch configuration is structurally untestable
+//    in this package as currently set up; every test here uses an absolute
+//    `daemon.url` from `startFakeDaemon` instead.
+//  - undici does no CORS enforcement and sends no `Origin` header, so these
+//    tests prove the SSE/JSON parsing and our own code paths work, but
+//    nothing about actual browser fetch/CORS semantics against the real
+//    daemon.
 if (typeof window !== "undefined") {
   const undici = await import("undici");
   globalThis.fetch = undici.fetch as unknown as typeof fetch;

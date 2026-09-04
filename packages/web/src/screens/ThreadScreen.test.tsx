@@ -6,6 +6,10 @@ import { ThreadScreen } from "./ThreadScreen";
 import type { ApiClientConfig } from "../api/client";
 
 let daemon: FakeDaemon;
+// Capturado pelo handler, verificado no corpo do teste — ver a mesma nota em
+// client.test.ts: uma expect() dentro do handler HTTP fake vira um hang/
+// throw não-tratado no servidor em vez de uma falha de teste normal.
+let capturedStreamPrompt: string | undefined;
 
 afterEach(async () => {
   await daemon?.close();
@@ -13,6 +17,7 @@ afterEach(async () => {
 
 describe("ThreadScreen", () => {
   it("lista as threads na sidebar, mostra o histórico e envia uma mensagem nova que aparece na tela ao terminar", async () => {
+    capturedStreamPrompt = undefined;
     const user = userEvent.setup();
     daemon = await startFakeDaemon((req, res, body) => {
       if (req.method === "GET" && req.url === "/souls/soul-a/threads") {
@@ -31,7 +36,7 @@ describe("ThreadScreen", () => {
       }
       if (req.method === "POST" && req.url === "/souls/soul-a/threads/1/messages/stream") {
         const parsed = JSON.parse(body || "{}") as { prompt?: string };
-        expect(parsed.prompt).toBe("mensagem nova");
+        capturedStreamPrompt = parsed.prompt;
         res.writeHead(200, { "content-type": "text/event-stream" });
         res.write('data: {"type":"token","text":"resposta"}\n\n');
         res.write('data: {"type":"done","messageId":2,"usage":{"promptTokens":1,"completionTokens":1,"source":"provider"}}\n\n');
@@ -54,5 +59,6 @@ describe("ThreadScreen", () => {
 
     await waitFor(() => expect(screen.getByText("resposta")).toBeInTheDocument());
     expect(screen.getByText("mensagem nova")).toBeInTheDocument();
+    expect(capturedStreamPrompt).toBe("mensagem nova");
   });
 });

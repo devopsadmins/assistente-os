@@ -79,6 +79,7 @@ export function ThreadScreen({ config, soulId }: ThreadScreenProps) {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Escreva uma mensagem..."
+            aria-label="Escreva uma mensagem"
             disabled={sending}
           />
           <button

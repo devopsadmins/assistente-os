@@ -29,17 +29,25 @@ export function useThreads(config: ApiClientConfig, soulId: string): UseThreadsR
     } finally {
       setLoading(false);
     }
-  }, [config, soulId]);
+  }, [config.baseUrl, config.token, soulId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   const createNewThread = useCallback(async () => {
-    const thread = await createThread(config, soulId);
-    setThreads((prev) => [thread, ...prev]);
-    setActiveThreadId(thread.id);
-  }, [config, soulId]);
+    // Sem try/catch, um daemon fora do ar fazia o clique em "+ Nova thread"
+    // não dar nenhum feedback — a promise rejeitada morria em `void
+    // createNewThread()` (ThreadScreen) sem nunca tocar `error`. Mesmo
+    // tratamento que `reload` já dá pra listThreads.
+    try {
+      const thread = await createThread(config, soulId);
+      setThreads((prev) => [thread, ...prev]);
+      setActiveThreadId(thread.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "falha ao criar thread");
+    }
+  }, [config.baseUrl, config.token, soulId]);
 
   return { threads, loading, error, activeThreadId, setActiveThreadId, createNewThread };
 }
