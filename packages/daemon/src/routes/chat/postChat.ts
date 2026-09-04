@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Pool } from "pg";
 import type { AssistenteOsConfig, Soul } from "@assistente-os/core";
 import {
