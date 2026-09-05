@@ -1,5 +1,15 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readJson, sendJson, type RequestContext } from "./shared.js";
+import { z } from "zod";
+import { parseBody, sendJson, type RequestContext } from "./shared.js";
+
+// e-mail/senha não têm regra de formato aqui de propósito — `createAccount`/
+// `verifyLogin` (packages/core) já validam formato/força; o schema só garante
+// que ambos os campos são strings (rejeita número/objeto/ausência com 400 em
+// vez de deixar "" passar batido pro core).
+const AuthCredentialsSchema = z.object({
+  email: z.string(),
+  password: z.string(),
+});
 
 /**
  * Rotas de conta do modo amigável (Fase 0): POST /auth/signup, POST
@@ -21,13 +31,12 @@ export async function handleAuth(
   const { home } = context;
 
   if (req.method === "POST" && path === "/auth/signup") {
-    const { body, error } = await readJson(req);
-    if (error || !body) {
-      sendJson(res, 400, { error: "corpo inválido" });
+    const parsed = await parseBody(req, AuthCredentialsSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
-    const email = typeof body.email === "string" ? body.email : "";
-    const password = typeof body.password === "string" ? body.password : "";
+    const { email, password } = parsed.data;
     const { loadConfig, getPool, createAccount, createAccountSession, isAssistenteOsError } = await import("@assistente-os/core");
     const pool = getPool(loadConfig({ home }).databaseUrl);
     try {
@@ -45,13 +54,12 @@ export async function handleAuth(
   }
 
   if (req.method === "POST" && path === "/auth/login") {
-    const { body, error } = await readJson(req);
-    if (error || !body) {
-      sendJson(res, 400, { error: "corpo inválido" });
+    const parsed = await parseBody(req, AuthCredentialsSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
-    const email = typeof body.email === "string" ? body.email : "";
-    const password = typeof body.password === "string" ? body.password : "";
+    const { email, password } = parsed.data;
     const { loadConfig, getPool, verifyLogin, createAccountSession } = await import("@assistente-os/core");
     const pool = getPool(loadConfig({ home }).databaseUrl);
     const account = await verifyLogin(pool, email, password);

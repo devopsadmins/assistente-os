@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import {
   loadConfig,
   getPool,
@@ -7,8 +8,18 @@ import {
   CAPABILITY_CATALOG,
   scanSkillDirs,
 } from "@assistente-os/core";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, type RequestContext } from "./shared.js";
 import { getRequestAccountId } from "./accountAuth.js";
+
+// Array de strings, filtrando silenciosamente entradas de outro tipo (mesmo
+// comportamento de antes: `Array.isArray(x) ? x.filter(typeof === "string") : []`).
+const stringArrayFiltered = () =>
+  z.preprocess((v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []), z.array(z.string()));
+
+const PutAllowlistSchema = z.object({
+  capabilities: stringArrayFiltered(),
+  skills: stringArrayFiltered(),
+});
 
 /**
  * Administração da allowlist de capabilities/skills liberadas pro
@@ -58,18 +69,12 @@ export async function handleFriendlyAdmin(
   }
 
   // PUT
-  const parsed = await readJson(req);
-  if (parsed.error === "too_large") {
-    sendJson(res, 413, { error: "body excede 1 MB" });
+  const parsed = await parseBody(req, PutAllowlistSchema);
+  if (!parsed.ok) {
+    sendJson(res, parsed.status, { error: parsed.error });
     return true;
   }
-  if (parsed.error === "invalid") {
-    sendJson(res, 400, { error: "JSON inválido" });
-    return true;
-  }
-  const body = parsed.body ?? {};
-  const capabilities = Array.isArray(body.capabilities) ? body.capabilities.filter((x: unknown) => typeof x === "string") : [];
-  const skills = Array.isArray(body.skills) ? body.skills.filter((x: unknown) => typeof x === "string") : [];
+  const { capabilities, skills } = parsed.data;
   await setFriendlyAllowlist(pool, { capabilities, skills });
   const updated = await getFriendlyAllowlist(pool);
   sendJson(res, 200, updated);

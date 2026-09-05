@@ -1,8 +1,24 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
+import { z } from "zod";
 import { loadConfig, getPool } from "@assistente-os/core";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, readJson, parseBody, type RequestContext } from "./shared.js";
+
+const SendWhatsappSchema = z.object({
+  jid: z.string().min(1, "jid obrigatório"),
+  text: z.string().min(1, "text obrigatório"),
+});
+
+const TranscribeSchema = z.object({
+  eventId: z.number().refine((v) => Boolean(v), { message: "eventId obrigatório" }),
+});
+
+const ApproveWebhookSchema = z.object({
+  session_path: z.string().min(1, "session_path é obrigatório"),
+  draft: z.string().optional(),
+  contato: z.string().optional(),
+});
 
 /**
  * Rotas do canal WhatsApp: histórico, status, envio, mídia, transcrição,
@@ -52,13 +68,12 @@ export async function handleWhatsapp(
       sendJson(res, 503, { error: "canal WhatsApp não habilitado" });
       return true;
     }
-    const { body } = await readJson(req);
-    const jid = body?.jid as string | undefined;
-    const text = body?.text as string | undefined;
-    if (!jid || !text) {
-      sendJson(res, 400, { error: "jid e text obrigatórios" });
+    const parsed = await parseBody(req, SendWhatsappSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
+    const { jid, text } = parsed.data;
     const ok = await context.whatsappChannel.sendMessage(jid, text);
     sendJson(res, ok ? 200 : 500, { ok });
     return true;
@@ -96,12 +111,12 @@ export async function handleWhatsapp(
 
   // ── WhatsApp: transcrever áudio ────────────────────────────────────
   if (req.method === "POST" && path === "/api/whatsapp/transcribe") {
-    const { body } = await readJson(req);
-    const eventId = body?.eventId as number | undefined;
-    if (!eventId) {
-      sendJson(res, 400, { error: "eventId obrigatório" });
+    const parsedBody = await parseBody(req, TranscribeSchema);
+    if (!parsedBody.ok) {
+      sendJson(res, parsedBody.status, { error: parsedBody.error });
       return true;
     }
+    const { eventId } = parsedBody.data;
     try {
       const { execSync } = await import("node:child_process");
       try { execSync("which ffmpeg", { stdio: "ignore" }); } catch {
@@ -156,6 +171,12 @@ export async function handleWhatsapp(
   }
 
   // ── WhatsApp Webhook Human-in-the-Loop ──────────────────────────────
+  // SPEC-EP2 Frente 2: deliberadamente sem schema Zod — o payload é o formato
+  // de wire de um provedor externo (Baileys/WhatsApp), não um formato nosso;
+  // `processWhatsAppPayload` (adapters/whatsapp.js) já faz sua própria
+  // validação estrutural. Um schema aqui sem conhecimento profundo do formato
+  // arriscaria rejeitar mensagens reais silenciosamente — fica pra uma fatia
+  // dedicada que estude o contrato do provedor primeiro.
   if (req.method === "POST" && path === "/api/webhooks/whatsapp") {
     const parsed = await readJson(req);
     if (parsed.error === "too_large") {
@@ -192,23 +213,14 @@ export async function handleWhatsapp(
   }
 
   if (req.method === "POST" && path === "/api/webhooks/whatsapp/approve") {
-    const parsed = await readJson(req);
-    if (parsed.error === "too_large") {
-      sendJson(res, 413, { error: "body excede 1 MB" });
-      return true;
-    }
-    if (parsed.error === "invalid") {
-      sendJson(res, 400, { error: "JSON inválido" });
+    const parsed = await parseBody(req, ApproveWebhookSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
     try {
       const { anotar } = await import("@assistente-os/core");
-      const payload = (parsed.body ?? {}) as { session_path?: string; draft?: string; contato?: string };
-      const { session_path, draft, contato } = payload;
-      if (!session_path) {
-        sendJson(res, 400, { error: "session_path é obrigatório" });
-        return true;
-      }
+      const { session_path, draft, contato } = parsed.data;
       const approvalEntry = `🟢 Aprovação humana confirmada em ${new Date().toISOString()}\nContato: ${contato || "desconhecido"}\nRascunho aprovado:\n${draft || ""}`;
       const soulDirFromSessionPath = session_path.split("/sessoes/")[0] ?? session_path;
       const file = anotar(soulDirFromSessionPath, approvalEntry);

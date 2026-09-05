@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z, type ZodType } from "zod";
 import type { RouterProbe } from "@assistente-os/core";
 import type { WsHub, DaemonOptions } from "../server.js";
 import type { VoiceHandler } from "../voice.js";
@@ -62,6 +63,55 @@ export function readJson(req: IncomingMessage): Promise<{ body: Record<string, u
     });
     req.on("error", () => finish({ body: null, error: "invalid" }));
   });
+}
+
+export type ParsedBody<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
+
+/**
+ * SPEC-EP2 Frente 2 (2026-09-05): lê o body (limite de 1 MB de `readJson`) e
+ * valida contra um schema Zod num só lugar — antes, cada rota reimplementava
+ * `typeof body.x === "string" ? ... : default` à mão, sem validação real (só
+ * coerção silenciosa pra um fallback). Em caso de falha devolve 400/413 com
+ * mensagem PT-BR já pronta pra `sendJson`; em caso de sucesso devolve `data`
+ * já tipado e validado pelo schema (com `.trim()`/`.default()` etc. do
+ * schema aplicados).
+ */
+export async function parseBody<T>(req: IncomingMessage, schema: ZodType<T, z.ZodTypeDef, unknown>): Promise<ParsedBody<T>> {
+  const { body, error } = await readJson(req);
+  if (error === "too_large") return { ok: false, status: 413, error: "body excede 1 MB" };
+  if (error === "invalid") return { ok: false, status: 400, error: "JSON inválido" };
+  const result = schema.safeParse(body ?? {});
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; ");
+    return { ok: false, status: 400, error: `corpo inválido — ${detail}` };
+  }
+  return { ok: true, data: result.data };
+}
+
+/**
+ * String obrigatória, aparada (trim); em branco ou de outro tipo → erro de
+ * validação (400 via `parseBody`). Espelha o padrão que já era o de fato do
+ * daemon (`typeof x === "string" && x.trim()`), só que agora rejeitado em vez
+ * de silenciosamente virar `""`.
+ */
+export function requiredTrimmedString(message = "obrigatório"): ZodType<string, z.ZodTypeDef, unknown> {
+  return z.preprocess((v) => (typeof v === "string" ? v.trim() : v), z.string().min(1, message));
+}
+
+/**
+ * String opcional, aparada; ausente/`null`/string em branco → `null` (não
+ * `undefined`) — os call sites downstream (`addAgendaItem` etc.) já esperam
+ * `string | null`. Um tipo errado (número, array, objeto) ainda é rejeitado
+ * como erro de validação — antes virava `null` silenciosamente.
+ */
+export function optionalTrimmedString(): ZodType<string | null, z.ZodTypeDef, unknown> {
+  return z
+    .preprocess((v) => {
+      if (typeof v !== "string") return v;
+      const trimmed = v.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }, z.string().nullish())
+    .transform((v) => v ?? null);
 }
 
 /** Lê o body cru (Buffer) para verificação de HMAC; respeita o limite de 1 MB. */
