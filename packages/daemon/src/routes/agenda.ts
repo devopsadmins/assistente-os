@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { loadConfig, getPool, addAgendaItem, getAgendaItems, type AgendaItem } from "@assistente-os/core";
+import { loadConfig, getPool, addAgendaItem, getAgendaItems, isDbHealthy, type AgendaItem } from "@assistente-os/core";
 import { processDueAgenda } from "../agenda.js";
 import { sendJson, readJson, type RequestContext } from "./shared.js";
 
@@ -27,6 +27,13 @@ export async function handleAgenda(
       }
     }
     const pool = getPool(config.databaseUrl);
+    // SPEC-HR1 (fatia 3, 2026-09-05): agenda é 100% Postgres, sem fallback em
+    // disco — mesma sonda já usada em agenda_add/agenda_list (tool MCP) pra
+    // não vazar a exceção crua do driver `pg` (timeout de conexão de 5s).
+    if (!(await isDbHealthy(pool))) {
+      sendJson(res, 503, { error: "Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes" });
+      return true;
+    }
     sendJson(res, 200, await getAgendaItems(pool, doneFilter, soulParam));
     return true;
   }
@@ -59,6 +66,10 @@ export async function handleAgenda(
     }
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
+    if (!(await isDbHealthy(pool))) {
+      sendJson(res, 503, { error: "Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes" });
+      return true;
+    }
     const item: AgendaItem = await addAgendaItem(pool, soul, title, itemBody, dueAt);
     // Despacho imediato em background se já vencido; o loop periódico cobre reinícios/atrasos.
     setImmediate(() => {
