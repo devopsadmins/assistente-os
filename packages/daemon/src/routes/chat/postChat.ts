@@ -7,6 +7,7 @@ import {
   isDbHealthy,
   recordCostCall,
   anotar,
+  appendUsageMetadata,
   getSoul,
   sumCostBySoul,
   openSession,
@@ -386,6 +387,21 @@ export async function handlePostChat(
       note: `latency_ms=${Date.now() - startedAt}`,
       traceId,
     });
+    // SPEC-GR2: rodapé auditável na sessão do dia — telemetria em arquivo,
+    // complementar aos registros em Postgres (que rotacionam/expiram).
+    // Nunca deve derrubar a resposta do chat por um problema de I/O.
+    try {
+      appendUsageMetadata(soul.dir, {
+        sessionId: session.id,
+        promptTokens: succeeded ? finalUsage.promptTokens : 0,
+        completionTokens: succeeded ? finalUsage.completionTokens : 0,
+        latencyMs: Date.now() - startedAt,
+        modelUsed: model,
+        executionMode: orchDecision.mode,
+      });
+    } catch {
+      /* fall-through: chat responde mesmo se o rodapé de telemetria falhar */
+    }
     // Linha canônica de execução real no router_history (a que getUsageSummary conta).
     // Só em sucesso — falha/timeout deixa apenas as linhas de sonda de route().
     if (succeeded) {

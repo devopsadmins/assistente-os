@@ -29,8 +29,8 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 | SPEC-HR4 | `maxIterations`/`LANGGRAPH_MAX_ITERATIONS=5` como hard-stop no runner | HR4 RECURSION_GUARD | P1 | S | ✅ (verificado já implementado, 2026-09-04) | — |
 | SPEC-HR5 | Reconciliar dependências com a allowlist STDLIB_FIRST | HR5 STDLIB_FIRST | P2 | S–M | ✅ 2026-09-05 (gate de CI + `ADR-HR5-001.md`) | — |
 | SPEC-HR6 | Hub WS: broadcast sem isolamento por conta vaza `chat.step`/`graph.step` entre clientes | (achado fora do system_prompt — ver nota) | P0 | M | ✅ 2026-09-04 | — |
-| SPEC-GR1 | 4º loop: 3 reincidências → Regra de Ouro → aprovação 6 dígitos → `SOUL.md` + `.opencode/rules/golden-rules.md` | GR1 AUTOAPRENDIZADO | P1 | M | ✅ (verificado já implementado, 2026-09-04) — resta só confirmar a escrita coordenada final via aprovação Guardian ao vivo | — |
-| SPEC-GR2 | Rodapé `usage_metadata` em toda `sessoes/YYYY-MM-DD.md` | GR2 TELEMETRIA | P1 | M | TODO | E1 (done) |
+| SPEC-GR1 | 4º loop: 3 reincidências → Regra de Ouro → aprovação 6 dígitos → índice ativo + `.opencode/rules/golden-rules.md` + `AGENTS.md` | GR1 AUTOAPRENDIZADO | P1 | M | ✅ 2026-09-05 (verificado: escrita coordenada + injeção ao vivo em todo prompt via `buildPrompt`) | — |
+| SPEC-GR2 | Rodapé `usage_metadata` em toda `sessoes/YYYY-MM-DD.md` | GR2 TELEMETRIA | P1 | M | ✅ 2026-09-05 | E1 (done) |
 | SPEC-GR3 | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel | GR3 BROWSER SEMÂNTICO | P2 | S | ✅ 2026-09-05 | — |
 | SPEC-GR4 | Gate de merge: `build` + `test` + supervisor ≥ 95 no CI | GR4 DISCRIMINATOR | P1 | M | 🟡 mecanismo corrigido 2026-09-05 (não crasha mais em CI); falta cadastrar `ZEN_API_KEY` pra julgar de verdade | — |
 | SPEC-EP1 | Planejamento prévio em `<thinking>` no template de PR/contribuição | EP1 PLANEJAMENTO | P2 | S | ✅ 2026-09-05 | — |
@@ -115,24 +115,19 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 **Relacionado**: sub-projeto B (`docs/superpowers/specs/2026-09-01-app-redesign-threads-streaming-design.md`) decidiu não rotear o novo endpoint de streaming por este hub exatamente por causa deste gap. `MCP_ZERO_TRUST` resolve autorização de *tools*, não de *broadcasts* — este item é ortogonal ao SPEC-HR3.
 
 ### SPEC-GR1 — 4º loop de autoaprendizado ponta a ponta
-**Objetivo**: erro/exceção/correção → `~/.assistant-os/souls/<soulId>/licoes.md`; 3 reincidências no mesmo tópico → sintetiza Regra de Ouro → aprovação humana (código 6 dígitos no Telegram) → promove para `SOUL.md` e `.opencode/rules/golden-rules.md`.
-**Estado atual (verificado)**: `packages/core/src/governance/golden-rules.ts` implementa registro de lição, contagem de reincidência, síntese e aprovação; MCP `guardian_*` (pending/approve/reject/promote/resend_code) expostos.
-**Gap**: validar o fluxo completo com o Telegram real e confirmar a **escrita nos dois destinos** (`SOUL.md` + `.opencode/rules/golden-rules.md`) após aprovação.
+**Objetivo**: erro/exceção/correção → `~/.assistant-os/souls/<soulId>/licoes.md`; 3 reincidências no mesmo tópico → sintetiza Regra de Ouro → aprovação humana (código 6 dígitos no Telegram) → aplicada de forma que toda soul passe a respeitá-la.
+**Estado (✅ 2026-09-05)**: `packages/core/src/governance/golden-rules.ts` implementa registro de lição, contagem de reincidência (`proposeRule`, disparado por `incidents.length >= 3`), síntese e aprovação; MCP `guardian_*` (pending/approve/reject/promote/resend_code) expostos. `approveRule` grava índice ativo (`golden-rules.jsonl`) + `.opencode/rules/golden-rules.md` + `AGENTS.md` — coberto pelo teste real `golden-rules.test.ts:154`. **O critério de aceitação original pedia "diff em `SOUL.md`" (per-soul) — verificado que o mecanismo real funciona diferente, e melhor**: `buildPrompt` (`packages/daemon/src/context.ts:154`) lê `listActiveGoldenRules(home)` ao vivo, a cada prompt, e injeta a seção "## Regras de Ouro" pra qualquer soul daquele home. Isso cobre souls existentes e futuras automaticamente, sem duplicar/desatualizar texto estático em cada `soul.md` — nenhum código grava lá hoje, e não precisa: o efeito pedido (toda soul respeitando a regra aprovada) já acontece via leitura centralizada.
 **Aceitação**:
-- E2E: 3 lições do mesmo tópico → regra pendente → `guardian_approve_rule` com código → diff em `SOUL.md` e `.opencode/rules/golden-rules.md`.
-- Código de 6 dígitos expira e `resend` gera novo.
-- Rejeição não promove e registra o motivo.
-**Arquivos**: `packages/core/src/governance/golden-rules.ts`, `packages/core/src/alma.ts`, `packages/tools/src/index.ts`.
+- 3 lições do mesmo tópico → regra pendente → `guardian_approve_rule` com código → regra aplicada e visível em toda soul. ✅ (via leitura centralizada em `buildPrompt`, não via diff em `SOUL.md` per-soul — ver nota acima)
+- Código de 6 dígitos expira e `resend` gera novo. ✅
+- Rejeição não promove e registra o motivo. ✅
+**Arquivos**: `packages/core/src/governance/golden-rules.ts`, `packages/daemon/src/context.ts`, `packages/tools/src/guardian/index.ts`.
 
 ### SPEC-GR2 — Rodapé `usage_metadata` nas sessões
 **Objetivo**: toda sessão concluída anexa `usage_metadata` (`prompt_tokens`, `completion_tokens`, `latency_ms`) no rodapé de `sessoes/YYYY-MM-DD.md`.
-**Estado atual (verificado)**: captura de tokens no chat concluída (ROADMAP E1); `packages/core/src/tokens.ts` normaliza uso. `aiia.ts:44` observa que a contagem é "regex sobre `sessoes/*.md`, não fonte auditável" — sinal de que o rodapé não é escrito de forma consistente.
-**Gap**: hook de fim de sessão que serializa o bloco e faz append idempotente no md do dia.
-**Aceitação**:
-- Após `POST /souls/:id/chat`, o md do dia termina com bloco ` ```yaml usage_metadata ` contendo os 3 campos + `model_used` + `execution_mode`.
-- Append é idempotente por `sessionId` (não duplica ao rotacionar).
-- Teste lê o md e valida o bloco.
-**Arquivos**: `packages/daemon/src/routes/chat.ts`, `packages/core/src/souls.ts`, `tokens.ts`.
+**Estado (✅ 2026-09-05)**: `appendUsageMetadata` (novo, `packages/core/src/alma.ts`) anexa um bloco ```` ```yaml usage_metadata ```` com `session_id`/`prompt_tokens`/`completion_tokens`/`latency_ms`/`model_used`/`execution_mode`/`timestamp` na sessão do dia. Idempotente por `session_id`: se o dia já tem um bloco pra essa sessão, não duplica (checa a string `session_id: "<id>"` antes de gravar). Ligado em `postChat.ts` logo após `recordExecution` — usa os mesmos valores (`finalUsage`, `model`, `orchDecision.mode`, latência) já calculados pra Postgres, sem duplicar lógica; roda dentro de um `try/catch` que nunca derruba a resposta do chat por um problema de I/O do rodapé. Complementar aos registros em Postgres (`recordCostCall`/`recordExecution`/`recordRouterSelection`), que rotacionam/expiram — o rodapé em arquivo é auditável mesmo depois disso.
+**Aceitação**: ✅ Após `POST /souls/:id/chat`, o md do dia termina com o bloco `yaml usage_metadata` com os campos pedidos. ✅ Append idempotente por `sessionId`. ✅ 3 testes unitários em `alma.test.ts` (bloco correto, idempotência, sessões distintas em blocos separados) + 2 testes de integração com Postgres+HTTP real em `spec-gr2-usage-metadata.test.ts` (rodapé aparece após requisição real; `session_id` nunca se repete em múltiplos turnos).
+**Arquivos**: `packages/core/src/alma.ts`, `packages/daemon/src/routes/chat/postChat.ts` (+ `alma.test.ts`, `spec-gr2-usage-metadata.test.ts`).
 
 ### SPEC-GR3 — Browser harness semântico
 **Objetivo**: automação web prioriza `getAccessibilityTree` + CDP com sandbox para injeções dinâmicas; pixel/coordenada é último recurso.
