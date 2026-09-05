@@ -994,3 +994,50 @@ test("souls_*: tools/list inclui soul_chat e action_execute (smoke — sem execu
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("mcp: editorial_add_idea → editorial_get_pipeline_status → editorial_generate_drafts (fluxo completo)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    // editorial_* não entram em DEFAULT_ALLOWED_TOOLS (menor privilégio por
+    // padrão) — a soul precisa declará-las explicitamente.
+    createSoul(home, "main", {
+      name: "main",
+      description: "soul principal",
+      agent: { permissions: { tools: ["editorial_add_idea", "editorial_get_pipeline_status", "editorial_generate_drafts"] }, guardrails: {} },
+    });
+    const add = await server.handleMessage({
+      jsonrpc: "2.0", id: 290, method: "tools/call",
+      params: {
+        name: "editorial_add_idea",
+        arguments: { soul: "main", topic: "IA generativa em vendas", vertical: "sales-tech", source: "call", priority: "high", tags: ["ia", "vendas"] },
+      },
+    });
+    const addParsed = JSON.parse((add?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { ok: boolean; ideaId?: string };
+    assert.equal(addParsed.ok, true);
+    assert.ok(addParsed.ideaId);
+
+    const status = await server.handleMessage({
+      jsonrpc: "2.0", id: 291, method: "tools/call",
+      params: { name: "editorial_get_pipeline_status", arguments: { soul: "main" } },
+    });
+    const statusParsed = JSON.parse((status?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { ok: boolean; pipeline: { backlog: { id: string }[] }; metrics: { total: number } };
+    assert.equal(statusParsed.ok, true);
+    assert.equal(statusParsed.metrics.total, 1);
+    assert.ok(statusParsed.pipeline.backlog.some((i) => i.id === addParsed.ideaId));
+
+    const drafts = await server.handleMessage({
+      jsonrpc: "2.0", id: 292, method: "tools/call",
+      params: {
+        name: "editorial_generate_drafts",
+        arguments: { soul: "main", ideaIds: [addParsed.ideaId], platforms: ["linkedin"], tone: "professional" },
+      },
+    });
+    const draftsParsed = JSON.parse((drafts?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { ok: boolean; count: number; drafts: { platform: string }[] };
+    assert.equal(draftsParsed.ok, true);
+    assert.equal(draftsParsed.count, 1);
+    assert.equal(draftsParsed.drafts[0]?.platform, "linkedin");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
