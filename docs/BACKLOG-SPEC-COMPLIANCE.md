@@ -23,7 +23,7 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 
 | ID | Item | Regra | Prio | Esforço | Status | Depende |
 |---|---|---|---|---|---|---|
-| SPEC-HR1 | Degradação suave DB/LLM → Markdown, sem travar o daemon | HR1 LOCAL_FIRST | P1 | M | TODO | — |
+| SPEC-HR1 | Degradação suave DB/LLM → Markdown, sem travar o daemon | HR1 LOCAL_FIRST | P1 | M | Fatia 1+2 ✅ (chat, decisões, lições, agenda-tool) / REST+job de agenda e RAG ingest TODO | — |
 | SPEC-HR2 | `purgeCredentials(taskId)` em `finally` de toda execução | HR2 CREDENTIAL_ISOLATION | P0 | M | TODO | — |
 | SPEC-HR3 | Todo handler MCP: `authorizeTool` + evento em `audit-trail.ts` | HR3 IDENTITY_SCOPED_TOOLS | P1 | M | TODO | — |
 | SPEC-HR4 | `maxIterations`/`LANGGRAPH_MAX_ITERATIONS=5` como hard-stop no runner | HR4 RECURSION_GUARD | P1 | S | TODO | — |
@@ -44,13 +44,19 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 
 ### SPEC-HR1 — Degradação suave para Markdown
 **Objetivo**: falha de Postgres/pgvector/SQLite ou timeout de LLM nunca trava o daemon; persiste em `~/.assistant-os/souls/<soulId>/*.md` e reindexa depois.
-**Estado atual (verificado)**: local-first é autoridade (memory *Infra*); resta prova de que todos os caminhos de escrita têm fallback.
-**Gap**: mapear escritas que hoje lançam sem fallback (chat, decisões, lições, agenda, RAG ingest).
+**Estado atual (verificado 2026-09-05, Fatia 2)**: mapeamento completo das escritas feito.
+- ✅ `POST /chat` — Fatia 1 (2026-09-04): `isDbHealthy`+`handleChatDegraded`, 200+Markdown em vez de 500.
+- ✅ **`soul_decidir`/`soul_licao`/`soul_record_lesson`/`soul_get_lessons` já eram 100% resilientes antes de qualquer mudança** — puramente arquivo/JSONL (`decisoes/*.md`, `licoes.md`, `governance/incidents.jsonl`), zero `pool.query` no caminho de execução. Não precisaram de código novo, só deixaram de estar erroneamente listadas como "sem fallback".
+- ✅ `agenda_add`/`agenda_list` (tool MCP) — Fatia 2 (2026-09-05): `isDbHealthy` antes da query, mensagem clara em vez da exceção crua do driver `pg`. **Não é fallback de dados** (não há Markdown equivalente pra agenda) — é falha rápida e legível.
+- ⚠️ **Ainda sem tratamento**: `packages/daemon/src/routes/agenda.ts` (rota REST) e `processDueAgenda` (job de despacho em loop, `server.ts`) — mesma exposição da tool MCP, não cobertos nesta fatia.
+- ⚠️ **RAG ingest (`memory_index`/`indexDirectory`) é categoricamente diferente**: seu propósito é popular o Postgres/pgvector a partir do Markdown já existente — não existe "fallback markdown" conceitual (a fonte já está em disco, falta é o destino). Hoje vaza a exceção crua do `pg` sem tratamento; candidato a "falhar rápido com mensagem clara", não a um fallback de dados.
+**Gap**: rota REST + job de despacho de agenda, e mensagem clara em RAG ingest.
 **Aceitação**:
-- Teste de integração com Postgres derrubado: `POST /souls/:id/chat` responde 200 e grava Markdown; `os status` mostra "degraded".
+- Teste de integração com Postgres derrubado: `POST /souls/:id/chat` responde 200 e grava Markdown; `os status` mostra "degraded". ✅
+- Tool `agenda_add`/`agenda_list` com Postgres derrubado: erro claro, não exceção crua do driver. ✅
 - Timeout de LLM no executor → resposta de fallback + lição registrada, sem exceção não tratada.
-- `docs/` documenta a matriz "componente → fallback".
-**Arquivos**: `packages/daemon/src/routes/chat.ts`, `packages/core/src/souls.ts`, `alma.ts`, `packages/daemon/src/pipelines/*`.
+- `docs/` documenta a matriz "componente → fallback" (esta seção agora é essa matriz).
+**Arquivos**: `packages/daemon/src/routes/chat/postChat.ts`, `packages/tools/src/misc/index.ts`, `packages/core/src/souls.ts`, `alma.ts`, `packages/daemon/src/pipelines/*`.
 
 ### SPEC-HR2 — Purga de credenciais em `finally`  ·  P0
 **Objetivo**: `TempVault` (RAM) é o único lar de segredos efêmeros; `purgeCredentials(taskId)` roda em `finally` de todo bloco de execução (sucesso ou erro). Zero gravação em disco/log/Markdown.

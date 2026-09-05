@@ -1114,3 +1114,33 @@ test("mcp: audit-trail registra intenção mesmo quando a tool lança erro (best
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("SPEC-HR1 (fatia 2): agenda_add/agenda_list com Postgres inatingível falham com mensagem clara, não com a exceção crua do driver pg", async () => {
+  const home = await tempHome();
+  // Porta sem ninguém escutando — ECONNREFUSED rápido, sem esperar o
+  // connectionTimeoutMillis cheio (5s) do pool real. Sobrescreve o schema
+  // de teste que tempHome() já apontou, mesmo padrão de
+  // spec-hr1-db-degraded.test.ts (daemon).
+  const prevDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = "postgres://x:x@127.0.0.1:1/x";
+  const server = new McpServer({ home });
+  try {
+    const add = await server.handleMessage({
+      jsonrpc: "2.0", id: 302, method: "tools/call",
+      params: { name: "agenda_add", arguments: { title: "tarefa de teste" } },
+    });
+    assert.equal(add?.result, undefined, "agenda_add deveria falhar, não responder com sucesso");
+    assert.match(JSON.stringify(add?.error), /Postgres indisponível/);
+
+    const list = await server.handleMessage({
+      jsonrpc: "2.0", id: 303, method: "tools/call",
+      params: { name: "agenda_list", arguments: {} },
+    });
+    assert.equal(list?.result, undefined, "agenda_list deveria falhar, não responder com sucesso");
+    assert.match(JSON.stringify(list?.error), /Postgres indisponível/);
+  } finally {
+    if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = prevDatabaseUrl;
+    rmSync(home, { recursive: true, force: true });
+  }
+});

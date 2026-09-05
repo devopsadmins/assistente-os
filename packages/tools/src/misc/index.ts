@@ -1,4 +1,4 @@
-import { getPool, sumCostBySoul, recentCalls, listSouls, getSoul, addAgendaItem, getAgendaItems } from "@assistente-os/core";
+import { getPool, sumCostBySoul, recentCalls, listSouls, getSoul, addAgendaItem, getAgendaItems, isDbHealthy } from "@assistente-os/core";
 import type { Tool, ToolContext, ToolHandler } from "../index.js";
 
 export const MISC_TOOLS: Tool[] = [
@@ -59,6 +59,13 @@ export const MISC_HANDLERS: Record<string, ToolHandler> = {
     const body = typeof args.body === "string" && args.body.trim() ? args.body.trim() : null;
     const dueAt = typeof args.due_at === "string" && args.due_at.trim() ? args.due_at.trim() : null;
     const pool = getPool(ctx.config.databaseUrl);
+    // SPEC-HR1 (fatia 2, 2026-09-05): agenda é 100% Postgres, sem fallback em
+    // Markdown/disco (diferente de decisões/lições, que já são fs-only) — a
+    // sonda aqui evita vazar a exceção crua do driver `pg` (timeout de
+    // conexão de 5s, mensagem técnica) e dá uma mensagem clara e rápida (1,5s).
+    if (!(await isDbHealthy(pool))) {
+      throw new Error("Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes");
+    }
     const item = await addAgendaItem(pool, soulId, title, body, dueAt);
     return { ok: true, item };
   },
@@ -66,6 +73,9 @@ export const MISC_HANDLERS: Record<string, ToolHandler> = {
   agenda_list: async (ctx, args) => {
     const status = args.status === "done" || args.status === "all" ? args.status : "pending";
     const pool = getPool(ctx.config.databaseUrl);
+    if (!(await isDbHealthy(pool))) {
+      throw new Error("Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes");
+    }
     // Escopo: `soul` do parâmetro, senão AGENT_SOUL_ID do processo. Sem
     // nenhum dos dois, cai no modo administrativo (todas as souls).
     const scopeSoul =
