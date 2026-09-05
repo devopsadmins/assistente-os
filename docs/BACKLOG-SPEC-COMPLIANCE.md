@@ -35,7 +35,7 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 | SPEC-GR4 | Gate de merge: `build` + `test` + supervisor ≥ 95 no CI | GR4 DISCRIMINATOR | P1 | M | TODO | — |
 | SPEC-EP1 | Planejamento prévio em `<thinking>` no template de PR/contribuição | EP1 PLANEJAMENTO | P2 | S | ✅ 2026-09-05 | — |
 | SPEC-EP2 | Proibir `any` (lint `error`) + auditoria de cobertura Zod nos limites | EP2 TIPAGEM ESTRITA | P1 | M | Frente 1 ✅ / Frente 2 ✅ (Fatias 1-3) | — |
-| SPEC-EP3 | Script único de DoD (`npm run dod`) rodado antes de encerrar turno | EP3 VERIFICAÇÃO | P2 | S | TODO | SPEC-GR4 |
+| SPEC-EP3 | Script único de DoD (`npm run dod`) rodado antes de encerrar turno | EP3 VERIFICAÇÃO | P2 | S | ✅ 2026-09-05 | SPEC-GR4 |
 | SPEC-FO1 | Codificar FinOps guardrail (output conciso/zero-preâmbulo/formatos) no template de SOUL | FO GUARDRAIL | P2 | S | TODO | — |
 
 ---
@@ -181,9 +181,10 @@ Efeito colateral consciente e recorrente nas 3 fatias: um campo/argumento de tip
 
 ### SPEC-EP3 — Script único de DoD
 **Objetivo**: um comando roda a suíte de verificação antes de encerrar o turno e reporta diffs + logs.
-**Aceitação**: `npm run dod` encadeia `build` → `typecheck` → `test` → `manifest` → `discriminator` e imprime resumo; documentado em `AGENTS.md`.
-**Arquivos**: `package.json` (raiz), `AGENTS.md`.
-**Depende**: SPEC-GR4.
+**Estado (✅ 2026-09-05)**: `scripts/dod.mjs` + `npm run dod` — encadeia `build` → `typecheck` → `lint` → `test` → `manifest` → `discriminator` (lint incluído porque virou gate real de CI depois deste item ter sido especificado). Roda todas as etapas sem parar na primeira falha e imprime um resumo no fim; sai != 0 se qualquer etapa falhou. `manifest`/`discriminator` degradam pra "pulado" (não falha) se `packages/cli/dist/index.js` ainda não existir. Documentado em `AGENTS.md`.
+**Aceitação**: `npm run dod` encadeia `build` → `typecheck` → `test` → `manifest` → `discriminator` e imprime resumo; documentado em `AGENTS.md`. ✅
+**Arquivos**: `package.json` (raiz), `AGENTS.md`, `scripts/dod.mjs`.
+**Depende**: SPEC-GR4 — resolvido o suficiente (não crasha mais); veredito real do discriminator ainda depende do secret `ZEN_API_KEY` (ver SPEC-GR4).
 
 ### SPEC-FO1 — FinOps guardrail no template de SOUL
 **Objetivo**: `OUTPUT_CONCISO`, `ZERO_PREAMBULO`, `FORMATOS_PREFERENCIAIS`, `CACHE_OPTIMIZATION` viram parte estável do prompt das souls de engenharia.
