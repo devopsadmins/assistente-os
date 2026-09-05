@@ -74,6 +74,7 @@ export class TelegramChannel extends EventEmitter {
 
     try {
       const resp = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload da API Telegram, shape não tipado (candidato a Zod na Frente 2 de SPEC-EP2)
       const data: any = await resp.json();
       if (data.ok) {
         this.username = data.result.username;
@@ -134,6 +135,7 @@ export class TelegramChannel extends EventEmitter {
         return false;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload da API Telegram, shape não tipado (candidato a Zod na Frente 2 de SPEC-EP2)
       const data: any = await resp.json();
       if (!data.ok) {
         console.error("[telegram] Erro na resposta da API:", data.description);
@@ -171,6 +173,7 @@ export class TelegramChannel extends EventEmitter {
         throw new Error(`HTTP ${resp.status}: ${errTxt}`);
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload da API Telegram, shape não tipado (candidato a Zod na Frente 2 de SPEC-EP2)
       const data: any = await resp.json();
       if (data.ok && data.result && data.result.length > 0) {
         for (const update of data.result) {
@@ -202,6 +205,7 @@ export class TelegramChannel extends EventEmitter {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload de update do Telegram, shape não tipado (candidato a Zod na Frente 2 de SPEC-EP2)
   private async handleUpdate(update: any): Promise<void> {
     try {
       const message = update.message;

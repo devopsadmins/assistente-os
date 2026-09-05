@@ -222,7 +222,7 @@ async function main(): Promise<void> {
           const file = decidir(soul.dir, { titulo, contexto: args.slice(3).join(" ") });
           console.log(`decisão registrada: ${file}`);
           return;
-        } catch (err: any) {
+        } catch (err) {
           console.error(err instanceof Error ? err.message : String(err));
           process.exitCode = 1;
           return;
@@ -669,7 +669,7 @@ async function main(): Promise<void> {
             rejectRule(config.home, id, code);
             console.log(`proposta ${id} rejeitada`);
           }
-        } catch (err: any) {
+        } catch (err) {
           console.error(err instanceof Error ? err.message : String(err));
           process.exitCode = 1;
         }
@@ -686,7 +686,7 @@ async function main(): Promise<void> {
         try {
           resendApprovalCode(config.home, id);
           console.log(`novo código gerado e enviado por Telegram (se GUARDIAN_APPROVAL_CHAT_ID estiver configurado) para a proposta ${id}`);
-        } catch (err: any) {
+        } catch (err) {
           console.error(err instanceof Error ? err.message : String(err));
           process.exitCode = 1;
         }
@@ -802,7 +802,7 @@ async function main(): Promise<void> {
 }
 
 main()
-  .catch((err: any) => {
+  .catch((err: unknown) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;
   })

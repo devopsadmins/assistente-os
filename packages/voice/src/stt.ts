@@ -8,6 +8,7 @@ export interface SttConfig {
  * Roda 100% local, sem API keys.
  */
 export class SpeechToText {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @xenova/transformers não publica tipo público pro retorno de pipeline()
   private model: any = null;
   private modelName: string;
   private language: string;

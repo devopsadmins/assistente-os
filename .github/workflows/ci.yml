@@ -76,6 +76,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # SPEC-EP2 Frente 1 (2026-09-05): política contra `any` explícito
+      # (no-explicit-any como erro). Testes ficam fora da regra (ver
+      # eslint.config.js) — `any` em mock/fixture é uso legítimo lá.
+      - name: Lint
+        run: npm run lint
+
       # Prime o Postgres do serviço ANTES dos testes: `os status` roda
       # runMigrations() no schema `public`, o que inclui `0001_extensions`
       # (CREATE EXTENSION vector). Sem isto, o `public` fica vazio e os testes

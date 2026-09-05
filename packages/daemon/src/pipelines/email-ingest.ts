@@ -106,6 +106,7 @@ async function extractWithOllama(
       };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload do Ollama, shape não tipado (candidato a Zod na Frente 2 de SPEC-EP2)
     const data = await resp.json() as any;
     const content = data.message?.content || String(data);
     const _usage = ollamaUsage(data, startedAt, prompt, content);

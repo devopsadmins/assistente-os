@@ -124,12 +124,13 @@ async function dumpDatabase(databaseUrl: string, destination: string): Promise<v
   try {
     await runPgDump("pg_dump", ["--format=custom", databaseUrl], destination);
     return;
-  } catch (err: any) {
+  } catch (err) {
     // Sem pg_dump no host (ENOENT), usa o cliente de dentro do container Docker
     // do Postgres (mesma versão do servidor; stream via stdout). Qualquer outra
     // falha (banco inacessível, credenciais) não tem fallback.
-    if (err.code !== "ENOENT") {
-      throw new Error(`dump do banco falhou: ${err.message || String(err)}`);
+    const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+    if (code !== "ENOENT") {
+      throw new Error(`dump do banco falhou: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -145,8 +146,8 @@ async function dumpDatabase(databaseUrl: string, destination: string): Promise<v
       ["exec", container, "pg_dump", "--format=custom", `--username=${user}`, database],
       destination,
     );
-  } catch (err: any) {
-    throw new Error(`dump do banco falhou (via docker exec ${container}): ${err.message || String(err)}`);
+  } catch (err) {
+    throw new Error(`dump do banco falhou (via docker exec ${container}): ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

@@ -124,7 +124,7 @@ async function literalSearchFallback(
   query: string,
   limit: number
 ): Promise<ScreenableChunk[]> {
-  const { rows } = await pool.query(
+  const { rows } = await pool.query<{ doc: string; body: string; ts: string | Date | null }>(
     `SELECT entity_name AS doc, body, ts
      FROM observations
      WHERE soul = $1 AND (entity_name ILIKE $2 OR body ILIKE $2)
@@ -132,7 +132,7 @@ async function literalSearchFallback(
     [soul, `%${query}%`, limit]
   );
 
-  return rows.map((r: any): ScreenableChunk => ({
+  return rows.map((r): ScreenableChunk => ({
     chunk: {
       doc: r.doc,
       path: `observations/${r.doc}`,

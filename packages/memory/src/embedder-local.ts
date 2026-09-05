@@ -4,6 +4,7 @@ const XENOVA_MODEL = "Xenova/multilingual-e5-base";
 const XENOVA_DIMENSIONS = 768;
 
 export class LocalXenovaEmbedder {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @xenova/transformers não publica tipo público pro retorno de pipeline()
   private extractor: any;
   private initialized: boolean = false;
   private initPromise: Promise<void> | null = null;

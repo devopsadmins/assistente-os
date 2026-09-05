@@ -2,7 +2,7 @@ import { getAdoConnection } from "@assistente-os/core";
 import { GitRepository, GitPullRequest, GitPullRequestSearchCriteria } from "azure-devops-node-api/interfaces/GitInterfaces.js";
 import { TeamProjectReference } from "azure-devops-node-api/interfaces/CoreInterfaces.js";
 import { WorkItem, WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js";
-import { BuildDefinitionReference } from "azure-devops-node-api/interfaces/BuildInterfaces.js";
+import { Build, BuildDefinitionReference } from "azure-devops-node-api/interfaces/BuildInterfaces.js";
 import { Operation } from "azure-devops-node-api/interfaces/common/VSSInterfaces.js";
 import { authorizeTool } from "../index.js";
 import type { Tool, ToolContext, ToolHandler } from "../index.js";
@@ -357,7 +357,7 @@ export const ADO_HANDLERS: Record<string, ToolHandler> = {
     const connection = await getAdoConnection(ctx.config);
     const buildApi = await connection.getBuildApi();
 
-    const buildParams: any = {
+    const buildParams: Build = {
       definition: { id: pipelineId },
     };
 
@@ -392,6 +392,7 @@ export const ADO_HANDLERS: Record<string, ToolHandler> = {
     const gitApi = await connection.getGitApi();
 
     const searchCriteria: GitPullRequestSearchCriteria = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- o SDK tipa `status` como o enum numérico PullRequestStatus, mas a API aceita a string minúscula ("active"/"completed"/"abandoned"/"all") que o schema desta tool já documenta; sem teste de execução real contra o ADO pra confirmar o comportamento com o enum numérico, mantido como estava
       status: status as any,
     };
 

@@ -14,13 +14,16 @@
     "setup": "bash scripts/setup.sh",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
     "os": "node packages/cli/dist/index.js",
     "graphify:serve": "npx http-server graphify-out -p 8080 -c-1",
     "graphify:open": "npx http-server graphify-out -p 8080 -c-1 -o"
   },
   "devDependencies": {
+    "eslint": "^9.39.5",
     "graphviz": "^0.0.9",
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "typescript-eslint": "^8.69.0"
   },
   "dependencies": {
     "@langchain/community": "^1.1.29",

@@ -34,7 +34,7 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 | SPEC-GR3 | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel | GR3 BROWSER SEMÂNTICO | P2 | S | TODO | — |
 | SPEC-GR4 | Gate de merge: `build` + `test` + supervisor ≥ 95 no CI | GR4 DISCRIMINATOR | P1 | M | TODO | — |
 | SPEC-EP1 | Planejamento prévio em `<thinking>` no template de PR/contribuição | EP1 PLANEJAMENTO | P2 | S | TODO | — |
-| SPEC-EP2 | Proibir `any` (lint `error`) + auditoria de cobertura Zod nos limites | EP2 TIPAGEM ESTRITA | P1 | M | TODO | — |
+| SPEC-EP2 | Proibir `any` (lint `error`) + auditoria de cobertura Zod nos limites | EP2 TIPAGEM ESTRITA | P1 | M | Frente 1 ✅ / Frente 2 TODO | — |
 | SPEC-EP3 | Script único de DoD (`npm run dod`) rodado antes de encerrar turno | EP3 VERIFICAÇÃO | P2 | S | TODO | SPEC-GR4 |
 | SPEC-FO1 | Codificar FinOps guardrail (output conciso/zero-preâmbulo/formatos) no template de SOUL | FO GUARDRAIL | P2 | S | TODO | — |
 
@@ -154,13 +154,15 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 
 ### SPEC-EP2 — Tipagem estrita + Zod nos limites
 **Objetivo**: zero `any`; schemas Zod validando toda entrada externa (HTTP, tools, env, arquivos de alma).
-**Estado atual (verificado)**: `zod` já em uso amplo.
-**Gap**: `any` não é erro de lint; cobertura Zod nos limites não é auditada.
+**Estado atual (verificado 2026-09-05 — corrige alegação anterior de "zod já em uso amplo", que estava ERRADA)**: `zod` está instalado e usado em **exatamente 1 arquivo** do monorepo inteiro (`packages/daemon/src/langgraph-tools.ts`, ~7 schemas de tool-calling do LangChain). Zero cobertura Zod nas 29 rotas HTTP do daemon, nas ~13 famílias de tools MCP (`packages/tools/src/*/index.ts`), ou no parsing de args da CLI. Cerca de 43-44 ocorrências de `any` no código-fonte, concentradas em `packages/daemon` (~65%) — majoritariamente padrões legítimos (`catch (err: any)`, resposta JSON de API externa não tipada, contorno de libs de terceiros sem `.d.ts`, manipulação de DOM via CDP em `browser.ts`), não preguiça generalizada. Não existe nenhuma configuração de ESLint no repo hoje (zero infraestrutura de lint).
+**Gap**: `any` não é erro de lint (nem existe lint); cobertura Zod nos limites não é auditada nem existe na prática.
 **Aceitação**:
 - `@typescript-eslint/no-explicit-any: error` (+ `no-unsafe-*`), CI verde após correções.
 - Inventário: cada rota/tool/parser de env tem schema Zod; lacunas viram sub-tarefas.
 **Arquivos**: `eslint.config.*`, rotas do daemon, `packages/tools/src/index.ts`, loader de config.
 **Relacionado**: ROADMAP Onda 3d.
+**Divisão em 2 frentes independentes** (2026-09-05): Frente 1 = política de lint (`no-explicit-any` como erro, CI, `any`s existentes justificados com `eslint-disable-next-line` pontual); Frente 2 = validação Zod real numa fronteira por vez (rotas do daemon, tools MCP, CLI — não simultâneo).
+**Frente 1: ✅ concluída 2026-09-05.** `eslint.config.js` novo na raiz (ESLint 9 flat config, `typescript-eslint`), regra restrita só a `no-explicit-any` (sem puxar o ruleset "recommended" inteiro — fora de escopo). Testes (`**/test/**`, `*.test.ts`) excluídos da regra. Step `Lint` novo no job `build-and-test` do CI. Dos 36 `any` de produção encontrados: 8 corrigidos com tipo real (`catch (err)` como `unknown` com `instanceof Error` — `packages/cli/src/backup.ts`/`index.ts`; `pool.query<{...}>` tipada em `packages/memory/src/rag-chain.ts`; tipo `Build` real do SDK ADO em `packages/tools/src/ado/index.ts`; shape real de `toolCalls` em `packages/daemon/src/routes/chat/postChat.ts`), 28 documentados com `eslint-disable-next-line @typescript-eslint/no-explicit-any -- <motivo>` pontual (payload de API externa não tipada — WhatsApp/Telegram/Ollama; libs de terceiros sem `.d.ts` — `@xenova/transformers`, `say`; DOM/CDP em `browser.ts`; 1 cast (`status as any` em `ado/index.ts`) mantido por incerteza de comportamento sem teste/conexão real com ADO pra validar uma mudança de tipo). **Frente 2 segue aberta.**
 
 ### SPEC-EP3 — Script único de DoD
 **Objetivo**: um comando roda a suíte de verificação antes de encerrar o turno e reporta diffs + logs.

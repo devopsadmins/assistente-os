@@ -372,6 +372,7 @@ export class WhatsAppChannel extends EventEmitter {
       const safeId = rawId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128) || String(Date.now());
       const filename = `${safeId}${ext}`;
       const filePath = join(this.mediaDir, filename);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- contorno de tipo da lib de WhatsApp (baileys), msg não bate 100% com o tipo esperado por downloadMediaMessage
       const buffer = await downloadMediaMessage(msg as any, "buffer", {});
       const { writeFileSync } = await import("node:fs");
       writeFileSync(filePath, buffer);
@@ -483,6 +484,7 @@ export class WhatsAppChannel extends EventEmitter {
     this.stopPing();
     this.pingTimer = setInterval(() => {
       if (this.sock && this.status.connected) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- .ws não faz parte do tipo público da lib de WhatsApp (baileys), acesso interno best-effort
         try { (this.sock.ws as any).ping?.(); } catch { /* ignora */ }
       }
     }, PING_INTERVAL_MS);

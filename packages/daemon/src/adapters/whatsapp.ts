@@ -69,6 +69,7 @@ async function ollamaChat(
       throw new Error(`Ollama HTTP ${resp.status}`);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload do Ollama, shape não tipado nesta chamada (SPEC-EP2 Frente 2 trataria isso com Zod)
     const data = await resp.json() as any;
     return data.message?.content || String(data);
   } catch (err) {
@@ -106,6 +107,7 @@ async function getRAGContext(
 // ── Processar payload WhatsApp ────────────────────────────────────────
 
 async function processWhatsAppPayload(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload de webhook externo, shape não tipado (candidato a Zod na Frente 2 de SPEC-EP2)
   payload: any,
   config?: Partial<WhatsAppConfig>
 ): Promise<{
@@ -179,6 +181,7 @@ async function processWhatsAppPayload(
 
 // ── Exportações ───────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub sem corpo; tipar exigiria importar Express só pra isso
 export function registerWhatsAppRoutes(_app: any) {
   // Lógica real nos endpoints HTTP no server.ts
 }

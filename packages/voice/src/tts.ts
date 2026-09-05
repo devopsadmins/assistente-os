@@ -13,6 +13,7 @@ export class TextToSpeech {
   private speed: number;
   private volume: number;
   private speaking = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pacote "say" não publica tipos (sem @types/say)
   private sayModule: any = null;
 
   constructor(config: TtsConfig = {}) {

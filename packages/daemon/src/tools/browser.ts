@@ -201,7 +201,9 @@ async function getAccessibilityTreeFromPage(page: Page): Promise<AccessibilityNo
  * Converte a lista plana de AXNode (protocolo CDP Accessibility.getFullAXTree)
  * em uma árvore hierárquica, seguindo childIds a partir da raiz (nó sem pai).
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- AXNode do protocolo CDP (Accessibility.getFullAXTree), shape achatado sem tipo oficial simples de importar aqui
 function buildAccessibilityTree(nodes: any[]): AccessibilityNode {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AXNode do protocolo CDP, mesmo motivo da linha acima
   const byId = new Map<string, any>();
   for (const node of nodes) byId.set(node.nodeId, node);
   const childIds = new Set<string>();
@@ -210,13 +212,17 @@ function buildAccessibilityTree(nodes: any[]): AccessibilityNode {
   }
   const root = nodes.find((n) => !childIds.has(n.nodeId)) ?? nodes[0];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AXNode do protocolo CDP, mesmo motivo
   function convert(node: any): AccessibilityNode {
     const children: AccessibilityNode[] = (node.childIds ?? [])
       .map((id: string) => byId.get(id))
       .filter(Boolean)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AXNode do protocolo CDP, mesmo motivo
       .map((child: any) => convert(child));
     const states: string[] = (node.properties ?? [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AXNode do protocolo CDP, mesmo motivo
       .filter((p: any) => p?.value?.value === true)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AXNode do protocolo CDP, mesmo motivo
       .map((p: any) => p.name);
 
     return {
@@ -307,15 +313,18 @@ export async function browserExtractText(
     if (selector === "table" || selector === "tables") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw = await page.$$eval("table", (tables: any[]) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- callback roda dentro do contexto da página (Playwright $$eval) — DOM real do browser, não do Node
         tables.map((t: any) => {
           const headerRow = t.querySelector("thead tr") ?? t.querySelector("tr");
           const headers: string[] = headerRow
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- elemento DOM dentro do callback de página, mesmo motivo
             ? Array.from(headerRow.querySelectorAll("th, td")).map((c: any) => ((c.textContent ?? "") as string).trim())
             : [];
           const bodyRows = t.querySelectorAll("tbody tr, tr");
           const cells: string[][] = [];
           for (const row of bodyRows) {
             if (row === headerRow) continue;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- elemento DOM dentro do callback de página, mesmo motivo
             cells.push(Array.from(row.querySelectorAll("td, th")).map((c: any) => ((c.textContent ?? "") as string).trim()));
           }
           return { headers, cells };
@@ -519,7 +528,9 @@ export async function executeDynamicFix(
       }
 
       // Executa em escopo restrito (só document/window/console do próprio contexto da página)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- acesso a globalThis.document dentro de escopo de execução restrita da página — não é o document do Node
       const doc = (globalThis as any).document;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- acesso a globalThis.window, mesmo motivo
       const win = (globalThis as any).window;
       const fn = new Function("document", "window", "console", code);
       return fn(doc, win, console);
@@ -540,6 +551,7 @@ export async function executeDynamicFix(
 
       // Read existing helpers or create new
       const helpersFile = join(toolsCacheDir, "browser_helpers.json");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bag de helpers heterogêneos serializados em JSON, sem schema fixo
       let helpers: Record<string, any> = {};
       try {
         const existing = await import("node:fs/promises").then(fs => fs.readFile(helpersFile, "utf8"));

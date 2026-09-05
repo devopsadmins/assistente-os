@@ -213,7 +213,7 @@ export async function handlePostChat(
         // injeção única por processo.
         seedMessages: history,
         useTools: langgraphMode !== "generate",
-        onStep: (step: { node: string; iterationCount: number; messageCount: number; lastContent?: string; toolCalls?: any[] }) => {
+        onStep: (step: { node: string; iterationCount: number; messageCount: number; lastContent?: string; toolCalls?: { name: string; args: Record<string, unknown> }[] }) => {
           try {
             hub.broadcast(
               {
