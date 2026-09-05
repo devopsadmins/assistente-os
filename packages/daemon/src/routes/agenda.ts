@@ -1,7 +1,15 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import { loadConfig, getPool, addAgendaItem, getAgendaItems, isDbHealthy, type AgendaItem } from "@assistente-os/core";
 import { processDueAgenda } from "../agenda.js";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, requiredTrimmedString, optionalTrimmedString, type RequestContext } from "./shared.js";
+
+const PostAgendaSchema = z.object({
+  title: requiredTrimmedString("title é obrigatório"),
+  soul: optionalTrimmedString(),
+  body: optionalTrimmedString(),
+  due_at: optionalTrimmedString(),
+});
 
 /** Agendador (F2): fila de tarefas com due_at, despachada via opencode run. GET/POST /agenda */
 export async function handleAgenda(
@@ -39,24 +47,12 @@ export async function handleAgenda(
   }
 
   if (req.method === "POST" && path === "/agenda") {
-    const parsed = await readJson(req);
-    if (parsed.error === "too_large") {
-      sendJson(res, 413, { error: "body excede 1 MB" });
+    const parsed = await parseBody(req, PostAgendaSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
-    if (parsed.error === "invalid") {
-      sendJson(res, 400, { error: "JSON inválido" });
-      return true;
-    }
-    const body = parsed.body ?? {};
-    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "";
-    if (!title) {
-      sendJson(res, 400, { error: "title é obrigatório" });
-      return true;
-    }
-    const soul = typeof body.soul === "string" && body.soul.trim() ? body.soul.trim() : null;
-    const itemBody = typeof body.body === "string" && body.body.trim() ? body.body.trim() : null;
-    const dueAt = typeof body.due_at === "string" && body.due_at.trim() ? body.due_at.trim() : null;
+    const { title, soul, body: itemBody, due_at: dueAt } = parsed.data;
     if (soul) {
       const { getSoul } = await import("@assistente-os/core");
       if (!getSoul(home, soul)) {

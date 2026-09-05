@@ -7,8 +7,11 @@
  * Missões `full` transmitem `mission.step` via WebSocket durante a execução.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson, readJson, type RouteHandler } from "./shared.js";
+import { z } from "zod";
+import { sendJson, parseBody, optionalTrimmedString, type RouteHandler } from "./shared.js";
 import { listMissions, runMission } from "../orchestrator/mission-runner.js";
+
+const RunMissionSchema = z.object({ soul: optionalTrimmedString() });
 
 export const handleMissions: RouteHandler = async (req, res, url, path, context) => {
   if (path === "/api/missions" && req.method === "GET") {
@@ -19,11 +22,12 @@ export const handleMissions: RouteHandler = async (req, res, url, path, context)
   const runMatch = path.match(/^\/api\/missions\/([^/]+)\/run$/);
   if (runMatch && req.method === "POST") {
     const missionId = decodeURIComponent(runMatch[1]!);
-    const parsed = await readJson(req);
-    const soul =
-      parsed.body && typeof parsed.body.soul === "string" && parsed.body.soul.trim()
-        ? parsed.body.soul.trim()
-        : undefined;
+    const parsed = await parseBody(req, RunMissionSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
+      return true;
+    }
+    const soul = parsed.data.soul ?? undefined;
     try {
       const result = await runMission(missionId, {
         soulOverride: soul,

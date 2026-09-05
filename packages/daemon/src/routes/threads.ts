@@ -1,7 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import { getPool, loadConfig, getSoul, createThread, listThreads, getThread, renameThread, deleteThread, getThreadMessages } from "@assistente-os/core";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, type RequestContext } from "./shared.js";
 import { getRequestAccountId } from "./accountAuth.js";
+
+const CreateThreadSchema = z.object({ title: z.string().optional() });
+const PatchThreadSchema = z.object({ title: z.string() });
 
 /**
  * CRUD de threads (conversas nomeadas) por soul:
@@ -42,17 +46,12 @@ export async function handleThreads(
 
     // POST — criação sempre precisa de um account_id concreto pra gravar,
     // nunca "undefined": token admin cria como thread de operador (null).
-    const parsed = await readJson(req);
-    if (parsed.error === "too_large") {
-      sendJson(res, 413, { error: "body excede 1 MB" });
+    const parsed = await parseBody(req, CreateThreadSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
-    if (parsed.error === "invalid") {
-      sendJson(res, 400, { error: "JSON inválido" });
-      return true;
-    }
-    const title = parsed.body && typeof parsed.body.title === "string" ? parsed.body.title : undefined;
-    const thread = await createThread(pool, soul.id, requestAccountId ?? null, title);
+    const thread = await createThread(pool, soul.id, requestAccountId ?? null, parsed.data.title);
     sendJson(res, 201, thread);
     return true;
   }
@@ -74,21 +73,12 @@ export async function handleThreads(
     const requestAccountId = getRequestAccountId(req);
 
     if (req.method === "PATCH") {
-      const parsed = await readJson(req);
-      if (parsed.error === "too_large") {
-        sendJson(res, 413, { error: "body excede 1 MB" });
+      const parsed = await parseBody(req, PatchThreadSchema);
+      if (!parsed.ok) {
+        sendJson(res, parsed.status, { error: parsed.error });
         return true;
       }
-      if (parsed.error === "invalid") {
-        sendJson(res, 400, { error: "JSON inválido" });
-        return true;
-      }
-      const title = parsed.body && typeof parsed.body.title === "string" ? parsed.body.title : undefined;
-      if (title === undefined) {
-        sendJson(res, 400, { error: "title é obrigatório" });
-        return true;
-      }
-      const renamed = await renameThread(pool, threadId, requestAccountId, title, soul.id);
+      const renamed = await renameThread(pool, threadId, requestAccountId, parsed.data.title, soul.id);
       if (!renamed) {
         sendJson(res, 404, { error: "thread não encontrada" });
         return true;

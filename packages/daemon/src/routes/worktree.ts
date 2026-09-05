@@ -8,8 +8,19 @@
  *   GET    /api/worktree           -> lista worktrees ativas
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson, readJson, type RouteHandler, type RequestContext } from "./shared.js";
+import { z } from "zod";
+import { sendJson, parseBody, optionalTrimmedString, type RouteHandler, type RequestContext } from "./shared.js";
 import { createWorktree, mergeLocally, destroyWorktree, listWorktrees } from "../tools/worktree-manager.js";
+
+const CreateWorktreeSchema = z.object({
+  taskId: optionalTrimmedString(),
+  baseBranch: optionalTrimmedString(),
+  soul: optionalTrimmedString(),
+});
+
+const MergeWorktreeSchema = z.object({
+  targetBranch: optionalTrimmedString(),
+});
 
 async function handleWorktreeList(
   req: IncomingMessage,
@@ -33,15 +44,13 @@ async function handleWorktreeCreate(
 ): Promise<boolean> {
   if (req.method !== "POST" || url.pathname !== "/api/worktree") return false;
 
-  const { body, error } = await readJson(req);
-  if (error || !body) {
-    sendJson(res, 400, { error: "body JSON inválido" });
+  const parsed = await parseBody(req, CreateWorktreeSchema);
+  if (!parsed.ok) {
+    sendJson(res, parsed.status, { error: parsed.error });
     return true;
   }
-
-  const taskId = typeof body.taskId === "string" && body.taskId.trim() ? body.taskId.trim() : null;
-  const baseBranch = typeof body.baseBranch === "string" && body.baseBranch.trim() ? body.baseBranch.trim() : "main";
-  const soul = typeof body.soul === "string" && body.soul.trim() ? body.soul.trim() : null;
+  const { taskId, soul } = parsed.data;
+  const baseBranch = parsed.data.baseBranch ?? "main";
 
   if (!taskId) {
     sendJson(res, 400, { error: "taskId é obrigatório" });
@@ -76,10 +85,12 @@ async function handleWorktreeMerge(
   if (!match) return false;
   const taskId = match[1]!;
 
-  const { body, error } = await readJson(req);
-  const targetBranch = (typeof body?.targetBranch === "string" && body.targetBranch.trim())
-    ? body.targetBranch.trim()
-    : "main";
+  const parsed = await parseBody(req, MergeWorktreeSchema);
+  if (!parsed.ok) {
+    sendJson(res, parsed.status, { error: parsed.error });
+    return true;
+  }
+  const targetBranch = parsed.data.targetBranch ?? "main";
 
   try {
     const result = await mergeLocally(taskId, targetBranch);

@@ -1,7 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import { loadConfig, getPool, getSoul, route } from "@assistente-os/core";
 import { buildPrompt } from "../context.js";
-import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, optionalTrimmedString, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
+
+const VoiceStartSchema = z.object({ soul: optionalTrimmedString() });
 
 /** Controle do pipeline de voz: POST /voice/start, POST /voice/stop, GET /voice/status */
 export async function handleVoice(
@@ -18,9 +21,13 @@ export async function handleVoice(
       sendJson(res, 503, { error: "voice não habilitado (defina VOICE_ENABLED=true)" });
       return true;
     }
+    const parsedBody = await parseBody(req, VoiceStartSchema);
+    if (!parsedBody.ok) {
+      sendJson(res, parsedBody.status, { error: parsedBody.error });
+      return true;
+    }
     try {
-      const parsed = await readJson(req);
-      const soulId: string = (parsed.body?.soul as string) ?? "";
+      const soulId = parsedBody.data.soul ?? "";
 
       // Configura o handler de chat com a soul do request (ou sem handler se soul não informada)
       const soul = soulId ? getSoul(home, soulId) : null;

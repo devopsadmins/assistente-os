@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import { loadConfig, getPool } from "@assistente-os/core";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, type RequestContext } from "./shared.js";
+
+const SendTelegramSchema = z.object({
+  chatId: z.union([z.string(), z.number()]).refine((v) => Boolean(v), { message: "chatId obrigatório" }),
+  text: z.string().min(1, "text obrigatório"),
+});
 
 /** Rotas do canal Telegram: histórico, status, envio. */
 export async function handleTelegram(
@@ -47,13 +53,12 @@ export async function handleTelegram(
       sendJson(res, 503, { error: "canal Telegram não habilitado" });
       return true;
     }
-    const { body } = await readJson(req);
-    const chatId = body?.chatId as string | number | undefined;
-    const text = body?.text as string | undefined;
-    if (!chatId || !text) {
-      sendJson(res, 400, { error: "chatId e text obrigatórios" });
+    const parsed = await parseBody(req, SendTelegramSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
+    const { chatId, text } = parsed.data;
     const ok = await context.telegramChannel.sendMessage(chatId, text);
     sendJson(res, ok ? 200 : 500, { ok });
     return true;

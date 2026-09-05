@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import {
   listSouls,
   getSoul,
@@ -21,9 +22,34 @@ import {
   DEFAULT_SOUL_SPEC_LIMITS,
   type SoulSpec,
 } from "@assistente-os/core";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, requiredTrimmedString, optionalTrimmedString, type RequestContext } from "./shared.js";
 import { getRequestAccountId } from "./accountAuth.js";
 import { directoryTotalBytes, friendlyUploadKbLimit } from "../upload.js";
+
+const CreateAccountSoulSchema = z.object({
+  purpose: requiredTrimmedString("purpose é obrigatório — descreva no que esse assistente vai ajudar"),
+  id: optionalTrimmedString(),
+  capabilities: z.unknown().optional(),
+  skills: z.unknown().optional(),
+  dry_run: z.boolean().optional(),
+  plan_hash: optionalTrimmedString(),
+});
+
+const AccountSoulPatchSchema = z.object({
+  displayName: z.string().trim().optional(),
+  description: z.string().optional(),
+  perfilMd: z.string().optional(),
+  contextoMd: z.string().optional(),
+  guardrails: z
+    .object({
+      maxTurns: z.number().optional(),
+      maxIterations: z.number().optional(),
+      ragRelevanceThreshold: z.number().optional(),
+    })
+    .optional(),
+  capabilities: z.array(z.unknown()).optional(),
+  skills: z.array(z.unknown()).optional(),
+});
 
 /** Quantas souls uma conta self-service pode ter (env ASSISTENTE_OS_MAX_SOULS_PER_ACCOUNT, default 2). */
 function maxSoulsPerAccount(): number {
@@ -126,21 +152,13 @@ export async function handleAccountSouls(
     return true;
   }
 
-  const parsed = await readJson(req);
-  if (parsed.error === "too_large") {
-    sendJson(res, 413, { error: "body excede 1 MB" });
+  const parsed = await parseBody(req, CreateAccountSoulSchema);
+  if (!parsed.ok) {
+    sendJson(res, parsed.status, { error: parsed.error });
     return true;
   }
-  if (parsed.error === "invalid") {
-    sendJson(res, 400, { error: "JSON inválido" });
-    return true;
-  }
-  const body = parsed.body;
-  const purpose = body && typeof body.purpose === "string" ? body.purpose.trim() : "";
-  if (!purpose) {
-    sendJson(res, 400, { error: "purpose é obrigatório — descreva no que esse assistente vai ajudar" });
-    return true;
-  }
+  const body = parsed.data;
+  const purpose = body.purpose;
 
   const existingSouls = listSouls(home);
   const ownedCount = existingSouls.filter((s) => s.config.ownerAccountId === accountId).length;
@@ -150,14 +168,14 @@ export async function handleAccountSouls(
   }
 
   const pool = getPool(loadConfig({ home }).databaseUrl);
-  const grants = await validateRequestedGrants(pool, body?.capabilities, body?.skills);
+  const grants = await validateRequestedGrants(pool, body.capabilities, body.skills);
   if (!grants.ok) {
     sendJson(res, 400, { error: grants.error, code: "E_VALIDATION" });
     return true;
   }
 
   const existingIds = new Set(existingSouls.map((s) => s.id));
-  const requestedId = body && typeof body.id === "string" ? body.id.trim() : "";
+  const requestedId = body.id ?? "";
   const newId = requestedId && isValidSoulId(requestedId) && !existingIds.has(requestedId)
     ? requestedId
     : uniqueSlug(slugify(requestedId || purpose), existingIds);
@@ -181,7 +199,7 @@ export async function handleAccountSouls(
     effectiveModel: resolved.model ?? "",
   });
 
-  const dryRun = body?.dry_run !== false;
+  const dryRun = body.dry_run !== false;
   if (dryRun) {
     sendJson(res, 200, { dry_run: true, ok: validation.ok, plan_hash: planHash, issues: validation.issues, soul_id: newId });
     return true;
@@ -190,7 +208,7 @@ export async function handleAccountSouls(
     sendJson(res, 400, { error: "spec inválida", issues: validation.issues });
     return true;
   }
-  const givenHash = body && typeof body.plan_hash === "string" ? body.plan_hash.trim() : "";
+  const givenHash = body.plan_hash ?? "";
   if (givenHash !== planHash) {
     sendJson(res, 409, { error: "plan_hash divergente — rode dry_run de novo e reenvie o hash", plan_hash: planHash, code: "E_STALE_HASH" });
     return true;
@@ -266,22 +284,18 @@ async function handleAccountSoulItem(
   }
 
   // PATCH
-  const parsed = await readJson(req);
-  if (parsed.error === "too_large") {
-    sendJson(res, 413, { error: "body excede 1 MB" });
+  const parsed = await parseBody(req, AccountSoulPatchSchema);
+  if (!parsed.ok) {
+    sendJson(res, parsed.status, { error: parsed.error });
     return true;
   }
-  if (parsed.error === "invalid") {
-    sendJson(res, 400, { error: "JSON inválido" });
-    return true;
-  }
-  const body = parsed.body ?? {};
+  const body = parsed.data;
   const limit = DEFAULT_SOUL_SPEC_LIMITS.maxFileBytes;
 
-  const displayName = typeof body.displayName === "string" ? body.displayName.trim() : soul.config.displayName;
-  const description = typeof body.description === "string" ? body.description : soul.config.description;
-  const perfilMd = typeof body.perfilMd === "string" ? body.perfilMd : undefined;
-  const contextoMd = typeof body.contextoMd === "string" ? body.contextoMd : undefined;
+  const displayName = body.displayName ?? soul.config.displayName;
+  const description = body.description ?? soul.config.description;
+  const perfilMd = body.perfilMd;
+  const contextoMd = body.contextoMd;
   for (const [field, value] of [["displayName", displayName], ["description", description], ["perfilMd", perfilMd], ["contextoMd", contextoMd]] as const) {
     if (typeof value === "string" && Buffer.byteLength(value, "utf8") > limit) {
       sendJson(res, 400, { error: `${field} excede ${limit} bytes`, code: "E_VALIDATION" });
@@ -289,14 +303,14 @@ async function handleAccountSoulItem(
     }
   }
 
-  const g = (body.guardrails ?? {}) as Record<string, unknown>;
+  const g = body.guardrails ?? {};
   const currentGuardrails = soul.config.agent?.guardrails;
   const eff = resolveEffectiveGuardrails(DEFAULT_GLOBAL_GUARDRAILS, {
     permissions: soul.config.agent?.permissions ?? { tools: [] },
     guardrails: {
-      maxTurns: typeof g.maxTurns === "number" ? g.maxTurns : currentGuardrails?.maxTurns,
-      maxIterations: typeof g.maxIterations === "number" ? g.maxIterations : currentGuardrails?.maxIterations,
-      ragRelevanceThreshold: typeof g.ragRelevanceThreshold === "number" ? g.ragRelevanceThreshold : currentGuardrails?.ragRelevanceThreshold,
+      maxTurns: g.maxTurns ?? currentGuardrails?.maxTurns,
+      maxIterations: g.maxIterations ?? currentGuardrails?.maxIterations,
+      ragRelevanceThreshold: g.ragRelevanceThreshold ?? currentGuardrails?.ragRelevanceThreshold,
     },
   });
 
@@ -305,12 +319,12 @@ async function handleAccountSoulItem(
   // Sempre revalidado contra a allowlist do admin, nunca aceita livre.
   let tools = soul.config.agent?.permissions?.tools ?? [];
   let skills = soul.config.agent?.permissions?.skills ?? [];
-  if (Array.isArray(body.capabilities) || Array.isArray(body.skills)) {
+  if (body.capabilities !== undefined || body.skills !== undefined) {
     const pool = getPool(loadConfig({ home }).databaseUrl);
     const grants = await validateRequestedGrants(
       pool,
-      Array.isArray(body.capabilities) ? body.capabilities : tools,
-      Array.isArray(body.skills) ? body.skills : skills,
+      body.capabilities !== undefined ? body.capabilities : tools,
+      body.skills !== undefined ? body.skills : skills,
     );
     if (!grants.ok) {
       sendJson(res, 400, { error: grants.error, code: "E_VALIDATION" });

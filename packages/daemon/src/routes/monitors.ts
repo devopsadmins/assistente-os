@@ -1,7 +1,17 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import { loadConfig, getPool, addMonitor, listMonitors, deleteMonitor, getMonitor } from "@assistente-os/core";
 import { checkMonitors } from "../monitors.js";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, requiredTrimmedString, type RequestContext } from "./shared.js";
+
+const PostMonitorSchema = z.object({
+  name: requiredTrimmedString("name é obrigatório"),
+  url: requiredTrimmedString("url é obrigatório"),
+  expectedCode: z
+    .preprocess((v) => (typeof v === "number" ? Math.floor(v) : v), z.number().int())
+    .optional()
+    .default(200),
+});
 
 /** Observabilidade: sites monitorados (up/down configurável na UI). /monitors, /monitors/check, /monitors/:id */
 export async function handleMonitors(
@@ -21,22 +31,12 @@ export async function handleMonitors(
   }
 
   if (req.method === "POST" && path === "/monitors") {
-    const parsed = await readJson(req);
-    if (parsed.error === "too_large") {
-      sendJson(res, 413, { error: "body excede 1 MB" });
+    const parsed = await parseBody(req, PostMonitorSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
-    if (parsed.error === "invalid") {
-      sendJson(res, 400, { error: "JSON inválido" });
-      return true;
-    }
-    const body = parsed.body ?? {};
-    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : "";
-    const monitorUrl = typeof body.url === "string" && body.url.trim() ? body.url.trim() : "";
-    if (!name || !monitorUrl) {
-      sendJson(res, 400, { error: "name e url são obrigatórios" });
-      return true;
-    }
+    const { name, url: monitorUrl, expectedCode } = parsed.data;
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(monitorUrl);
@@ -48,7 +48,6 @@ export async function handleMonitors(
       sendJson(res, 400, { error: "url deve usar http(s)" });
       return true;
     }
-    const expectedCode = body && typeof body.expectedCode === "number" ? Math.floor(body.expectedCode) : 200;
     const config = loadConfig({ home });
     const pool = getPool(config.databaseUrl);
     const monitor = await addMonitor(pool, { name, url: monitorUrl, expectedCode });

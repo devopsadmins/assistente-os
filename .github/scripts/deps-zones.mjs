@@ -39,6 +39,11 @@ export const BACKEND_ALLOW = [
       // grandfathered 2026-09-05 (SPEC-EP2 Frente 1 — lint tooling na raiz, mesma
       // categoria de "typescript" acima, não é dependência de runtime):
       "eslint", "typescript-eslint",
+      // SPEC-EP2 Frente 2 (2026-09-05): zod pra validação de fronteira (rotas
+      // HTTP). Já era dependência transitiva de @langchain/* (langgraph-tools.ts
+      // a importava sem declarar) — agora declarada de verdade em vez de contar
+      // com hoisting do npm.
+      "zod",
     ].includes(d),
 ];
 

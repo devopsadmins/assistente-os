@@ -10,6 +10,14 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **`zod` na allowlist de dependências do backend** (`.github/scripts/deps-zones.mjs`):
+  SPEC-EP2 Frente 2 (Fatia 1) introduz validação de schema real nas rotas
+  HTTP do daemon via `zod`, agora declarado como dependência de verdade em
+  `packages/daemon/package.json` (antes era phantom-dependency — `zod` já
+  era importado por `langgraph-tools.ts` sem estar declarado, só funcionava
+  por hoisting do npm via `@langchain/*`). Sem superfície nova de fato:
+  o pacote já estava presente na árvore de dependências.
+
 - **Migração `0020_threads`** (`packages/core/src/migrations.ts`): tabela
   `threads` (conversas nomeadas) — `account_id` nullable (`NULL` = thread do
   operador, token admin; não confundir com conta de cliente), FK em cascata

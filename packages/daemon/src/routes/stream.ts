@@ -19,7 +19,12 @@ import {
   sessionHistoryMaxChars,
   logger,
 } from "@assistente-os/core";
-import { readJson, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
+import { z } from "zod";
+import { parseBody, makeLocalFallbackProbe, type RequestContext } from "./shared.js";
+
+const StreamPromptSchema = z.object({
+  prompt: z.string().refine((v) => v.trim().length > 0, { message: "prompt é obrigatório" }),
+});
 import { getRequestAccountId } from "./accountAuth.js";
 import { preparePromptContext, ollamaChatStream, type ExecUsage } from "./chat.js";
 import { routeFromPrompt } from "../orchestrator/router.js";
@@ -117,23 +122,13 @@ export async function handleStream(
     return true;
   }
 
-  const parsed = await readJson(req);
-  if (parsed.error === "too_large") {
-    res.writeHead(413, { "content-type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ error: "body excede 1 MB" }));
+  const parsed = await parseBody(req, StreamPromptSchema);
+  if (!parsed.ok) {
+    res.writeHead(parsed.status, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: parsed.error }));
     return true;
   }
-  if (parsed.error === "invalid") {
-    res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ error: "JSON inválido" }));
-    return true;
-  }
-  const prompt = parsed.body && typeof parsed.body.prompt === "string" ? parsed.body.prompt : "";
-  if (!prompt.trim()) {
-    res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ error: "prompt é obrigatório" }));
-    return true;
-  }
+  const { prompt } = parsed.data;
 
   // Sessão POR THREAD (não por cliente) — cada thread tem seu próprio
   // client_key sintético, então openSession/getRecentSessionMessages (já

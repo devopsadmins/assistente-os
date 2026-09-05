@@ -1,11 +1,43 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
+import { z } from "zod";
 import { loadConfig, getPool, getSoul, anotar, registrarLicao, decidir, logger } from "@assistente-os/core";
 import { indexFile, indexStats, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder } from "@assistente-os/memory";
 import { handleUpload, directoryTotalBytes, friendlyUploadKbLimit } from "../upload.js";
 import { relevanceRule } from "../relevance.js";
-import { sendJson, readJson, type RequestContext } from "./shared.js";
+import { sendJson, parseBody, requiredTrimmedString, type RequestContext } from "./shared.js";
 import { getRequestAccountId } from "./accountAuth.js";
+
+/** Clampa um número pra [min,max]; outros tipos passam adiante (falham na validação Zod). */
+const clampedNumber = (min: number, max: number) =>
+  z.preprocess((v) => (typeof v === "number" ? Math.max(min, Math.min(max, v)) : v), z.number());
+
+const MemorySearchSchema = z.object({
+  query: requiredTrimmedString("query é obrigatório"),
+  limit: clampedNumber(1, 20).optional().default(5),
+  minScore: clampedNumber(0, 1).optional().default(0.3),
+});
+
+const AnotarLicaoSchema = z.object({ texto: requiredTrimmedString("texto é obrigatório") });
+
+const DecidirSchema = z.object({
+  titulo: requiredTrimmedString("titulo é obrigatório"),
+  contexto: z.string().optional(),
+  decisao: z.string().optional(),
+  alternativas: z.string().optional(),
+  consequencias: z.string().optional(),
+});
+
+const LimparSchema = z.object({
+  maxAgeDays: z.number().optional(),
+  maxBytes: z.number().optional(),
+});
+
+const AddObservationSchema = z.object({
+  entity: z.string().min(1, "entity e body são obrigatórios"),
+  body: z.string().min(1, "entity e body são obrigatórios"),
+  source: z.string().optional(),
+});
 
 /**
  * Memória por soul: status/busca RAG, upload de fontes, escrita de memória
@@ -47,23 +79,12 @@ export async function handleMemory(
       sendJson(res, 403, { error: "soul não pertence a esta conta" });
       return true;
     }
-    const parsed = await readJson(req);
-    if (parsed.error === "too_large") {
-      sendJson(res, 413, { error: "body excede 1 MB" });
+    const parsed = await parseBody(req, MemorySearchSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
-    if (parsed.error === "invalid") {
-      sendJson(res, 400, { error: "JSON inválido" });
-      return true;
-    }
-    const body = parsed.body;
-    const query = body && typeof body.query === "string" && body.query.trim() ? body.query.trim() : "";
-    if (!query) {
-      sendJson(res, 400, { error: "query é obrigatório" });
-      return true;
-    }
-    const limit = body && typeof body.limit === "number" ? Math.max(1, Math.min(20, body.limit)) : 5;
-    const rawMinScore = body && typeof body.minScore === "number" ? Math.max(0, Math.min(1, body.minScore)) : 0.3;
+    const { query, limit, minScore: rawMinScore } = parsed.data;
     // Map slider [0,1] to threshold [0.1, 0.5] — more permissive: slider 0 = 0.1, slider 1 = 0.5
     // This allows low-relevance results like "dimastec" to appear while still filtering
     const minScore = rawMinScore * 0.4 + 0.1;
@@ -190,52 +211,37 @@ export async function handleMemory(
       sendJson(res, 404, { error: "soul não encontrada" });
       return true;
     }
-    const parsed = await readJson(req);
-    if (parsed.error === "too_large") {
-      sendJson(res, 413, { error: "body excede 1 MB" });
-      return true;
-    }
-    if (parsed.error === "invalid") {
-      sendJson(res, 400, { error: "JSON inválido" });
-      return true;
-    }
-    const body = parsed.body ?? {};
     const dir = soul.dir;
     try {
       const op = almaBaseMatch[2]!;
       if (op === "anotar") {
-        const texto = body && typeof body.texto === "string" && body.texto.trim() ? body.texto.trim() : null;
-        if (!texto) {
-          sendJson(res, 400, { error: "texto é obrigatório" });
+        const parsed = await parseBody(req, AnotarLicaoSchema);
+        if (!parsed.ok) {
+          sendJson(res, parsed.status, { error: parsed.error });
           return true;
         }
-        const file = anotar(dir, texto);
-        sendJson(res, 200, { ok: true, arquivo: file, texto });
+        const file = anotar(dir, parsed.data.texto);
+        sendJson(res, 200, { ok: true, arquivo: file, texto: parsed.data.texto });
         return true;
       }
       if (op === "licao") {
-        const texto = body && typeof body.texto === "string" && body.texto.trim() ? body.texto.trim() : null;
-        if (!texto) {
-          sendJson(res, 400, { error: "texto é obrigatório" });
+        const parsed = await parseBody(req, AnotarLicaoSchema);
+        if (!parsed.ok) {
+          sendJson(res, parsed.status, { error: parsed.error });
           return true;
         }
-        const file = registrarLicao(dir, texto);
-        sendJson(res, 200, { ok: true, arquivo: file, texto });
+        const file = registrarLicao(dir, parsed.data.texto);
+        sendJson(res, 200, { ok: true, arquivo: file, texto: parsed.data.texto });
         return true;
       }
       // decidir
-      const titulo = body && typeof body.titulo === "string" && body.titulo.trim() ? body.titulo.trim() : null;
-      if (!titulo) {
-        sendJson(res, 400, { error: "titulo é obrigatório" });
+      const parsed = await parseBody(req, DecidirSchema);
+      if (!parsed.ok) {
+        sendJson(res, parsed.status, { error: parsed.error });
         return true;
       }
-      const file = decidir(dir, {
-        titulo,
-        contexto: typeof body.contexto === "string" ? body.contexto : undefined,
-        decisao: typeof body.decisao === "string" ? body.decisao : undefined,
-        alternativas: typeof body.alternativas === "string" ? body.alternativas : undefined,
-        consequencias: typeof body.consequencias === "string" ? body.consequencias : undefined,
-      });
+      const { titulo, contexto, decisao, alternativas, consequencias } = parsed.data;
+      const file = decidir(dir, { titulo, contexto, decisao, alternativas, consequencias });
       sendJson(res, 200, { ok: true, arquivo: file, titulo });
       return true;
     } catch (err) {
@@ -264,18 +270,12 @@ export async function handleMemory(
       sendJson(res, 404, { error: "soul não encontrada" });
       return true;
     }
-    const parsed = await readJson(req);
-    if (parsed.error === "too_large") {
-      sendJson(res, 413, { error: "body excede 1 MB" });
+    const parsed = await parseBody(req, LimparSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
       return true;
     }
-    if (parsed.error === "invalid") {
-      sendJson(res, 400, { error: "JSON inválido" });
-      return true;
-    }
-    const body = parsed.body ?? {};
-    const maxAgeDays = typeof body.maxAgeDays === "number" ? body.maxAgeDays : undefined;
-    const maxBytes = typeof body.maxBytes === "number" ? body.maxBytes : undefined;
+    const { maxAgeDays, maxBytes } = parsed.data;
     const result = limparSoul(soul.dir, { maxAgeDays, maxBytes });
     sendJson(res, 200, { soul: soul.id, ...result });
     return true;
@@ -315,15 +315,12 @@ export async function handleMemory(
       return true;
     }
     try {
-      const parsed = await readJson(req);
-      const b = parsed.body || {};
-      const entity: string = (b.entity as string) || "";
-      const body: string = (b.body as string) || "";
-      const source: string | undefined = (b.source as string) || undefined;
-      if (!entity || !body) {
-        sendJson(res, 400, { error: "entity e body são obrigatórios" });
+      const parsed = await parseBody(req, AddObservationSchema);
+      if (!parsed.ok) {
+        sendJson(res, parsed.status, { error: parsed.error });
         return true;
       }
+      const { entity, body, source } = parsed.data;
       const config = loadConfig({ home });
       const pool = getPool(config.databaseUrl);
       await addObservation(pool, soul.id, entity, body, source);

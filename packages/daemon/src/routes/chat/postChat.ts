@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { z } from "zod";
 import {
   loadConfig,
   getPool,
@@ -35,10 +36,22 @@ import {
   canEscalateSession,
   recordSessionEscalation,
 } from "../../orchestrator/escalation.js";
-import { sendJson, readJson, makeLocalFallbackProbe, type RequestContext } from "../shared.js";
+import { sendJson, parseBody, optionalTrimmedString, makeLocalFallbackProbe, type RequestContext } from "../shared.js";
 import { getRequestAccountId } from "../accountAuth.js";
 import { chatRequests, chatLatency, tokensTotal, routerEscalation, ollamaPrefillSeconds, ollamaPromptEvalTokens } from "../../observability/metrics.js";
 import { ollamaChat, handleChatDegraded, preparePromptContext, type ExecUsage } from "../../promptPipeline.js";
+
+const TIMEOUT_RANGE_MSG = "timeoutSeconds deve ser um inteiro entre 1 e 600";
+
+const PostChatSchema = z.object({
+  prompt: z.string().refine((v) => v.trim().length > 0, { message: "prompt é obrigatório" }),
+  timeoutSeconds: z.number().int(TIMEOUT_RANGE_MSG).min(1, TIMEOUT_RANGE_MSG).max(600, TIMEOUT_RANGE_MSG).optional().default(300),
+  model: optionalTrimmedString(),
+  tier: optionalTrimmedString(),
+  mode: z.enum(["fast", "pro"]).optional(),
+  langgraphMode: z.string().optional(),
+  memorizar: z.boolean().optional().default(false),
+});
 
 export async function handlePostChat(
   req: IncomingMessage,
@@ -50,31 +63,15 @@ export async function handlePostChat(
   const { home, run, hub } = context;
   const chatMatch = path.match(/^\/souls\/([^/]+)\/chat$/);
   if (!chatMatch || req.method !== "POST") return false;
-  const parsed = await readJson(req);
-  if (parsed.error === "too_large") {
-    sendJson(res, 413, { error: "body excede 1 MB" });
+  const parsed = await parseBody(req, PostChatSchema);
+  if (!parsed.ok) {
+    sendJson(res, parsed.status, { error: parsed.error });
     return true;
   }
-  if (parsed.error === "invalid") {
-    sendJson(res, 400, { error: "JSON inválido" });
-    return true;
-  }
-  const body = parsed.body;
-  const prompt = body && typeof body.prompt === "string" ? body.prompt : "";
-  if (!prompt.trim()) {
-    sendJson(res, 400, { error: "prompt é obrigatório" });
-    return true;
-  }
-  const timeoutSeconds = body && typeof body.timeoutSeconds === "number" ? body.timeoutSeconds : 300;
-  if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 600) {
-    sendJson(res, 400, { error: "timeoutSeconds deve ser um inteiro entre 1 e 600" });
-    return true;
-  }
-  const requestedModel = body && typeof body.model === "string" && body.model.trim() ? body.model.trim() : undefined;
-  const requestedTier = body && typeof body.tier === "string" && body.tier.trim() ? body.tier.trim() : undefined;
-  const explicitMode: ExecutionMode | undefined = body?.mode === "fast" || body?.mode === "pro" ? body.mode : undefined;
-  const langgraphMode: string | undefined = typeof body?.langgraphMode === "string" ? body.langgraphMode : undefined;
-  const memorizar = body && body.memorizar === true;
+  const { prompt, timeoutSeconds, langgraphMode, memorizar } = parsed.data;
+  const requestedModel = parsed.data.model ?? undefined;
+  const requestedTier = parsed.data.tier ?? undefined;
+  const explicitMode: ExecutionMode | undefined = parsed.data.mode;
   const soul = getSoul(home, decodeURIComponent(chatMatch[1]!));
   if (!soul) {
     sendJson(res, 404, { error: "soul não encontrada" });
