@@ -40,8 +40,8 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | ✅ 2026-09-05 | A2b-1 |
 | DS12 | `ScrollArea`'s `tabIndex={0}` sem `role`/`aria-label` — região focável sem nome acessível | A2b-2 | P3 | S | ✅ 2026-09-05 | A2b-2 |
 | DS13 | `MessageList` só usa `MutationObserver`; reflow puro sem mutação de DOM não dispara auto-follow | A2b-2 | P3 | M | ✅ 2026-09-05 | A2b-2 |
-| DS14 | `StreamingText` não tem como sinalizar "stream terminou" — cursor pisca pra sempre | A2b-2 | P2 | S | TODO | A2b-2 |
-| DS15 | `MessageList`/`StreamingText` sem `aria-live`/`role="log"` — leitor de tela não é avisado de conteúdo novo | A2b-2 | P2 | M | TODO | A2b-2 |
+| DS14 | `StreamingText` não tem como sinalizar "stream terminou" — cursor pisca pra sempre | A2b-2 | P2 | S | ✅ DONE | A2b-2 |
+| DS15 | `MessageList`/`StreamingText` sem `aria-live`/`role="log"` — leitor de tela não é avisado de conteúdo novo | A2b-2 | P2 | M | ✅ DONE | A2b-2 |
 
 ---
 
@@ -150,14 +150,14 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 
 ### DS14 — `StreamingText` sem sinal de "stream terminou"  ·  P2
 **Objetivo**: `StreamingText` não tem como sinalizar "o stream terminou" — seu cursor pisca pra sempre enquanto o componente estiver montado. Um consumidor `ThreadScreen` (spec B) vai ter que trocar `<StreamingText>` por `<Markdown>` na conclusão, o que remonta a subárvore e causa flicker visível.
-**Estado atual (verificado pela revisão final do A2b-2)**: `streaming-text.tsx` não tem prop de conclusão; o cursor (`.ds-streaming-caret`) é renderizado incondicionalmente enquanto o componente existir.
-**Aceitação**: prop opcional `done?: boolean` (default `false`) que esconde o cursor sem desmontar/remontar o conteúdo renderizado, deixando quem consome trocar uma prop em vez de trocar componentes.
+**Estado (✅ concluído, achado já implementado ao auditar em 2026-09-05)**: `streaming-text.tsx` tem prop opcional `done?: boolean` (default `false`) — o cursor (`.ds-streaming-caret`) só renderiza quando `!done`, sem desmontar/remontar o conteúdo.
+**Aceitação**: ✅ prop opcional `done?: boolean` que esconde o cursor sem desmontar/remontar o conteúdo renderizado.
 **Arquivos**: `packages/ui/src/components/streaming-text.tsx`.
 
 ### DS15 — `MessageList`/`StreamingText` sem `aria-live`  ·  P2
 **Objetivo**: nem `MessageList` nem `StreamingText` anunciam conteúdo novo/em streaming pra leitor de tela (sem `role="log"`/`aria-live` em lugar nenhum desta fatia) — deliberadamente fora de escopo deste plano (bate com os não-objetivos declarados dele), mas vale uma linha rastreada já que o `ThreadScreen` da spec B é o próximo consumidor e vai expor a lacuna imediatamente pra usuários de leitor de tela acompanhando uma conversa ao vivo.
-**Estado atual (verificado pela revisão final do A2b-2)**: nenhum dos dois componentes usa `aria-live`/`role="log"`.
-**Aceitação**: decidir e implementar uma estratégia de região `aria-live` apropriada (provavelmente `polite` em `MessageList`, com cuidado pra não reanunciar a mensagem inteira crescendo a cada token) quando `ThreadScreen` for construído.
+**Estado (✅ concluído, achado já implementado ao auditar em 2026-09-05)**: `MessageList` tem `role="log"` + `aria-live="polite"` no container de conteúdo; `StreamingText` marca `aria-busy={!done}` no mesmo meio tempo, evitando que o leitor de tela tente anunciar cada fragmento parcial conforme chega.
+**Aceitação**: ✅ estratégia `aria-live="polite"` em `MessageList` + `aria-busy` em `StreamingText` implementada.
 **Arquivos**: `packages/ui/src/components/message-list.tsx`, `packages/ui/src/components/streaming-text.tsx`.
 
 ---
