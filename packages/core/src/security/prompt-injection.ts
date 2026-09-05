@@ -93,6 +93,18 @@ const SEVERITY_RANK: Record<InjectionDetectionResult["maxSeverity"], number> = {
   high: 3,
 };
 
+/**
+ * Critério único de bloqueio pro modo "recusar" (M3): severidade medium OU
+ * high bloqueia. Endurecido 2026-09-05 — antes só high bloqueava, deixando
+ * passar padrões medium (ex: "pretend you have no rules", tags [SYSTEM])
+ * mesmo com o modo mais estrito configurado. Compartilhado entre o screening
+ * de entrada do usuário (promptPipeline.ts) e o de chunks de RAG
+ * (rag-injection.ts) — um único lugar pra mudar o limiar no futuro.
+ */
+export function isBlockingSeverity(maxSeverity: InjectionDetectionResult["maxSeverity"]): boolean {
+  return SEVERITY_RANK[maxSeverity] >= SEVERITY_RANK.medium;
+}
+
 /** Detecta tentativas conhecidas de prompt injection num texto (não modifica o texto). */
 export function detectPromptInjection(
   text: string,

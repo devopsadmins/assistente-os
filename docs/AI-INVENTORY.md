@@ -41,7 +41,7 @@ o limite corta):
 
 - `dailyLimit` atingido → `429`.
 - `maxTurns` da sessão atingido → `429`.
-- `PROMPT_INJECTION_MODO=recusar` + severidade alta → `400`.
+- `PROMPT_INJECTION_MODO=recusar` (default desde 2026-09-05, M3) + severidade medium ou alta → `400`.
 
 ## Execution manifest
 

@@ -18,6 +18,7 @@ import {
   sanitizeLLMResponse,
   purgeCredentials,
   logFullAuditEntry,
+  isBlockingSeverity,
 } from "@assistente-os/core";
 import type { RagChunk, RagInjectionFinding } from "@assistente-os/memory";
 import { maxFindingSeverity } from "@assistente-os/memory";
@@ -399,7 +400,7 @@ export async function preparePromptContext(params: {
     });
     promptInjectionAlerts.inc({ severity: injection.maxSeverity, source: "user_input" });
     const modo = config.ragInjectionMode;
-    if (modo === "recusar" && injection.maxSeverity === "high") {
+    if (modo === "recusar" && isBlockingSeverity(injection.maxSeverity)) {
       return {
         ok: false,
         status: 400,

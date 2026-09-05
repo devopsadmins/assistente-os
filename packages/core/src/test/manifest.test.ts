@@ -54,7 +54,7 @@ test("buildExecutionManifest: bloco rag no hash — RAG_RERANK muda o hash", asy
       embedModel: "nomic-embed-text",
       embedDims: 768,
       rerankMode: "off",
-      injectionMode: "aviso",
+      injectionMode: "recusar",
       hnswEfSearch: 40,
     });
 

@@ -10,22 +10,24 @@
  * Lógica pura, sem I/O. O logging no audit trail / métrica / step fica com o
  * chamador (daemon), que tem `sessionId`.
  */
-import { detectPromptInjection, type InjectionDetectionResult } from "@assistente-os/core";
+import { detectPromptInjection, isBlockingSeverity, resolvePromptInjectionMode, type InjectionDetectionResult } from "@assistente-os/core";
 import type { RagChunk } from "./rag-chain.js";
 
 export type RagInjectionMode = "aviso" | "recusar";
 
 /**
- * Política de screening de chunks de RAG. `RAG_INJECTION_MODO` tem prioridade;
- * cai para `PROMPT_INJECTION_MODO`; default `aviso`.
+ * Política de screening de chunks de RAG. Delega a `resolvePromptInjectionMode`
+ * (@assistente-os/core) — mesma resolução de env var usada pela entrada do
+ * usuário, pra não divergir (eram duas cópias da mesma lógica antes de
+ * 2026-09-05, mesmo risco do `resolveRelevanceGate`).
  * - `aviso`  — sinaliza no audit trail, o chunk entra no contexto normalmente.
- * - `recusar` — chunks com severidade `high` são descartados do contexto (a
- *   chamada NÃO é abortada — diferente da entrada do usuário, aqui é só uma
- *   fonte entre várias e um falso positivo custa contexto útil, não a resposta).
+ * - `recusar` — chunks com severidade medium+high (ver `isBlockingSeverity`)
+ *   são descartados do contexto (a chamada NÃO é abortada — diferente da
+ *   entrada do usuário, aqui é só uma fonte entre várias e um falso positivo
+ *   custa contexto útil, não a resposta).
  */
 export function ragInjectionMode(): RagInjectionMode {
-  const v = (process.env.RAG_INJECTION_MODO || process.env.PROMPT_INJECTION_MODO || "aviso").toLowerCase();
-  return v === "recusar" ? "recusar" : "aviso";
+  return resolvePromptInjectionMode();
 }
 
 export interface RagInjectionFinding {
@@ -55,15 +57,15 @@ export interface ScreenResult {
 
 /**
  * Roda `detectPromptInjection` sobre o `body` de cada chunk. Em modo `recusar`,
- * chunks cuja `maxSeverity` é `high` ficam de fora de `chunks`, mas ainda geram
- * um finding com `excluded: true`.
+ * chunks cuja `maxSeverity` é medium ou high (ver `isBlockingSeverity`) ficam
+ * de fora de `chunks`, mas ainda geram um finding com `excluded: true`.
  */
 export function screenRetrievedChunks(items: ScreenableChunk[], mode: RagInjectionMode): ScreenResult {
   const chunks: RagChunk[] = [];
   const findings: RagInjectionFinding[] = [];
   for (const { chunk, body } of items) {
     const r: InjectionDetectionResult = detectPromptInjection(body ?? "");
-    const drop = mode === "recusar" && r.maxSeverity === "high";
+    const drop = mode === "recusar" && isBlockingSeverity(r.maxSeverity);
     if (r.detected) {
       findings.push({
         doc: chunk.doc,

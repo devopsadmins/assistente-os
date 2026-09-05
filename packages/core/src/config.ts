@@ -31,8 +31,10 @@ export interface AssistenteOsConfig {
   zenChatModel: string;
   /** Modo do reranker de RAG (env RAG_RERANK): "off" | "cross-encoder" | "llm". */
   ragRerankMode: "off" | "cross-encoder" | "llm";
-  /** Modo do screening de prompt injection em chunks de RAG (env RAG_INJECTION_MODO
-   * → PROMPT_INJECTION_MODO): "aviso" | "recusar". */
+  /** Modo do screening de prompt injection (entrada do usuário e chunks de RAG;
+   * env RAG_INJECTION_MODO → PROMPT_INJECTION_MODO): "aviso" | "recusar".
+   * Default "recusar" desde 2026-09-05 (M3) — bloqueia severidade medium+high
+   * (ver `isBlockingSeverity`); "aviso" precisa ser setado explicitamente. */
   ragInjectionMode: "aviso" | "recusar";
   /** hnsw.ef_search fixado na busca vetorial (env RAG_HNSW_EF_SEARCH, default 40) —
    * reprodutibilidade da recuperação HNSW. */
@@ -94,6 +96,20 @@ export function resolveRelevanceGate(): { modo: "recusar" | "aviso" | "libre"; m
   };
 }
 
+/**
+ * M3 (2026-09-05): resolução de `RAG_INJECTION_MODO`/`PROMPT_INJECTION_MODO`
+ * era parseada de forma independente em `config.ts` (campo `ragInjectionMode`)
+ * e em `packages/memory/src/rag-injection.ts` (função local `ragInjectionMode`)
+ * — mesmo risco de divergência do `resolveRelevanceGate` acima. Endurecido:
+ * default virou "recusar" (era "aviso" — screening não-bloqueante por
+ * default era exatamente a lacuna apontada no backlog M3); só "aviso"
+ * explícito opta por não bloquear.
+ */
+export function resolvePromptInjectionMode(): "aviso" | "recusar" {
+  const raw = (process.env.RAG_INJECTION_MODO || process.env.PROMPT_INJECTION_MODO || "recusar").toLowerCase();
+  return raw === "aviso" ? "aviso" : "recusar";
+}
+
 /** Carrega variáveis de <dir>/.env (formato KEY=value, linhas, # comentários). */
 export function loadDotEnv(dir: string): void {
   const p = join(dir, ".env");
@@ -139,11 +155,7 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
     zenBaseUrl: overrides.zenBaseUrl || process.env.ZEN_BASE_URL || "https://opencode.ai/zen/v1",
     zenChatModel: overrides.zenChatModel || process.env.ZEN_CHAT_MODEL || "nemotron-3-ultra-free",
     ragRerankMode: overrides.ragRerankMode ?? parseRagRerankMode(process.env.RAG_RERANK),
-    ragInjectionMode:
-      overrides.ragInjectionMode ??
-      ((process.env.RAG_INJECTION_MODO || process.env.PROMPT_INJECTION_MODO || "aviso").toLowerCase() === "recusar"
-        ? "recusar"
-        : "aviso"),
+    ragInjectionMode: overrides.ragInjectionMode ?? resolvePromptInjectionMode(),
     ragHnswEfSearch: overrides.ragHnswEfSearch ?? (Number(process.env.RAG_HNSW_EF_SEARCH) || 40),
     routerTiers:
       overrides.routerTiers ||

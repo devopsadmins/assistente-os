@@ -52,7 +52,7 @@ function writeMaliciousDoc(dir: string): void {
 
 test("RAG injection (aviso): chunk malicioso é sinalizado em injectionFindings mas segue no contexto", async () => {
   const prev = process.env.RAG_INJECTION_MODO;
-  delete process.env.RAG_INJECTION_MODO; // default aviso
+  process.env.RAG_INJECTION_MODO = "aviso"; // default virou "recusar" (M3, 2026-09-05) — pedir aviso explicitamente
   const dir = tempDir();
   const testDb = await createTestSchema();
   try {
