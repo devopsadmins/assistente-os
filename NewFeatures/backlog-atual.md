@@ -62,6 +62,7 @@ Confirmado antes de mexer: o daemon já não caía com Postgres fora do ar (try/
 | **M3** | ✅ **Endurecido 2026-09-05.** Default `aviso`→`recusar`; modo `recusar` agora bloqueia medium+high (era só high). Resolução de env var unificada (`resolvePromptInjectionMode`, core) — antes duplicada entre `config.ts` e `packages/memory/src/rag-injection.ts`. Detecção segue regex-only (11 padrões), sem resistência a ofuscação — candidato a follow-up futuro. | Concluído |
 | **DS10+DS11** | `CodeBlock`/syntax highlight real, `Markdown` renderiza `[[n]]` como `<Citation>`; `Markdown` perde imagens/checkboxes GFM sob `ALLOWED_TAGS` | P2 |
 | **DS12+DS13** | `ScrollArea` sem `aria-label`; `MessageList` só reage a `MutationObserver` (reflow puro não dispara auto-follow) | P3 |
+| **Flakiness de CI: deadlock Postgres em cleanup de teste** | Achado no CI do PR #36 (2026-09-05): `kill-switch.test.ts` falhou 1x com `deadlock detected` (`40P01`) no `DROP SCHEMA` de `pgTestHelper.js` — sintoma de testes em paralelo disputando schema no mesmo Postgres. Não reproduziu localmente (mesma suíte passou antes); não investigado a fundo — só registrado pra não ser esquecido se voltar a acontecer. | P3, monitorar recorrência |
 
 ## 5. Operação externa — checklist/runbook, não é feature de código
 
