@@ -1,6 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -1033,10 +1033,39 @@ test("mcp: editorial_add_idea → editorial_get_pipeline_status → editorial_ge
         arguments: { soul: "main", ideaIds: [addParsed.ideaId], platforms: ["linkedin"], tone: "professional" },
       },
     });
-    const draftsParsed = JSON.parse((drafts?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { ok: boolean; count: number; drafts: { platform: string }[] };
+    const draftsParsed = JSON.parse((drafts?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { ok: boolean; count: number; drafts: { platform: string; path: string }[] };
     assert.equal(draftsParsed.ok, true);
     assert.equal(draftsParsed.count, 1);
     assert.equal(draftsParsed.drafts[0]?.platform, "linkedin");
+
+    // Verifica o estado real do filesystem, não só o payload JSON: o draft
+    // precisa ter sido de fato escrito em disco, com o conteúdo esperado.
+    const draftPath = draftsParsed.drafts[0]?.path;
+    assert.ok(draftPath, "draft deveria retornar um path");
+    assert.ok(existsSync(draftPath), `arquivo de draft deveria existir em ${draftPath}`);
+    const draftFileContent = readFileSync(draftPath, "utf8");
+    assert.match(draftFileContent, /# Rascunho LINKEDIN:/);
+    assert.match(draftFileContent, /IA generativa em vendas/);
+
+    // Verifica que a ideia mudou de status de verdade no arquivo (não só no
+    // payload): editorial_generate_drafts deve ter trocado backlog -> in_production.
+    const statusAfter = await server.handleMessage({
+      jsonrpc: "2.0", id: 293, method: "tools/call",
+      params: { name: "editorial_get_pipeline_status", arguments: { soul: "main" } },
+    });
+    const statusAfterParsed = JSON.parse((statusAfter?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as {
+      ok: boolean;
+      pipeline: { backlog: { id: string }[]; in_production: { id: string }[] };
+    };
+    assert.equal(statusAfterParsed.ok, true);
+    assert.ok(
+      statusAfterParsed.pipeline.in_production.some((i) => i.id === addParsed.ideaId),
+      "ideia deveria aparecer em in_production após editorial_generate_drafts",
+    );
+    assert.ok(
+      !statusAfterParsed.pipeline.backlog.some((i) => i.id === addParsed.ideaId),
+      "ideia não deveria mais aparecer em backlog após editorial_generate_drafts",
+    );
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

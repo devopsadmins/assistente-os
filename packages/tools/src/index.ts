@@ -121,8 +121,9 @@ export type ToolHandler = (ctx: ToolContext, args: Record<string, unknown>) => P
 
 /**
  * Tabela de dispatch por família de tool. Populada pelos módulos migrados
- * em Tasks 2-5. Consultada em executeTool antes do switch legado — se uma
- * tool estiver aqui, seu handler roda; senão, cai no switch.
+ * em Tasks 2-5 (e Task 9, que esvaziou os últimos cases do switch legado).
+ * Consultada em executeTool: se uma tool estiver aqui, seu handler roda;
+ * senão, é uma tool desconhecida.
  */
 export const FAMILY_HANDLERS: Record<string, ToolHandler> = {};
 
@@ -296,7 +297,7 @@ export class McpServer {
 
   private async executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     // Consulta à tabela de dispatch por família. Se há um handler registrado,
-    // executa-o e retorna. Senão, cai no switch legado.
+    // executa-o e retorna. Senão, é uma tool desconhecida.
     const familyHandler = FAMILY_HANDLERS[name];
     if (familyHandler) {
       const ctx: ToolContext = {
