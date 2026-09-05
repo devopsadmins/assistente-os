@@ -50,6 +50,7 @@ import { runSkillCommand } from "./skill.js";
 import { runRagCommand, isIndexStale } from "./rag.js";
 import { runPromptCommand } from "./prompt.js";
 import { runDiscriminatorCommand } from "./discriminator.js";
+import { requireArg, parseEnumArg, parsePort, parseDateArg } from "./argSchema.js";
 
 const BACKUP_RETENTION_DAYS = 7;
 
@@ -155,12 +156,9 @@ async function main(): Promise<void> {
     }
 
     case "soul": {
-      const id = args[0];
+      const id = requireArg(args[0], "uso: os soul <id> [ativa | canvas [--write] | anota <txt> | licao <txt> | decide <titulo>]");
+      if (id === null) return;
       const action = args[1];
-      if (!id) {
-        console.log("uso: os soul <id> [ativa | canvas [--write] | anota <txt> | licao <txt> | decide <titulo>]");
-        return;
-      }
       const soul = getSoul(config.home, id);
       if (!soul) {
         console.error(`soul não encontrada: ${id}`);
@@ -193,31 +191,22 @@ async function main(): Promise<void> {
       }
       if (action === "anota" || action === "licao" || action === "decide") {
         if (action === "anota") {
-          const texto = args.slice(2).join(" ");
-          if (!texto.trim()) {
-            console.log("uso: os soul <id> anota <texto>");
-            return;
-          }
+          const texto = requireArg(args.slice(2).join(" "), "uso: os soul <id> anota <texto>");
+          if (texto === null) return;
           const file = anotar(soul.dir, texto);
           console.log(`anotado: ${file}`);
           return;
         }
         if (action === "licao") {
-          const texto = args.slice(2).join(" ");
-          if (!texto.trim()) {
-            console.log("uso: os soul <id> licao <texto>");
-            return;
-          }
+          const texto = requireArg(args.slice(2).join(" "), "uso: os soul <id> licao <texto>");
+          if (texto === null) return;
           const file = registrarLicao(soul.dir, texto);
           console.log(`lição registrada: ${file}`);
           return;
         }
         // decide
-        const titulo = args[2] ?? "";
-        if (!titulo) {
-          console.log("uso: os soul <id> decide <titulo> [contexto...]");
-          return;
-        }
+        const titulo = requireArg(args[2], "uso: os soul <id> decide <titulo> [contexto...]");
+        if (titulo === null) return;
         try {
           const file = decidir(soul.dir, { titulo, contexto: args.slice(3).join(" ") });
           console.log(`decisão registrada: ${file}`);
@@ -242,12 +231,11 @@ async function main(): Promise<void> {
     }
 
     case "chat": {
-      const id = args[0];
-      const prompt = args.slice(1).join(" ");
-      if (!id || !prompt.trim()) {
-        console.log("uso: os chat <soul> <prompt...>");
-        return;
-      }
+      const usage = "uso: os chat <soul> <prompt...>";
+      const id = requireArg(args[0], usage);
+      if (id === null) return;
+      const prompt = requireArg(args.slice(1).join(" "), usage);
+      if (prompt === null) return;
       const soul = getSoul(config.home, id);
       if (!soul) {
         console.error(`soul não encontrada: ${id}`);
@@ -263,34 +251,27 @@ async function main(): Promise<void> {
     }
 
     case "migrate": {
-      const src = args[0];
-      if (!src) {
-        console.log("uso: os migrate <src>");
-        return;
-      }
+      const src = requireArg(args[0], "uso: os migrate <src>");
+      if (src === null) return;
       const summary = migrateAlmas(src, config.home);
       printMigrationSummary(summary);
       return;
     }
 
     case "import-sc": {
-      const src = args[0];
-      if (!src) {
-        console.log("uso: os import-sc <src>");
-        return;
-      }
+      const src = requireArg(args[0], "uso: os import-sc <src>");
+      if (src === null) return;
       const summary = importSegundoCerebro(src, config.home);
       printMigrationSummary(summary);
       return;
     }
 
     case "memory": {
-      const id = args[0];
-      const action = args[1];
-      if (!id || !action) {
-        console.log("uso: os memory <soul> <index|search|status>");
-        return;
-      }
+      const usage = "uso: os memory <soul> <index|search|status>";
+      const id = requireArg(args[0], usage);
+      if (id === null) return;
+      const action = parseEnumArg(args[1], ["index", "search", "status"] as const, usage);
+      if (action === null) return;
       const soul = getSoul(config.home, id);
       if (!soul) {
         console.error(`soul não encontrada: ${id}`);
@@ -305,11 +286,8 @@ async function main(): Promise<void> {
           `indexado: ${r.files} arquivo(s), ${r.chunks} chunk(s) — ${r.embedded} (re)embedado(s), ${r.deleted} órfão(s) removido(s)`,
         );
       } else if (action === "search") {
-        const q = args.slice(2).join(" ");
-        if (!q) {
-          console.log("uso: os memory <soul> search <query>");
-          return;
-        }
+        const q = requireArg(args.slice(2).join(" "), "uso: os memory <soul> search <query>");
+        if (q === null) return;
         const results = await search(pool, id, q, embedder, 5);
         if (results.length === 0) {
           console.log("nenhum resultado");
@@ -329,18 +307,13 @@ async function main(): Promise<void> {
         console.log(
           `índice: ${stats.lastIndexedAt ?? "nunca"} · ${stale ? "defasado (markdown mais novo — rode `os memory " + id + " index`)" : "atualizado"}`,
         );
-      } else {
-        console.log("ação inválida: use index|search|status");
       }
       return;
     }
 
     case "graph": {
-      const id = args[0];
-      if (!id) {
-        console.log("uso: os graph <soul> list");
-        return;
-      }
+      const id = requireArg(args[0], "uso: os graph <soul> list");
+      if (id === null) return;
       const soul = getSoul(config.home, id);
       if (!soul) {
         console.error(`soul não encontrada: ${id}`);
@@ -374,10 +347,14 @@ async function main(): Promise<void> {
             filters.soul = args[i + 1]!;
             i++;
           } else if (args[i] === "--from" && args[i + 1]) {
-            filters.from = args[i + 1]!;
+            const from = parseDateArg(args[i + 1]!, "--from");
+            if (from === null) return;
+            filters.from = from;
             i++;
           } else if (args[i] === "--to" && args[i + 1]) {
-            filters.to = args[i + 1]!;
+            const to = parseDateArg(args[i + 1]!, "--to");
+            if (to === null) return;
+            filters.to = to;
             i++;
           }
         }
@@ -423,12 +400,8 @@ async function main(): Promise<void> {
     }
 
     case "trace": {
-      const traceId = args[0];
-      if (!traceId) {
-        console.error("uso: os trace <trace-id>");
-        process.exitCode = 1;
-        return;
-      }
+      const traceId = requireArg(args[0], "uso: os trace <trace-id>");
+      if (traceId === null) return;
       const pool = getPool(config.databaseUrl);
       const { execution, spans } = await getTrace(pool, traceId);
       if (!execution && spans.length === 0) {
@@ -485,12 +458,8 @@ async function main(): Promise<void> {
       const { createWorktree, mergeLocally, destroyWorktree, setupEnvironment } = daemon;
 
       if (sub === "create") {
-        const taskId = args[1];
-        if (!taskId) {
-          console.log("uso: os worktree create <taskId> [--base <branch>] [--soul <id>]");
-          process.exitCode = 1;
-          return;
-        }
+        const taskId = requireArg(args[1], "uso: os worktree create <taskId> [--base <branch>] [--soul <id>]");
+        if (taskId === null) return;
         let baseBranch = "main";
         let soul: string | null = null;
         for (let i = 2; i < args.length; i++) {
@@ -521,12 +490,8 @@ async function main(): Promise<void> {
       }
 
       if (sub === "merge") {
-        const taskId = args[1];
-        if (!taskId) {
-          console.log("uso: os worktree merge <taskId> [--target <branch>]");
-          process.exitCode = 1;
-          return;
-        }
+        const taskId = requireArg(args[1], "uso: os worktree merge <taskId> [--target <branch>]");
+        if (taskId === null) return;
         let targetBranch = "main";
         for (let i = 2; i < args.length; i++) {
           if (args[i] === "--target" && args[i + 1]) {
@@ -546,12 +511,8 @@ async function main(): Promise<void> {
       }
 
       if (sub === "destroy") {
-        const taskId = args[1];
-        if (!taskId) {
-          console.log("uso: os worktree destroy <taskId>");
-          process.exitCode = 1;
-          return;
-        }
+        const taskId = requireArg(args[1], "uso: os worktree destroy <taskId>");
+        if (taskId === null) return;
         await destroyWorktree(taskId);
         console.log(`worktree ${taskId} destruída`);
         return;
@@ -587,19 +548,19 @@ async function main(): Promise<void> {
       const sub = args[0];
 
       if (sub === "add") {
-        const soulArg = args[1];
-        const title = args[2];
-        if (!soulArg || !title) {
-          console.log('uso: os agenda add <soul|-> "<título>" [--due <iso>] [corpo...]');
-          process.exitCode = 1;
-          return;
-        }
+        const addUsage = 'uso: os agenda add <soul|-> "<título>" [--due <iso>] [corpo...]';
+        const soulArg = requireArg(args[1], addUsage);
+        if (soulArg === null) return;
+        const title = requireArg(args[2], addUsage);
+        if (title === null) return;
         const rest = args.slice(3);
         let dueAt: string | null = null;
         const bodyParts: string[] = [];
         for (let i = 0; i < rest.length; i++) {
           if (rest[i] === "--due" && rest[i + 1]) {
-            dueAt = rest[i + 1]!;
+            const due = parseDateArg(rest[i + 1]!, "--due");
+            if (due === null) return;
+            dueAt = due;
             i++;
             continue;
           }
@@ -618,7 +579,10 @@ async function main(): Promise<void> {
       }
 
       if (sub === "list" || sub === undefined) {
-        const filter = args[1] === "done" || args[1] === "all" ? args[1] : "pending";
+        const filter = args[1] === undefined
+          ? "pending"
+          : parseEnumArg(args[1], ["pending", "done", "all"] as const, "uso: os agenda list [pending|done|all]");
+        if (filter === null) return;
         const pool = getPool(config.databaseUrl);
         const items = await getAgendaItems(pool, filter);
         if (items.length === 0) {
@@ -654,13 +618,11 @@ async function main(): Promise<void> {
       }
 
       if (sub === "approve" || sub === "reject") {
-        const id = args[1];
-        const code = args[2];
-        if (!id || !code) {
-          console.log(`uso: os guardian ${sub} <id> <código>`);
-          process.exitCode = 1;
-          return;
-        }
+        const gUsage = `uso: os guardian ${sub} <id> <código>`;
+        const id = requireArg(args[1], gUsage);
+        if (id === null) return;
+        const code = requireArg(args[2], gUsage);
+        if (code === null) return;
         try {
           if (sub === "approve") {
             const rule = approveRule(config.home, repoRoot, id, code);
@@ -677,12 +639,8 @@ async function main(): Promise<void> {
       }
 
       if (sub === "resend") {
-        const id = args[1];
-        if (!id) {
-          console.log("uso: os guardian resend <id>");
-          process.exitCode = 1;
-          return;
-        }
+        const id = requireArg(args[1], "uso: os guardian resend <id>");
+        if (id === null) return;
         try {
           resendApprovalCode(config.home, id);
           console.log(`novo código gerado e enviado por Telegram (se GUARDIAN_APPROVAL_CHAT_ID estiver configurado) para a proposta ${id}`);
@@ -698,7 +656,17 @@ async function main(): Promise<void> {
     }
 
     case "daemon": {
-      const port = args[0] ? Number(args[0]) : Number(process.env.AOS_PORT ?? 4310);
+      const port = parsePort(args[0], Number(process.env.AOS_PORT ?? 4310));
+      if (port === null) {
+        // O .finally() de main() pula closePool() pra "daemon"/"voice" de
+        // propósito (não derrubar a conexão que o daemon acabou de abrir) —
+        // mas aqui a validação falhou ANTES de subir o daemon, então o pool
+        // aberto pelas migrações fica pendurado sem isto, atrasando a saída
+        // do processo até o keepalive do socket estourar (achado ao vivo:
+        // ~30s, não instantâneo como as outras validações desta fatia).
+        await closePool(config.databaseUrl);
+        return;
+      }
       const host = process.env.AOS_HOST ?? "127.0.0.1";
       const daemon = await startDaemon({
         port,
