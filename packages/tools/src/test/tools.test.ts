@@ -857,3 +857,18 @@ test("mission_list: tools/list inclui a ferramenta e responde (smoke — sem exe
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("sales_ingest_meeting: tools/list inclui a família sales_* (smoke — sem execução real de LLM/Ollama)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 265, method: "tools/list" });
+    const tools = (res?.result as { tools?: { name: string }[] }).tools ?? [];
+    const names = tools.map((t) => t.name);
+    for (const n of ["sales_ingest_meeting", "sales_get_lead_brief"]) {
+      assert.ok(names.includes(n), `tools/list deveria incluir ${n}`);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

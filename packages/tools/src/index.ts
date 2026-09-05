@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, meetingIngestPipeline, generateCloserBrief, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, setupEnvironment } from "@assistente-os/daemon";
+import { runOpenCode, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, setupEnvironment } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
-import { writeFile, unlink } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { EOL, tmpdir } from "node:os";
+import { EOL } from "node:os";
 import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
 import { BROWSER_TOOLS, BROWSER_HANDLERS } from "./browser/index.js";
 import { ADO_TOOLS, ADO_HANDLERS } from "./ado/index.js";
 import { WORKTREE_TOOLS, WORKTREE_HANDLERS } from "./worktree/index.js";
 import { SKILL_TOOLS, SKILL_HANDLERS } from "./skill/index.js";
 import { SOUL_CREATE_TOOLS, SOUL_CREATE_HANDLERS } from "./soulCreate/index.js";
+import { SALES_TOOLS, SALES_HANDLERS } from "./sales/index.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
@@ -271,31 +271,7 @@ const TOOLS: Tool[] = [
     },
   },
   ...GUARDIAN_TOOLS,
-  {
-    name: "sales_ingest_meeting",
-    description: "Ingere uma transcrição de reunião/call (vtt/srt/txt), extrai decisões/ações/objeções via LLM local e persiste em souls/<soul>/sessoes/YYYY-MM-DD-meeting.md.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul dona da reunião" },
-        transcriptContent: { type: "string", description: "conteúdo bruto da transcrição" },
-        format: { type: "string", description: "formato da transcrição", enum: ["vtt", "srt", "txt"] },
-      },
-      required: ["soul", "transcriptContent", "format"],
-    },
-  },
-  {
-    name: "sales_get_lead_brief",
-    description: "Gera um dossiê pré-call (objeções e decisões anteriores) para um lead a partir do histórico de reuniões já ingeridas da soul.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        leadContact: { type: "string", description: "identificador do lead/contato (nome, telefone, e-mail)" },
-      },
-      required: ["soul", "leadContact"],
-    },
-  },
+  ...SALES_TOOLS,
   {
     name: "spec_grill_plan",
     description: "Refina requisitos de uma feature em duas fases antes de autorizar o modo build. Sem 'answers': gera 3-5 perguntas de esclarecimento e persiste em contexto.md como pendente. Com 'answers' (mínimo 3): valida e autoriza o plano, retornando buildModeAuthorized=true.",
@@ -431,6 +407,7 @@ Object.assign(FAMILY_HANDLERS, ADO_HANDLERS);
 Object.assign(FAMILY_HANDLERS, WORKTREE_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SKILL_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SOUL_CREATE_HANDLERS);
+Object.assign(FAMILY_HANDLERS, SALES_HANDLERS);
 
 export class McpServer {
   private config;
@@ -815,35 +792,6 @@ export class McpServer {
           globalGuardrails: this.config.globalGuardrails,
         });
         return { ok: true, path };
-      }
-
-      case "sales_ingest_meeting": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const transcriptContent = typeof args.transcriptContent === "string" && args.transcriptContent.trim() ? args.transcriptContent : null;
-        const format = typeof args.format === "string" ? args.format : null;
-        if (!transcriptContent || !format || !["vtt", "srt", "txt"].includes(format)) {
-          throw new Error("parâmetros transcriptContent e format ('vtt'|'srt'|'txt') são obrigatórios");
-        }
-        const tempPath = join(tmpdir(), `sales-ingest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${format}`);
-        await writeFile(tempPath, transcriptContent, "utf8");
-        try {
-          const result = await meetingIngestPipeline(tempPath, soul.id);
-          return { ok: true, meetingPath: result.meetingPath, meetingPayload: result.meetingPayload };
-        } finally {
-          await unlink(tempPath).catch(() => {});
-        }
-      }
-
-      case "sales_get_lead_brief": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const leadContact = typeof args.leadContact === "string" && args.leadContact.trim() ? args.leadContact.trim() : null;
-        if (!leadContact) throw new Error("parâmetro leadContact é obrigatório");
-        const brief = await generateCloserBrief(soul.id, leadContact);
-        return { ok: true, brief };
       }
 
       case "spec_grill_plan": {
