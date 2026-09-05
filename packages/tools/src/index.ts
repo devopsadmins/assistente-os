@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { loadConfig, getSoul, getPool, runMigrations, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, type AssistenteOsConfig } from "@assistente-os/core";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
 import { BROWSER_TOOLS, BROWSER_HANDLERS } from "./browser/index.js";
