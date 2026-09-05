@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
-import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
+import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
+import { search, LiteralEmbedder, relevancia } from "@assistente-os/memory";
 import { gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, setupEnvironment } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -15,15 +15,10 @@ import { SOUL_CREATE_TOOLS, SOUL_CREATE_HANDLERS } from "./soulCreate/index.js";
 import { SALES_TOOLS, SALES_HANDLERS } from "./sales/index.js";
 import { SOULS_TOOLS, SOULS_HANDLERS } from "./souls/index.js";
 import { JOURNAL_TOOLS, JOURNAL_HANDLERS } from "./journal/index.js";
+import { MEMORY_TOOLS, MEMORY_HANDLERS } from "./memory/index.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
-
-/** Gate de relevância configurável por env (default: modo "aviso"). */
-export function relevanceRule(_configHome: string): RelevanceRule {
-  const gate = resolveRelevanceGate();
-  return { modo: gate.modo, min_score: gate.minScore, min_term_matches: gate.minTerms };
-}
 
 // ── Agent Authorization (Zero Trust Allowlist) ──────────────────────────
 
@@ -86,46 +81,7 @@ export interface Tool {
 
 const TOOLS: Tool[] = [
   ...SOULS_TOOLS,
-  {
-    name: "memory_search",
-    description: "Busca RAG na memória da soul (semântica com Ollama; degrada para literal).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        query: { type: "string", description: "consulta" },
-        limit: { type: "number", default: 5 },
-      },
-      required: ["soul", "query"],
-    },
-  },
-  {
-    name: "memory_index",
-    description: "Indexa (idempotente) a pasta da soul no memory.db.",
-    inputSchema: {
-      type: "object",
-      properties: { soul: { type: "string", description: "id da soul" } },
-      required: ["soul"],
-    },
-  },
-  {
-    name: "memory_status",
-    description: "Contagem de chunks e grafo (entidades/relações/observações) da soul.",
-    inputSchema: {
-      type: "object",
-      properties: { soul: { type: "string", description: "id da soul" } },
-      required: ["soul"],
-    },
-  },
-  {
-    name: "graph_list",
-    description: "Lista entidades, relações e observações do grafo da soul.",
-    inputSchema: {
-      type: "object",
-      properties: { soul: { type: "string", description: "id da soul" } },
-      required: ["soul"],
-    },
-  },
+  ...MEMORY_TOOLS,
   {
     name: "costs_summary",
     description: "Resumo de custos por soul e últimas chamadas do kernel.db.",
@@ -135,20 +91,6 @@ const TOOLS: Tool[] = [
     name: "router_status",
     description: "Degraus do roteador e config do Ollama.",
     inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "observation_add",
-    description: "Adiciona uma observação ao grafo da soul.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        entity_name: { type: "string", description: "nome da entidade" },
-        body: { type: "string", description: "corpo da observação" },
-        source: { type: "string", description: "origem da observação (opcional)" },
-      },
-      required: ["soul", "entity_name", "body"],
-    },
   },
   ...JOURNAL_TOOLS,
   ...GUARDIAN_TOOLS,
@@ -278,6 +220,7 @@ Object.assign(FAMILY_HANDLERS, SOUL_CREATE_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SALES_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SOULS_HANDLERS);
 Object.assign(FAMILY_HANDLERS, JOURNAL_HANDLERS);
+Object.assign(FAMILY_HANDLERS, MEMORY_HANDLERS);
 
 export class McpServer {
   private config;
@@ -447,53 +390,6 @@ export class McpServer {
     }
 
     switch (name) {
-      case "memory_search": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const query = typeof args.query === "string" && args.query.trim() ? args.query : null;
-        if (!query) throw new Error("parâmetro query é obrigatório");
-        const limit = typeof args.limit === "number" ? Math.max(1, Math.min(20, args.limit)) : 5;
-        const pool = getPool(this.config.databaseUrl);
-        const embedder = getEmbedder();
-        const { results, verdict } = await searchWithVerdict(pool, soul.id, query, embedder, relevanceRule(this.config.home), limit);
-        return {
-          soul: soul.id,
-          query,
-          verdict,
-          results: results.map((r) => ({ doc: r.docKey, path: r.path, score: r.score, method: r.method, snippet: sanitizeLLMResponse(r.body.slice(0, 300)).sanitized })),
-        };
-      }
-
-      case "memory_index": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const pool = getPool(this.config.databaseUrl);
-        const r = await indexDirectory(pool, soul.id, join(this.config.home, "souls", soul.id), getEmbedder());
-        return { indexed: r.chunks, ...r };
-      }
-
-      case "memory_status": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const pool = getPool(this.config.databaseUrl);
-        return { chunks: await indexStats(pool, soul.id), graph: await graphStats(pool, soul.id) };
-      }
-
-      case "graph_list": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const pool = getPool(this.config.databaseUrl);
-        return {
-          entities: await listEntities(pool, soul.id),
-          relations: await listRelations(pool, soul.id),
-          observations: await listObservations(pool, soul.id),
-        };
-      }
-
       case "costs_summary": {
         const pool = getPool(this.config.databaseUrl);
         const bySoul: Record<string, number> = {};
@@ -503,20 +399,6 @@ export class McpServer {
 
       case "router_status":
         return { tiers: this.config.routerTiers, ollamaUrl: this.config.ollamaUrl, ollamaChatModel: this.config.ollamaChatModel, ollamaEmbedModel: this.config.ollamaEmbedModel };
-
-      case "observation_add": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const entity_name = typeof args.entity_name === "string" && args.entity_name.trim() ? args.entity_name : null;
-        const body = typeof args.body === "string" && args.body.trim() ? args.body : null;
-        const source = typeof args.source === "string" ? args.source : null;
-        if (!entity_name || !body) throw new Error("entity_name e body são obrigatórios");
-        const pool = getPool(this.config.databaseUrl);
-        const now = new Date().toISOString();
-        await addObservation(pool, soul.id, entity_name, body, source ?? undefined);
-        return { ok: true, entity_name, body, source, ts: now };
-      }
 
       case "spec_grill_plan": {
         const soul = this.requireSoul(args.soul);

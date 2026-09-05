@@ -241,6 +241,57 @@ test("mcp: memory_search retorna veredito de relevância", async () => {
   }
 });
 
+test("mcp: memory_index indexa e memory_status/graph_list refletem o resultado", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const idx = await server.handleMessage({
+      jsonrpc: "2.0", id: 270, method: "tools/call",
+      params: { name: "memory_index", arguments: { soul: "main" } },
+    });
+    const idxParsed = JSON.parse((idx?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { indexed?: number };
+    assert.ok(typeof idxParsed.indexed === "number");
+
+    const status = await server.handleMessage({
+      jsonrpc: "2.0", id: 271, method: "tools/call",
+      params: { name: "memory_status", arguments: { soul: "main" } },
+    });
+    const statusParsed = JSON.parse((status?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { chunks?: unknown; graph?: unknown };
+    assert.ok(statusParsed.chunks !== undefined && statusParsed.graph !== undefined);
+
+    const graph = await server.handleMessage({
+      jsonrpc: "2.0", id: 272, method: "tools/call",
+      params: { name: "graph_list", arguments: { soul: "main" } },
+    });
+    const graphParsed = JSON.parse((graph?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { entities?: unknown[]; relations?: unknown[]; observations?: unknown[] };
+    assert.ok(Array.isArray(graphParsed.entities) && Array.isArray(graphParsed.relations) && Array.isArray(graphParsed.observations));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: observation_add grava e graph_list lê de volta", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const add = await server.handleMessage({
+      jsonrpc: "2.0", id: 273, method: "tools/call",
+      params: { name: "observation_add", arguments: { soul: "main", entity_name: "entidade-teste", body: "observação de teste" } },
+    });
+    const addParsed = JSON.parse((add?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { ok: boolean };
+    assert.equal(addParsed.ok, true);
+
+    const graph = await server.handleMessage({
+      jsonrpc: "2.0", id: 274, method: "tools/call",
+      params: { name: "graph_list", arguments: { soul: "main" } },
+    });
+    const graphParsed = JSON.parse((graph?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { observations?: { body: string }[] };
+    assert.ok(graphParsed.observations?.some((o) => o.body === "observação de teste"));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("mcp: agenda_add agenda uma tarefa e agenda_list lista por status", async () => {
   const home = await tempHome();
   const server = new McpServer({ home });
