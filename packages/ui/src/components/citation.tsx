@@ -14,6 +14,30 @@ export interface CitationProps {
   className?: string;
 }
 
+// Extraído pra ser reusado por `Markdown` — clique em `[[n]]` interativo abre
+// o mesmo conteúdo, mas o Popover ali é montado com âncora virtual (o
+// trigger não é um elemento React, é um `<sup>` dentro de HTML produzido via
+// `dangerouslySetInnerHTML`), não com `PopoverTrigger`.
+export function CitationCardContent({ source }: { source: CitationSource }) {
+  return (
+    <>
+      {source.url ? (
+        <a
+          href={source.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+        >
+          {source.title}
+        </a>
+      ) : (
+        <p className="text-sm font-medium">{source.title}</p>
+      )}
+      {source.snippet ? <p className="text-xs text-muted-foreground">{source.snippet}</p> : null}
+    </>
+  );
+}
+
 export function Citation({ index, source, className }: CitationProps) {
   return (
     <Popover>
@@ -32,19 +56,7 @@ export function Citation({ index, source, className }: CitationProps) {
         </button>
       </PopoverTrigger>
       <PopoverContent aria-label={`Detalhe da citação ${index}`} className="w-64 space-y-1">
-        {source.url ? (
-          <a
-            href={source.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm font-medium text-primary underline-offset-2 hover:underline"
-          >
-            {source.title}
-          </a>
-        ) : (
-          <p className="text-sm font-medium">{source.title}</p>
-        )}
-        {source.snippet ? <p className="text-xs text-muted-foreground">{source.snippet}</p> : null}
+        <CitationCardContent source={source} />
       </PopoverContent>
     </Popover>
   );

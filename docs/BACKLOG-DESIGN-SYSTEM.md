@@ -36,7 +36,7 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS7 | Limpeza cosmética em lote (ver item) | A2a | P3 | S | TODO | — |
 | DS8 | Token `--overlay` pro scrim do Dialog (hoje usa `--foreground`, quebra no dark mode) | A1 → futuro dark mode | P3 | S | BLOCKED | dark mode nem existe ainda |
 | DS9 | Reformular a Global Constraint de `forwardRef` no spec do A1 | A1 (doc) | P3 | S | TODO | — |
-| DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | TODO | A2b-1 |
+| DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | ✅ 2026-09-05 | A2b-1 |
 | DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | ✅ 2026-09-05 | A2b-1 |
 | DS12 | `ScrollArea`'s `tabIndex={0}` sem `role`/`aria-label` — região focável sem nome acessível | A2b-2 | P3 | S | TODO | A2b-2 |
 | DS13 | `MessageList` só usa `MutationObserver`; reflow puro sem mutação de DOM não dispara auto-follow | A2b-2 | P3 | M | TODO | A2b-2 |
@@ -119,14 +119,15 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 
 ### DS10 — `CodeBlock` + highlight + `Citation` interativa em `Markdown`  ·  P2
 **Objetivo**: `CodeBlock` ganha destaque de sintaxe real (via `shiki`, já pré-aprovado no allowlist) e `Markdown` passa a renderizar marcadores `[[n]]` como `<Citation>` interativos de verdade, não como `<sup>` estático.
-**Estado (🟡 metade concluída 2026-09-05)**: `CodeBlock` ganhou highlight real via `shiki/bundle/web` (`codeToHtml`, import dinâmico cacheado; idioma desconhecido/falha degrada pro `<pre><code>` monoespaçado, nunca quebra). `Markdown` **segue** renderizando `[[n]]` como texto estático sem popover — não mexido nesta rodada.
-**Gap (Citation interativa, ainda aberto)**: nenhum componente interativo (Popover) pode ser montado dentro de HTML produzido via `dangerouslySetInnerHTML` sem uma estratégia de delegação de evento + âncora virtual do Radix Popper (`virtualRef`) — decisão de design deliberadamente adiada em A2b-1 para não acoplar essa complexidade ao primeiro corte.
-**Aceitação**: 
+**Estado (✅ 2026-09-05, concluído em 2 partes)**:
+- **Parte 1**: `CodeBlock` ganhou highlight real via `shiki/bundle/web` (`codeToHtml`, import dinâmico cacheado; idioma desconhecido/falha degrada pro `<pre><code>` monoespaçado, nunca quebra).
+- **Parte 2**: `Markdown` ganhou prop `sources?: CitationSource[]` e uma instância própria de `Marked` (não o singleton do módulo, pra fechar sobre `sources` sem vazar estado entre renders). O marcador `[[n]]` só vira um `<sup>` interativo (`role="button"`, `tabindex="0"`) quando `sources[n-1]` existe de verdade — caso contrário renderiza como texto comum, fechando o achado de spoofing abaixo. Clique/Enter/Espaço no marcador abre um `PopoverPrimitive` ancorado via `virtualRef` (Radix Popper) no próprio elemento `<sup>` do HTML cru — extraído `CitationCardContent` de `citation.tsx` pra reusar o mesmo conteúdo do Popover isolado. `sanitize.ts` ganhou `role`/`tabindex`/`aria-label` em `ALLOWED_ATTR` pra esses atributos sobreviverem à sanitização.
+**Aceitação**:
 - Highlight de sintaxe visível em pelo menos 3 linguagens testadas. ✅ 2026-09-05.
-- Clique em `[[n]]` dentro de um `<Markdown>` abre o mesmo Popover que `<Citation>` usa isoladamente. Ainda aberto.
-**Arquivos**: `packages/ui/src/components/code-block.tsx`, `packages/ui/src/components/markdown.tsx`, `packages/ui/src/components/citation.tsx`.
+- Clique em `[[n]]` dentro de um `<Markdown>` abre o mesmo Popover que `<Citation>` usa isoladamente. ✅ 2026-09-05 (mouse e teclado).
+**Arquivos**: `packages/ui/src/components/code-block.tsx`, `packages/ui/src/components/markdown.tsx`, `packages/ui/src/components/citation.tsx`, `packages/ui/src/lib/sanitize.ts`.
 **Relacionado**: A2b-1 (`docs/superpowers/plans/2026-09-02-design-system-content-components.md`).
-**Gap adicional (achado na revisão final do A2b-1, 2026-09-02)**: hoje qualquer texto no formato `[[n]]` em conteúdo comum vira um marcador de citação (verificado: `marked` tokeniza `[[n]]` como inline, sem checar se existe uma fonte correspondente). Quando este item tornar os marcadores clicáveis, isso vira um vetor de *spoofing*: conteúdo de usuário/LLM contendo `[[1]]`-like text literal passaria a parecer uma citação clicável gerada pelo sistema, sem nenhuma fonte real por trás. Não é explorável hoje (marcadores são `<sup>` inertes), mas o design deste item deveria decidir: marcadores só deveriam renderizar como citação quando o índice tiver uma entrada correspondente numa lista de fontes passada para `Markdown` — não para qualquer texto no formato `[[n]]` incondicionalmente.
+**Achado de spoofing (revisão final do A2b-1, 2026-09-02) — resolvido**: o design final adotou exatamente a mitigação sugerida ali: marcador só renderiza como citação (estilizada ou clicável) quando o índice tem uma entrada correspondente em `sources`; sem isso, `[[n]]` é texto comum, indistinguível de antes desta feature existir. Coberto por teste (`markdown.test.tsx`: "renders a [[n]] marker as plain text when no `sources` prop backs it").
 
 ### DS11 — `Markdown` perde imagens e checkboxes de task-list GFM  ·  P2
 **Objetivo**: documentar perda silenciosa de conteúdo markdown sob o `ALLOWED_TAGS` atual de `sanitizeHtml`, verificada diretamente na revisão final do A2b-1.
@@ -184,3 +185,5 @@ nesses tempos — pode precisar reduzir escopo dos testes ou paralelizar menos.
 | 2026-09-02 | DS13 | Adicionado (revisão final do A2b-2): `MessageList` só cobre auto-follow via `MutationObserver`, reflow puro sem mutação de DOM escapa. |
 | 2026-09-02 | DS14 | Adicionado (revisão final do A2b-2): `StreamingText` sem prop `done` para sinalizar fim do stream sem remontar. |
 | 2026-09-02 | DS15 | Adicionado (revisão final do A2b-2): `MessageList`/`StreamingText` sem `aria-live`/`role="log"`, fora de escopo deliberado deste plano. |
+| 2026-09-05 | DS10 | Parte 1 concluída (shiki highlight em `CodeBlock`), PR #44. |
+| 2026-09-05 | DS10 | Parte 2 concluída (`Citation` interativa em `Markdown` com `sources`, resolvendo o achado de spoofing com checagem de fonte real). |
