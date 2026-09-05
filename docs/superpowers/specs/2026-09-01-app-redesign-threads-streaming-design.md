@@ -111,6 +111,33 @@ packages/daemon/src/server.ts   # webRoot -> packages/web/dist; roteamento de / 
 Sem biblioteca de router — o app é pequeno o bastante pra trocar de tela via
 um estado (`screen: "auth" | "souls" | "thread"`) em `App.tsx`.
 
+### 1.1. Notas de integração herdadas do A1 (DS2)
+
+A revisão final do A1 (fundação de `packages/ui`) fez três recomendações
+específicas para quem consumisse o pacote depois — não tinham sido conferidas
+linha a linha contra este spec antes do DS2 fazer essa varredura. Duas já
+saíram implementadas corretamente no scaffold real de `packages/web`
+(verificado 2026-09-05); a terceira só passa a valer quando D (branding por
+conta) ligar `brand` de verdade:
+
+- **`moduleResolution: "Bundler"`** é obrigatório no `tsconfig.json` de
+  `packages/web` — o `exports` de `@assistente-os/ui` aponta pra um `.ts` sem
+  campo `types` separado; sob `"node"`/`"node10"` o TypeScript não resolve os
+  tipos do pacote. ✅ já correto no `tsconfig.json` real.
+- **Glob de `content` do Tailwind** precisa incluir
+  `./node_modules/@assistente-os/ui/src/**/*.{ts,tsx}`, não só
+  `./src/**/*.{ts,tsx}` do próprio `packages/web` — sem isso, classes usadas
+  só dentro de componentes do `@assistente-os/ui` (que roda unbundled, direto
+  do `src/`) são podadas pelo Tailwind por nunca aparecerem escaneadas. ✅ já
+  correto no `tailwind.config.cjs` real.
+- **Memoizar a prop `brand` do `<ThemeProvider>`** quando ela deixar de ser a
+  constante `null` do v1 (ver "Tema" no §4 abaixo): um objeto literal inline
+  (`<ThemeProvider brand={{ ... }}>`) é uma identidade nova a cada render,
+  então `deriveTheme` re-executa e reescreve as 8 CSS vars sem necessidade a
+  cada render do componente pai — não é um bug hoje (v1 usa `brand={null}`,
+  uma constante), mas vira um a partir do momento em que D passar um objeto
+  de verdade. Quem implementar D deve envolver esse valor em `useMemo`.
+
 ### 2. Modelo de dados: `threads`
 
 **Migração `0020_threads`:**

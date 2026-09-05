@@ -1,3 +1,4 @@
+import { createRef } from "react";
 import { expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -5,6 +6,14 @@ import { Citation } from "./citation";
 import { expectNoA11yViolations } from "../test/axe";
 
 const source = { title: "Relatório de vendas Q3", url: "https://example.com/q3", snippet: "Crescimento de 12%." };
+
+test("DS7: forwards ref to the underlying button and passes through arbitrary DOM attributes", () => {
+  const ref = createRef<HTMLButtonElement>();
+  render(<Citation ref={ref} index={1} source={source} data-testid="citation-1" />);
+  const button = screen.getByRole("button", { name: /citação 1/i });
+  expect(ref.current).toBe(button);
+  expect(button).toHaveAttribute("data-testid", "citation-1");
+});
 
 test("renders the citation index as a chip", () => {
   render(<Citation index={1} source={source} />);

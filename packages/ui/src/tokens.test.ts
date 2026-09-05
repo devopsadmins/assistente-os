@@ -77,8 +77,34 @@ test("no raw color literal appears in the Tailwind preset", () => {
   expect(json).not.toMatch(/\bhsl\(/);
 });
 
-test("preset maps primary/background/foreground colors to oklch(var(--…))", () => {
+test("preset maps primary/background/foreground colors to oklch(var(--…, fallback))", () => {
   const colors = preset.theme.extend.colors;
-  expect(colors.primary.DEFAULT).toBe("oklch(var(--primary) / <alpha-value>)");
-  expect(colors.background).toBe("oklch(var(--background) / <alpha-value>)");
+  expect(colors.primary.DEFAULT).toBe(`oklch(var(--primary, ${vars["--primary"]}) / <alpha-value>)`);
+  expect(colors.background).toBe(`oklch(var(--background, ${vars["--background"]}) / <alpha-value>)`);
+});
+
+// DS6: without a fallback, a consumer who forgets to import tokens.css gets
+// `oklch( / 1)` for every color — invalid, silently dropped by the CSS
+// parser, no error anywhere. Every `oklch(var(--x, ...))` in the preset must
+// carry a fallback, and it must match tokens.css's own `:root` value for
+// that var — otherwise the two files silently drift apart over time.
+test("DS6: every color var in the preset has a fallback matching tokens.css :root", () => {
+  function extractColorVars(node: unknown, found: { name: string; fallback: string }[] = []) {
+    if (typeof node === "string") {
+      const m = /oklch\(var\(--([a-z0-9-]+),\s*([^)]+)\)\s*\/\s*<alpha-value>\)/.exec(node);
+      if (m) found.push({ name: m[1]!, fallback: m[2]!.trim() });
+      return found;
+    }
+    if (node && typeof node === "object") {
+      for (const v of Object.values(node)) extractColorVars(v, found);
+    }
+    return found;
+  }
+
+  const colorVars = extractColorVars(preset.theme.extend.colors);
+  expect(colorVars.length).toBeGreaterThan(20); // sanity: the walk actually found the real color list
+  for (const { name, fallback } of colorVars) {
+    expect(vars[`--${name}`], `--${name} has no :root declaration in tokens.css to compare against`).toBeDefined();
+    expect(fallback, `preset fallback for --${name} drifted from tokens.css :root`).toBe(vars[`--${name}`]);
+  }
 });

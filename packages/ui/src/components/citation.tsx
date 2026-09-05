@@ -8,10 +8,9 @@ export interface CitationSource {
   snippet?: string;
 }
 
-export interface CitationProps {
+export interface CitationProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   index: number;
   source: CitationSource;
-  className?: string;
 }
 
 // Extraído pra ser reusado por `Markdown` — clique em `[[n]]` interativo abre
@@ -38,11 +37,12 @@ export function CitationCardContent({ source }: { source: CitationSource }) {
   );
 }
 
-export function Citation({ index, source, className }: CitationProps) {
-  return (
+export const Citation = React.forwardRef<HTMLButtonElement, CitationProps>(
+  ({ index, source, className, ...props }, ref) => (
     <Popover>
       <PopoverTrigger asChild>
         <button
+          ref={ref}
           type="button"
           aria-label={`Citação ${index}`}
           className={cn(
@@ -51,6 +51,7 @@ export function Citation({ index, source, className }: CitationProps) {
             "hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             className,
           )}
+          {...props}
         >
           {index}
         </button>
@@ -59,5 +60,6 @@ export function Citation({ index, source, className }: CitationProps) {
         <CitationCardContent source={source} />
       </PopoverContent>
     </Popover>
-  );
-}
+  ),
+);
+Citation.displayName = "Citation";

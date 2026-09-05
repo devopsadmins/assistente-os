@@ -27,6 +27,19 @@ test("renders a toast pushed via useToast()", () => {
   expect(screen.getByText("tente de novo")).toBeInTheDocument();
 });
 
+test("swipeDirection prop reaches Radix instead of the hardcoded default (DS7)", () => {
+  const { container } = render(
+    <>
+      <Trigger />
+      <Toaster swipeDirection="up" />
+    </>,
+  );
+  act(() => {
+    screen.getByText("disparar").click();
+  });
+  expect(container.querySelector('[data-swipe-direction="up"]')).not.toBeNull();
+});
+
 test("has no a11y violations", async () => {
   const { container } = render(
     <>

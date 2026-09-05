@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
+import { expectNoA11yViolations } from "../test/axe";
 
 function Example() {
   return (
@@ -32,4 +33,9 @@ test("switches content on trigger click, and via ArrowLeft + Enter from the keyb
   screen.getByRole("tab", { name: "Criar conta" }).focus();
   await user.keyboard("{ArrowLeft}");
   expect(screen.getByRole("tab", { name: "Entrar" })).toHaveFocus();
+});
+
+test("has no a11y violations", async () => {
+  const { container } = render(<Example />);
+  await expectNoA11yViolations(container);
 });

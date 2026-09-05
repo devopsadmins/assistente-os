@@ -1,7 +1,17 @@
+import { createRef } from "react";
 import { expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMarkedInstance, Markdown } from "./markdown";
+
+test("DS7: forwards ref to the wrapper div and passes through arbitrary DOM attributes", () => {
+  const ref = createRef<HTMLDivElement>();
+  render(<Markdown ref={ref} source="oi" id="thread-42" data-testid="markdown-root" aria-label="Resposta" />);
+  expect(ref.current).not.toBeNull();
+  expect(ref.current).toHaveAttribute("id", "thread-42");
+  expect(ref.current).toHaveAttribute("data-testid", "markdown-root");
+  expect(ref.current).toHaveAttribute("aria-label", "Resposta");
+});
 
 test("renders headings, bold, and links", () => {
   render(<Markdown source={"# Title\n\nSome **bold** text with a [link](https://example.com)."} />);
