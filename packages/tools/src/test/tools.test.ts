@@ -510,6 +510,41 @@ test("mcp: soul_generate_aiia grava AIIA.md real da soul", async () => {
   }
 });
 
+test("mcp: soul_record_lesson grava incidente e soul_get_lessons lê de volta", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    // soul_record_lesson/soul_get_lessons não entram em DEFAULT_ALLOWED_TOOLS
+    // (menor privilégio por padrão) — a soul precisa declará-las explicitamente.
+    createSoul(home, "main", { name: "main", description: "soul principal", agent: { permissions: { tools: ["soul_record_lesson", "soul_get_lessons"] }, guardrails: {} } });
+    const record = await server.handleMessage({
+      jsonrpc: "2.0", id: 260, method: "tools/call",
+      params: {
+        name: "soul_record_lesson",
+        arguments: {
+          soul: "main", agentId: "agent-teste", topic: "teste-topico",
+          mistake: "fez algo errado", rootCause: "causa raiz",
+          correctiveRule: "regra corretiva",
+        },
+      },
+    });
+    const recordResult = record?.result as { content?: { text: string }[] };
+    const parsed = JSON.parse(recordResult?.content?.[0]?.text ?? "{}") as { ok: boolean };
+    assert.equal(parsed.ok, true);
+
+    const lessons = await server.handleMessage({
+      jsonrpc: "2.0", id: 261, method: "tools/call",
+      params: { name: "soul_get_lessons", arguments: { soul: "main" } },
+    });
+    const lessonsResult = lessons?.result as { content?: { text: string }[] };
+    const lessonsParsed = JSON.parse(lessonsResult?.content?.[0]?.text ?? "{}") as { ok: boolean; lessons: unknown[] };
+    assert.equal(lessonsParsed.ok, true);
+    assert.ok(Array.isArray(lessonsParsed.lessons));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("mcp: worktree_list está em tools/list e responde (E5)", async () => {
   const home = await tempHome();
   const server = new McpServer({ home });
