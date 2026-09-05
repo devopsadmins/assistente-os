@@ -47,7 +47,6 @@ Confirmado antes de mexer: o daemon já não caía com Postgres fora do ar (try/
 
 | ID | Item | Prioridade | Nota |
 |---|---|---|---|
-| **ADR-PRIV-002 + M4** | AI-4 famílias: exclusão não propaga pro backup, dado sensível (saúde de criança) em texto plano, `temp-vault` nunca faz `purge`. | **P0 condicional** | Bloqueador absoluto **se** esse domínio for exposto a clientes externos; fora desse cenário, P1 estratégico. Não lançar sem retenção/exclusão/backup/ADR fechados. |
 | **SPEC-HR5** | 🟡 **Gate de CI fechado 2026-09-05.** `deps-zones.mjs` (guard de allowlist de dependências por zona backend/frontend, existia desde o ADR-UI-001 em 2026-09-01 com testes unitários) nunca rodava de fato em CI — seu `main()`, que varre os `package.json` reais, não estava plugado em lugar nenhum; uma dependência nova fora da allowlist não era barrada por nada. Corrigido: novo step no job `compliance` do CI. `packages/web` (não existia quando o guard foi escrito) atribuído à zona frontend; allowlists atualizadas pro estado real. **Gap maior segue aberto**: ADR formal com veredito keep/replace por dependência (~15 na zona backend) vs. a allowlist original de 5 itens do `system_prompt` — não feito nesta rodada. | P2 (gate fechado); ADR keep/replace ainda P2 |
 
 ## 4. Dívida estrutural — incremental, não atrasa hotfix de segurança
@@ -100,6 +99,7 @@ Trabalho existente (Fases 0–4 + upload de conhecimento) segue funcional, sem m
 |---|---|
 | **OPS-01** — limpar threads de teste (#1–#4) na soul `main` | Tentativa de execução direta **bloqueada pelo classificador de permissão** (ação de DELETE). Precisa rodar manualmente ou com aprovação explícita — não é item de planejamento, é ação operacional pendente. |
 | **B-FUTURE** — streaming token-a-token pro tier LangGraph | Explicitamente adiado como follow-up na spec original; não é bloqueador de nada hoje. |
+| **ADR-PRIV-002 + M4** — LGPD famílias (AI-4) | **Excluído do backlog deste projeto em 2026-09-05** (decisão do usuário): o domínio famílias foi um teste que vai virar produto próprio, separado do assistente-os. Não tratar retenção/exclusão/backup/ADR-PRIV-002 aqui. `docs/adr/ADR-PRIV-001.md` (aceito) e `docs/AI-INVENTORY.md` #6 ainda registram o resíduo formalmente — não foram alterados nesta rodada; se o produto famílias for mesmo desmembrado, esses dois arquivos (mais `docs/ROADMAP.md`) precisam de uma limpeza dedicada. |
 
 ---
 
