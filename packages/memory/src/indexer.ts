@@ -1,4 +1,4 @@
-import type { Pool } from "@assistente-os/core";
+import { isDbHealthy, type Pool } from "@assistente-os/core";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
@@ -242,6 +242,15 @@ export async function indexFile(
   file: string,
   embedder: Embedder,
 ): Promise<IndexFileResult> {
+  // SPEC-HR1 (fatia 3, 2026-09-05): diferente de agenda/chat, não existe
+  // fallback conceitual pro ingest RAG (o propósito É popular o vetorial) —
+  // aqui o objetivo é só falhar rápido com mensagem clara em vez de vazar a
+  // exceção crua do driver `pg`. `indexDirectory` chama esta função por
+  // arquivo, então checar aqui cobre os dois pontos de entrada com uma sonda
+  // só (barata quando saudável: um `SELECT 1`).
+  if (!(await isDbHealthy(pool))) {
+    throw new Error("Postgres indisponível no momento — a indexação RAG depende do banco vetorial; tente novamente em instantes");
+  }
   const rel = relative(root, file).replaceAll("\\", "/");
   const text = readFileSync(file, "utf8");
   const chunks = chunkText(text);

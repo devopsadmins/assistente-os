@@ -8,6 +8,7 @@ import {
   claimDueAgenda,
   reapStaleAgenda,
   finishAgendaItem,
+  isDbHealthy,
   openSession,
   bumpSessionPrompt,
   recordExecution,
@@ -34,6 +35,14 @@ export async function processDueAgenda(options: AgendaConsumerOptions): Promise<
   const run = options.run ?? runOpenCode;
   const config = loadConfig({ home });
   const pool = getPool(config.databaseUrl);
+  // SPEC-HR1 (fatia 3, 2026-09-05): sem a sonda, cada tick do timer (30s) com
+  // Postgres fora do ar esperaria o connectionTimeoutMillis cheio do pool (5s)
+  // em duas queries (reap + claim) antes de cair no onJobError — pula rápido
+  // em vez disso, já logado como aviso (não é uma falha nova, é o BD fora).
+  if (!(await isDbHealthy(pool))) {
+    logger.warn({ job: "agenda" }, "Postgres indisponível — pulando este ciclo da agenda");
+    return 0;
+  }
   const reaped = await reapStaleAgenda(pool, {
     staleMinutes: Number(process.env.AOS_AGENDA_STALE_MINUTES) || 15,
     maxAttempts: Number(process.env.AOS_AGENDA_MAX_ATTEMPTS) || 3,
