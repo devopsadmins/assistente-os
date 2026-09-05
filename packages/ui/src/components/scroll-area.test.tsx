@@ -34,3 +34,24 @@ test("the viewport is keyboard-focusable (WCAG 2.1.1/2.1.3 — scrollable-region
   );
   expect(viewportRef.current).toHaveAttribute("tabindex", "0");
 });
+
+test("without viewportLabel, the focusable viewport has no region role/name (DS12 baseline)", () => {
+  const viewportRef = createRef<HTMLDivElement>();
+  render(
+    <ScrollArea className="h-20" viewportRef={viewportRef}>
+      <p>conteúdo rolável</p>
+    </ScrollArea>,
+  );
+  expect(viewportRef.current).not.toHaveAttribute("role");
+  expect(viewportRef.current).not.toHaveAttribute("aria-label");
+});
+
+test("viewportLabel gives the focusable viewport an accessible name (DS12)", () => {
+  const viewportRef = createRef<HTMLDivElement>();
+  render(
+    <ScrollArea className="h-20" viewportRef={viewportRef} viewportLabel="Histórico da conversa">
+      <p>conteúdo rolável</p>
+    </ScrollArea>,
+  );
+  expect(screen.getByRole("region", { name: "Histórico da conversa" })).toBe(viewportRef.current);
+});

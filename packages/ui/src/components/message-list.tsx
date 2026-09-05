@@ -55,16 +55,26 @@ export const MessageList = React.forwardRef<HTMLDivElement, MessageListProps>(
     React.useEffect(() => {
       const content = contentRef.current;
       if (!content) return;
-      // ResizeObserver is stubbed as a no-op in this repo's jsdom test setup
-      // (vitest.setup.ts), so MutationObserver drives auto-follow instead —
-      // it also directly covers the real target case (StreamingText
-      // appending text as chunks arrive), and unlike ResizeObserver, is
-      // exercisable in tests.
+      // MutationObserver covers the main target case (StreamingText
+      // appending text as chunks arrive) and is exercisable in tests.
+      // DS13: it doesn't catch pure reflow with no DOM mutation — a late-
+      // loading avatar image or a web-font swap settling in — so a
+      // ResizeObserver on the same content node is added belt-and-braces.
+      // It's stubbed as a no-op in this repo's jsdom test setup
+      // (vitest.setup.ts), so that half stays untested here (documented as
+      // a test-environment gap, not a production one).
       const observer = new MutationObserver(() => {
         if (atBottomRef.current) scrollToBottom();
       });
       observer.observe(content, { childList: true, subtree: true, characterData: true });
-      return () => observer.disconnect();
+      const resizeObserver = new ResizeObserver(() => {
+        if (atBottomRef.current) scrollToBottom();
+      });
+      resizeObserver.observe(content);
+      return () => {
+        observer.disconnect();
+        resizeObserver.disconnect();
+      };
     }, [scrollToBottom]);
 
     return (

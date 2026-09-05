@@ -38,8 +38,8 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS9 | Reformular a Global Constraint de `forwardRef` no spec do A1 | A1 (doc) | P3 | S | TODO | — |
 | DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | ✅ 2026-09-05 | A2b-1 |
 | DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | ✅ 2026-09-05 | A2b-1 |
-| DS12 | `ScrollArea`'s `tabIndex={0}` sem `role`/`aria-label` — região focável sem nome acessível | A2b-2 | P3 | S | TODO | A2b-2 |
-| DS13 | `MessageList` só usa `MutationObserver`; reflow puro sem mutação de DOM não dispara auto-follow | A2b-2 | P3 | M | TODO | A2b-2 |
+| DS12 | `ScrollArea`'s `tabIndex={0}` sem `role`/`aria-label` — região focável sem nome acessível | A2b-2 | P3 | S | ✅ 2026-09-05 | A2b-2 |
+| DS13 | `MessageList` só usa `MutationObserver`; reflow puro sem mutação de DOM não dispara auto-follow | A2b-2 | P3 | M | ✅ 2026-09-05 | A2b-2 |
 | DS14 | `StreamingText` não tem como sinalizar "stream terminou" — cursor pisca pra sempre | A2b-2 | P2 | S | TODO | A2b-2 |
 | DS15 | `MessageList`/`StreamingText` sem `aria-live`/`role="log"` — leitor de tela não é avisado de conteúdo novo | A2b-2 | P2 | M | TODO | A2b-2 |
 
@@ -138,15 +138,15 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 
 ### DS12 — `ScrollArea`'s `tabIndex={0}` sem nome acessível  ·  P3
 **Objetivo**: o fix de `tabIndex={0}` (nesta branch) torna toda região rolável um tab stop de teclado, mas uma região já focável sem nome acessível é pior experiência de leitor de tela que uma região não-focável — não tem `role="region"`/`aria-label`, e `ScrollArea` não deixa quem consome optar por sair disso nem fornecer um rótulo (não espalha props extras no Viewport).
-**Estado atual (verificado pela revisão final do A2b-2)**: `ScrollAreaPrimitive.Viewport` em `scroll-area.tsx` recebe `tabIndex={0}` fixo, sem `role`/`aria-label` condicionais.
-**Aceitação**: prop opcional `viewportLabel?: string` em `ScrollArea` que emite `role="region" aria-label={viewportLabel}` no Viewport junto com o `tabIndex` já existente.
-**Arquivos**: `packages/ui/src/components/scroll-area.tsx`.
+**Estado (✅ 2026-09-05)**: prop opcional `viewportLabel?: string` em `ScrollArea`, que emite `role="region"` + `aria-label={viewportLabel}` no Viewport junto com o `tabIndex` já existente. Sem a prop, comportamento idêntico ao anterior (nenhum `role`/`aria-label` no Viewport).
+**Aceitação**: ✅ prop opcional `viewportLabel?: string` em `ScrollArea` que emite `role="region" aria-label={viewportLabel}` no Viewport junto com o `tabIndex` já existente.
+**Arquivos**: `packages/ui/src/components/scroll-area.tsx` (+ `scroll-area.test.tsx`).
 
 ### DS13 — `MessageList` não cobre reflow puro sem mutação de DOM  ·  P3
 **Objetivo**: o auto-follow de `MessageList` depende de `MutationObserver` (escolhido em vez de `ResizeObserver` especificamente porque o `jsdom` deste repo stuba o segundo como no-op no setup de teste — ver Tarefa 2). Isso deixa passar crescimento de conteúdo por reflow puro sem mutação de DOM (um avatar carregando tarde, troca de web-font se acomodando).
-**Estado atual (verificado pela revisão final do A2b-2)**: exposição real baixa hoje, já que o sanitizer do `Markdown` remove `<img>` inteiramente (DS11), mas vale rastrear.
-**Aceitação**: adicionar um `ResizeObserver` junto do `MutationObserver` já existente em `MessageList`, cobertura belt-and-braces, aceitando que a metade do `ResizeObserver` fica sem teste no `jsdom` (documentado como lacuna de ambiente de teste, não de produção).
-**Arquivos**: `packages/ui/src/components/message-list.tsx`.
+**Estado (✅ 2026-09-05)**: `ResizeObserver` adicionado junto do `MutationObserver` já existente, observando o mesmo nó de conteúdo — cobertura belt-and-braces. Teste novo só prova a fiação (`ResizeObserver.prototype.observe` chamado com o nó certo), já que o stub no-op do `jsdom` (`vitest.setup.ts`) impede exercitar o disparo real do callback — documentado como lacuna de ambiente de teste, não de produção.
+**Aceitação**: ✅ `ResizeObserver` adicionado junto do `MutationObserver` já existente em `MessageList`.
+**Arquivos**: `packages/ui/src/components/message-list.tsx` (+ `message-list.test.tsx`).
 
 ### DS14 — `StreamingText` sem sinal de "stream terminou"  ·  P2
 **Objetivo**: `StreamingText` não tem como sinalizar "o stream terminou" — seu cursor pisca pra sempre enquanto o componente estiver montado. Um consumidor `ThreadScreen` (spec B) vai ter que trocar `<StreamingText>` por `<Markdown>` na conclusão, o que remonta a subárvore e causa flicker visível.
@@ -187,3 +187,5 @@ nesses tempos — pode precisar reduzir escopo dos testes ou paralelizar menos.
 | 2026-09-02 | DS15 | Adicionado (revisão final do A2b-2): `MessageList`/`StreamingText` sem `aria-live`/`role="log"`, fora de escopo deliberado deste plano. |
 | 2026-09-05 | DS10 | Parte 1 concluída (shiki highlight em `CodeBlock`), PR #44. |
 | 2026-09-05 | DS10 | Parte 2 concluída (`Citation` interativa em `Markdown` com `sources`, resolvendo o achado de spoofing com checagem de fonte real). |
+| 2026-09-05 | DS12 | Concluído — prop `viewportLabel` em `ScrollArea` para `role="region"`/`aria-label` opcional no Viewport. |
+| 2026-09-05 | DS13 | Concluído — `ResizeObserver` adicionado junto do `MutationObserver` em `MessageList`. |
