@@ -15,6 +15,7 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
+    "dod": "node scripts/dod.mjs",
     "os": "node packages/cli/dist/index.js",
     "graphify:serve": "npx http-server graphify-out -p 8080 -c-1",
     "graphify:open": "npx http-server graphify-out -p 8080 -c-1 -o"

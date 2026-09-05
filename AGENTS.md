@@ -10,6 +10,16 @@ npm test                       # node --test on dist/ (requires PostgreSQL)
 
 **Order matters:** `build` before `typecheck` or `test` — tests run from `dist/`, not `src/`.
 
+Antes de encerrar um turno de trabalho, rode a suíte completa de verificação
+de uma vez (SPEC-EP3):
+```bash
+npm run dod   # build → typecheck → lint → test → manifest → discriminator + resumo
+```
+Não para na primeira falha — roda tudo e imprime um resumo no fim, pra ver o
+quadro completo antes de descobrir o resto no CI. `manifest`/`discriminator`
+exigem `npm run build` prévio (usam `packages/cli/dist/index.js`) e Postgres
+alcançável; sem isso, aparecem como "pulado", não como falha.
+
 To run a single package's tests:
 ```bash
 npm run test --workspace=@assistente-os/core
