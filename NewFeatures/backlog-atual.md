@@ -49,8 +49,8 @@ Itens com risco de vazamento de dado, retenção indevida de segredo, ou indispo
 
 | ID | Item | Prioridade |
 |---|---|---|
-| **Onda 3d** | Centralizar config — ~58 `process.env` soltos → `loadConfig`+schema; matar pares de alias | P2, por fatias, começando pelos controles de segurança/limites |
-| **Onda 3e** | Quebrar god-objects — `handleChat` (640 l.) e `tools/src/index.ts` (1859 l.) | P3 — **depende de SPEC-GR4 (gate de CI) estar fechado antes** |
+| **Onda 3d** | Centralizar config — Fase 1 ✅ concluída 2026-09-04 (5 fixes). ~58 `process.env` soltos restantes → `loadConfig`+schema; matar pares de alias. | P2, Fase 2 por fatias |
+| **Onda 3e** | Quebrar god-objects — ✅ **concluída 2026-09-04** (Fase 1+2). `chat.ts` 1177→22 l. (4 módulos); `tools/index.ts` 2075→338 l. (13 famílias, 59 tools). Ver [ROADMAP.md](../docs/ROADMAP.md). Trabalho futuro opcional (não perdido): decompor as 17 variáveis de `handlePostChat`. | Concluído |
 | **SPEC-EP2** | Proibir `any` (lint error) + auditoria de cobertura Zod | P1, dividir em duas frentes (política + validação de fronteira) |
 | **SPEC-EP3** | Script único de DoD (`npm run dod`) | P2, depende de SPEC-GR4 |
 | **SPEC-GR3** | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel — catálogo de tools já existe (ver auditoria seção 0), falta é harness/política de ordem obrigatória | P2 |
