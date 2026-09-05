@@ -43,7 +43,9 @@ workspace tem dep fora da allowlist da sua zona. `node --test` cobre o script.
   junto do SEO da landing — sub-projeto E).
 - Supply-chain cresce: versões **pinadas** (sem `^`) nos `package.json` da zona;
   `npm audit --workspace` na zona de frontend entra no CI num follow-up.
-- **Pendente (follow-up, fora deste ADR):** atualizar o item SPEC-HR5 em
-  `docs/BACKLOG-SPEC-COMPLIANCE.md` para registrar que o modelo de duas zonas
-  fecha parte do seu escopo (a allowlist real de frontend agora está codificada
-  e guardada no CI).
+- ✅ **Feito 2026-09-05** (era pendente, follow-up fora deste ADR): SPEC-HR5 em
+  `docs/BACKLOG-SPEC-COMPLIANCE.md` atualizado registrando que o modelo de duas
+  zonas fecha a parte de frontend do seu escopo. No mesmo follow-up, o guard
+  `deps-zones.mjs` (que já existia desde este ADR, com testes unitários, mas
+  cujo `main()` nunca rodava de fato em CI) ganhou um step real no job
+  `compliance` — a allowlist agora é de fato guardada, não só codificada.

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const BACKEND_ZONE = ["core", "daemon", "tools", "memory", "cli", "voice"].map((p) => `packages/${p}`);
-const FRONTEND_ZONE = ["packages/ui"]; // + packages/web, landing later
+const FRONTEND_ZONE = ["packages/ui", "packages/web"];
 
 /** Each rule: (depName) => boolean */
 export const FRONTEND_ALLOW = [
@@ -15,6 +15,9 @@ export const FRONTEND_ALLOW = [
   (d) => d === "@ladle/react",
   (d) => d === "vitest" || d.startsWith("@vitest/") || d.startsWith("@testing-library/") || ["jsdom", "axe-core"].includes(d),
   (d) => d === "typescript",
+  (d) => d.startsWith("@assistente-os/"), // workspace-internal packages (packages/web depends on @assistente-os/ui)
+  // grandfathered 2026-09-05 (packages/web joined the frontend zone — Vite tooling it already used):
+  (d) => d === "vite" || d === "@vitejs/plugin-react" || d === "undici",
 ];
 
 /** Backend: the grandfathered snapshot (2026-09-01). SPEC-HR5 owns tightening this. */
@@ -33,6 +36,9 @@ export const BACKEND_ALLOW = [
       // grandfathered 2026-09-01 (root package.json, brought into the backend zone
       // by zone discovery below): graphviz/http-server power the graphify:* scripts.
       "graphviz", "http-server",
+      // grandfathered 2026-09-05 (SPEC-EP2 Frente 1 — lint tooling na raiz, mesma
+      // categoria de "typescript" acima, não é dependência de runtime):
+      "eslint", "typescript-eslint",
     ].includes(d),
 ];
 

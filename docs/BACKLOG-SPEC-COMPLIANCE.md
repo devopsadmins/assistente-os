@@ -92,14 +92,15 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 
 ### SPEC-HR5 — STDLIB_FIRST: reconciliar dependências
 **Objetivo**: deps restritas a `node:*`, `playwright-core`, `@langchain/*`, `pg`, `zod`.
-**Estado atual (verificado)**: `package.json` raiz também traz `@xenova/transformers`, `pino`, `pino-pretty`, `say`, `telegraf`.
-**Gap**: divergência spec × realidade. Decidir por item: manter (e atualizar a allowlist da spec com justificativa) ou remover/substituir por stdlib.
+**Estado atual (verificado 2026-09-05)**: `package.json` raiz também traz `@xenova/transformers`, `pino`, `pino-pretty`, `say`, `telegraf` (e mais ~15 deps de backend, todas já "grandfathered" em `.github/scripts/deps-zones.mjs` desde o ADR-UI-001, 2026-09-01). A zona frontend (`packages/ui`) **já estava fechada pelo ADR-UI-001** — só não tinha sido riscada aqui (pendência que o próprio ADR já apontava). `zod` está na allowlist original mas nenhum pacote do monorepo o usa hoje.
+**Gap fechado 2026-09-05**: o 3º critério de aceitação ("Check de CI falha em dep nova fora da lista aprovada") **não estava cumprido de fato** — `deps-zones.mjs` tinha testes unitários cobrindo suas funções, mas o `main()` (que varre os `package.json` reais) nunca rodava em CI; uma dependência nova fora da allowlist não era barrada por nada. Corrigido: novo step "Dependency zones gate" no job `compliance` do CI, rodando `node .github/scripts/deps-zones.mjs` de verdade — mesmo padrão já usado para `compliance-gate.mjs` no mesmo job. No caminho, `packages/web` (que não existia quando o guard foi escrito, comentário dizia "landing later") foi atribuído à zona frontend, e `FRONTEND_ALLOW`/`BACKEND_ALLOW` ganharam as entradas que faltavam pra passar contra o estado real (`@assistente-os/*` em frontend, `vite`/`@vitejs/plugin-react`/`undici`, e `eslint`/`typescript-eslint` no backend — estes dois adicionados pelo próprio SPEC-EP2 Frente 1 na mesma sessão).
+**Gap ainda aberto** (maior, não fechado nesta rodada): divergência entre a allowlist "grandfathered" (ampla, bate com a realidade) e a allowlist original de 5 itens do `system_prompt` (`hard_rules`) — decidir por item: manter (e atualizar a allowlist da spec com justificativa) ou remover/substituir por stdlib. Isso exige um ADR formal com veredito por dependência (~15 na zona backend), fora do escopo desta fatia.
 **Aceitação**:
-- ADR curto listando cada dep fora da allowlist original + veredito (keep/replace) + razão.
-- `hard_rules` da spec atualizada para refletir a allowlist real.
-- Check de CI (`depcheck`/allowlist) falha em dep nova fora da lista aprovada.
-**Arquivos**: `package.json` (workspaces), `docs/adr/`, `system_prompt`.
-**Relacionado**: ROADMAP Onda 3d (centralizar config).
+- ADR curto listando cada dep fora da allowlist original + veredito (keep/replace) + razão. **Não feito.**
+- `hard_rules` da spec atualizada para refletir a allowlist real. **Não feito.**
+- Check de CI (`depcheck`/allowlist) falha em dep nova fora da lista aprovada. ✅ **Feito 2026-09-05.**
+**Arquivos**: `package.json` (workspaces), `docs/adr/`, `system_prompt`, `.github/scripts/deps-zones.mjs`, `.github/workflows/ci.yml`.
+**Relacionado**: ROADMAP Onda 3d (centralizar config); ADR-UI-001 (zona frontend, já fechada).
 
 ### SPEC-HR6 — Hub WS sem isolamento por conta  ·  P0
 **Nota de origem**: diferente dos demais itens deste backlog, não vem de uma regra nomeada do `system_prompt` — foi achado lendo o código durante o brainstorm do sub-projeto B (redesign do app). Mantido no mesmo ID scheme por ser da mesma natureza (violação de isolamento) e pra ficar rastreável junto dos outros.

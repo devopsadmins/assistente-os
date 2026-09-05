@@ -48,7 +48,7 @@ Confirmado antes de mexer: o daemon já não caía com Postgres fora do ar (try/
 | ID | Item | Prioridade | Nota |
 |---|---|---|---|
 | **ADR-PRIV-002 + M4** | AI-4 famílias: exclusão não propaga pro backup, dado sensível (saúde de criança) em texto plano, `temp-vault` nunca faz `purge`. | **P0 condicional** | Bloqueador absoluto **se** esse domínio for exposto a clientes externos; fora desse cenário, P1 estratégico. Não lançar sem retenção/exclusão/backup/ADR fechados. |
-| **SPEC-HR5** | Reconciliar dependências com allowlist STDLIB_FIRST | P2 | — |
+| **SPEC-HR5** | 🟡 **Gate de CI fechado 2026-09-05.** `deps-zones.mjs` (guard de allowlist de dependências por zona backend/frontend, existia desde o ADR-UI-001 em 2026-09-01 com testes unitários) nunca rodava de fato em CI — seu `main()`, que varre os `package.json` reais, não estava plugado em lugar nenhum; uma dependência nova fora da allowlist não era barrada por nada. Corrigido: novo step no job `compliance` do CI. `packages/web` (não existia quando o guard foi escrito) atribuído à zona frontend; allowlists atualizadas pro estado real. **Gap maior segue aberto**: ADR formal com veredito keep/replace por dependência (~15 na zona backend) vs. a allowlist original de 5 itens do `system_prompt` — não feito nesta rodada. | P2 (gate fechado); ADR keep/replace ainda P2 |
 
 ## 4. Dívida estrutural — incremental, não atrasa hotfix de segurança
 

@@ -34,6 +34,14 @@ jobs:
       - name: Compliance gate
         run: node .github/scripts/compliance-gate.mjs
 
+      # SPEC-HR5: o guard existia desde o ADR-UI-001 (2026-09-01) com testes
+      # unitários cobrindo checkPackage/findUnassignedPackages, mas o main()
+      # — que varre os package.json reais do monorepo — nunca tinha rodado em
+      # CI (achado 2026-09-05). Sem isto, uma dependência nova fora da
+      # allowlist não era barrada por nada no pipeline.
+      - name: Dependency zones gate
+        run: node .github/scripts/deps-zones.mjs
+
   build-and-test:
     runs-on: ubuntu-latest
 
