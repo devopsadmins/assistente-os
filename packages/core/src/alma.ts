@@ -70,6 +70,48 @@ export function anotar(soulDir: string, texto: string, dateISO?: string): string
   return file;
 }
 
+export interface UsageMetadata {
+  sessionId: string | number;
+  promptTokens: number;
+  completionTokens: number;
+  latencyMs: number;
+  modelUsed: string;
+  executionMode: string;
+}
+
+/**
+ * SPEC-GR2: anexa um rodapé estruturado (bloco ```yaml usage_metadata```) na
+ * sessão do dia — telemetria auditável por arquivo, complementar aos
+ * registros em Postgres (que rotacionam/expiram). Idempotente por
+ * `sessionId`: se o dia já tem um bloco pra essa sessão (ex.: reenvio do
+ * mesmo evento, ou o daemon reprocessando por retry), não duplica.
+ */
+export function appendUsageMetadata(soulDir: string, usage: UsageMetadata, dateISO?: string): string {
+  const file = sessionFile(soulDir, dateISO);
+  if (!existsSync(file)) {
+    writeFileSync(file, `# Sessão ${dateISO ?? todayISODate()} — ${basename(soulDir)}\n\n`, "utf8");
+  }
+  const sessionIdStr = String(usage.sessionId);
+  const marker = `session_id: "${sessionIdStr}"`;
+  if (existsSync(file) && readFileSync(file, "utf8").includes(marker)) {
+    return file;
+  }
+  const block = [
+    "```yaml usage_metadata",
+    marker,
+    `prompt_tokens: ${usage.promptTokens}`,
+    `completion_tokens: ${usage.completionTokens}`,
+    `latency_ms: ${usage.latencyMs}`,
+    `model_used: "${usage.modelUsed}"`,
+    `execution_mode: "${usage.executionMode}"`,
+    `timestamp: "${nowISO()}"`,
+    "```",
+    "",
+  ].join("\n");
+  appendFileSync(file, block, "utf8");
+  return file;
+}
+
 /** Registra uma lição em `licoes.md` (equivalente a `acervo.registrar_licao`). */
 export function registrarLicao(soulDir: string, texto: string): string {
   const file = join(soulDir, "licoes.md");
