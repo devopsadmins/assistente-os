@@ -31,7 +31,7 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 | SPEC-HR6 | Hub WS: broadcast sem isolamento por conta vaza `chat.step`/`graph.step` entre clientes | (achado fora do system_prompt — ver nota) | P0 | M | ✅ 2026-09-04 | — |
 | SPEC-GR1 | 4º loop: 3 reincidências → Regra de Ouro → aprovação 6 dígitos → `SOUL.md` + `.opencode/rules/golden-rules.md` | GR1 AUTOAPRENDIZADO | P1 | M | ✅ (verificado já implementado, 2026-09-04) — resta só confirmar a escrita coordenada final via aprovação Guardian ao vivo | — |
 | SPEC-GR2 | Rodapé `usage_metadata` em toda `sessoes/YYYY-MM-DD.md` | GR2 TELEMETRIA | P1 | M | TODO | E1 (done) |
-| SPEC-GR3 | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel | GR3 BROWSER SEMÂNTICO | P2 | S | TODO | — |
+| SPEC-GR3 | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel | GR3 BROWSER SEMÂNTICO | P2 | S | ✅ 2026-09-05 | — |
 | SPEC-GR4 | Gate de merge: `build` + `test` + supervisor ≥ 95 no CI | GR4 DISCRIMINATOR | P1 | M | 🟡 mecanismo corrigido 2026-09-05 (não crasha mais em CI); falta cadastrar `ZEN_API_KEY` pra julgar de verdade | — |
 | SPEC-EP1 | Planejamento prévio em `<thinking>` no template de PR/contribuição | EP1 PLANEJAMENTO | P2 | S | ✅ 2026-09-05 | — |
 | SPEC-EP2 | Proibir `any` (lint `error`) + auditoria de cobertura Zod nos limites | EP2 TIPAGEM ESTRITA | P1 | M | ✅ Frente 1 + Frente 2 (Fatias 1-3), 2026-09-05 | — |
@@ -136,12 +136,11 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 
 ### SPEC-GR3 — Browser harness semântico
 **Objetivo**: automação web prioriza `getAccessibilityTree` + CDP com sandbox para injeções dinâmicas; pixel/coordenada é último recurso.
-**Estado atual (verificado)**: tools `browser_get_accessibility_tree`, `browser_navigate`, `browser_execute_fix`, `browser_audited_screenshot` existem.
-**Gap**: garantir a **ordem de preferência** no código (a11y tree → seletor → screenshot) e que `browser_execute_fix` roda em sandbox CDP.
+**Estado (✅ 2026-09-05)**: `browserClick` já resolvia por seletor CSS, nunca por coordenada — não existe (e nunca existiu) `page.mouse.click(x,y)` em `browser.ts`; a ordem "a11y tree → seletor → screenshot" já valia na prática (screenshot só é usado pra observação/auditoria, nunca pra ação). O gap real era só `browser_execute_fix`: achado ao investigar — `getCDPSession()` já existia desde a árvore de acessibilidade, mas **nunca tinha sido chamado**; o "sandbox" do docblock era só uma lista de substrings bloqueadas (`code.includes("fetch(")`), trivialmente contornável, e o script rodava via `page.evaluate` no mesmo realm JS da página (sem isolamento real). Corrigido: `evaluateInIsolatedWorld()` usa `Page.createIsolatedWorld` (CDP) — DOM compartilhado (a tool continua conseguindo remover overlay/popup), mas realm de JS separado (script não enxerga globals/funções que o site definiu, nem prototypes que o site tenha adulterado). Bloqueio por substring mantido como defesa em profundidade (isolamento de realm não bloqueia Web APIs por si só). Teste novo com Chrome headless real (não mock): prova que `window.__pageSecret` da página fica invisível no isolated world E que a manipulação de DOM continua funcionando.
 **Aceitação**:
-- `packages/daemon/src/tools/browser.ts` resolve alvo pela árvore de acessibilidade antes de qualquer clique por coordenada; doc registra a hierarquia.
-- Injeção de fix roda isolada (sem acesso ao contexto principal) e é auditada.
-**Arquivos**: `packages/daemon/src/tools/browser.ts`.
+- `packages/daemon/src/tools/browser.ts` resolve alvo pela árvore de acessibilidade antes de qualquer clique por coordenada; doc registra a hierarquia. ✅ (já era o caso — nunca existiu clique por coordenada no código)
+- Injeção de fix roda isolada (sem acesso ao contexto principal) e é auditada. ✅ `evaluateInIsolatedWorld` + registro em `tools_cache/browser_helpers.json` e `licoes.md` (já existia, mantido).
+**Arquivos**: `packages/daemon/src/tools/browser.ts`, `packages/daemon/src/test/spec-gr3-browser-sandbox.test.ts`.
 
 ### SPEC-GR4 — Gate Discriminator no CI  ·  bloqueia merge
 **Objetivo**: entrega só fecha com `npm run build` limpo, `npm test` 100% e nota do supervisor ≥ 95/100.

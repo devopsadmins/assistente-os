@@ -18,6 +18,26 @@ test("renders GFM tables and strikethrough", () => {
   expect(screen.getByText("1")).toBeInTheDocument();
 });
 
+// DS11: antes, imagem e checkbox de task list sumiam inteiras (o node,
+// não só o estilo) porque `img`/`input` não estavam em ALLOWED_TAGS.
+test("renders a GFM image with src/alt", () => {
+  const { container } = render(<Markdown source={"![um gato](https://example.com/gato.png)"} />);
+  const img = container.querySelector("img");
+  expect(img).not.toBeNull();
+  expect(img).toHaveAttribute("src", "https://example.com/gato.png");
+  expect(img).toHaveAttribute("alt", "um gato");
+});
+
+test("renders GFM task-list checkboxes as disabled (read-only, not a form)", () => {
+  const { container } = render(<Markdown source={"- [ ] pendente\n- [x] feito"} />);
+  const boxes = container.querySelectorAll('input[type="checkbox"]');
+  expect(boxes).toHaveLength(2);
+  expect(boxes[0]).toBeDisabled();
+  expect(boxes[0]).not.toBeChecked();
+  expect(boxes[1]).toBeDisabled();
+  expect(boxes[1]).toBeChecked();
+});
+
 test("renders a fenced code block as a real CodeBlock element with a working copy button", () => {
   render(<Markdown source={"```ts\nconst x = 1;\n```"} />);
   expect(screen.getByText("const x = 1;")).toBeInTheDocument();

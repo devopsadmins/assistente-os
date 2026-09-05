@@ -36,8 +36,8 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS7 | Limpeza cosmética em lote (ver item) | A2a | P3 | S | TODO | — |
 | DS8 | Token `--overlay` pro scrim do Dialog (hoje usa `--foreground`, quebra no dark mode) | A1 → futuro dark mode | P3 | S | BLOCKED | dark mode nem existe ainda |
 | DS9 | Reformular a Global Constraint de `forwardRef` no spec do A1 | A1 (doc) | P3 | S | TODO | — |
-| DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | 🟡 metade concluída (highlight) 2026-09-05 | A2b-1 |
-| DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | TODO | A2b-1 |
+| DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | TODO | A2b-1 |
+| DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | ✅ 2026-09-05 | A2b-1 |
 | DS12 | `ScrollArea`'s `tabIndex={0}` sem `role`/`aria-label` — região focável sem nome acessível | A2b-2 | P3 | S | TODO | A2b-2 |
 | DS13 | `MessageList` só usa `MutationObserver`; reflow puro sem mutação de DOM não dispara auto-follow | A2b-2 | P3 | M | TODO | A2b-2 |
 | DS14 | `StreamingText` não tem como sinalizar "stream terminou" — cursor pisca pra sempre | A2b-2 | P2 | S | TODO | A2b-2 |
@@ -130,10 +130,9 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa):
 
 ### DS11 — `Markdown` perde imagens e checkboxes de task-list GFM  ·  P2
 **Objetivo**: documentar perda silenciosa de conteúdo markdown sob o `ALLOWED_TAGS` atual de `sanitizeHtml`, verificada diretamente na revisão final do A2b-1.
-**Estado atual (verificado)**: `img` não está em `ALLOWED_TAGS`, então `![alt](url)` markdown vira nada — nem o texto alternativo sobrevive, o nó inteiro desaparece. Checkboxes de task-list GFM (`- [ ] todo` / `- [x] done`) renderizam como `<li>` plano, sem nenhuma distinção visual entre marcado e desmarcado, porque o `input[type=checkbox]` que o GFM normalmente emite não está em `ALLOWED_TAGS`/`ALLOWED_ATTR`.
-**Gap**: não é um defeito do texto deste plano — segue diretamente do allowlist de tags especificado nele — mas ninguém tinha registrado isso em lugar nenhum até esta revisão, e respostas geradas por LLM rotineiramente contêm tanto imagens quanto task lists.
-**Aceitação**: decidir por tag se vale suportar cada uma (ex.: permitir `img` só com `src`/`alt`, sem `srcset`/`onerror` obviamente; adicionar uma permissão de `input[type=checkbox][disabled]` pra task lists GFM) ou documentar a perda explicitamente como escopo permanente do produto.
-**Arquivos**: `packages/ui/src/lib/sanitize.ts`, `packages/ui/src/components/markdown.tsx`.
+**Estado (✅ 2026-09-05)**: `img` e `input` entraram em `ALLOWED_TAGS`, com `src`/`alt` e `type`/`checked`/`disabled` respectivamente em `ALLOWED_ATTR` — decisão tomada: suportar as duas tags (não documentar como perda permanente), já que respostas de LLM rotineiramente contêm imagens e task lists. `srcset`/`onerror`/quaisquer outros atributos seguem fora de `ALLOWED_ATTR` e são descartados pelo DOMPurify como qualquer atributo não listado — não precisou de allowlist por tag. Verificado antes de mexer: `marked` já emite `disabled=""` (e `checked=""` quando aplicável) por padrão nos checkboxes de task-list GFM, então eles chegam somente-leitura, nunca um formulário interativo.
+**Aceitação**: ✅ `img` suportado (`src`/`alt` apenas); `input[type=checkbox][disabled]` suportado pra task lists GFM.
+**Arquivos**: `packages/ui/src/lib/sanitize.ts` (+ `sanitize.test.ts`, `markdown.test.tsx`).
 **Relacionado**: A2b-1 (`docs/superpowers/plans/2026-09-02-design-system-content-components.md`).
 
 ### DS12 — `ScrollArea`'s `tabIndex={0}` sem nome acessível  ·  P3
