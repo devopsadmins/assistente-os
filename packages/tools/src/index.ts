@@ -15,6 +15,7 @@ import { MEMORY_TOOLS, MEMORY_HANDLERS } from "./memory/index.js";
 import { SPEC_GRILL_TOOLS, SPEC_GRILL_HANDLERS } from "./specGrill/index.js";
 import { MISC_TOOLS, MISC_HANDLERS } from "./misc/index.js";
 import { EDITORIAL_TOOLS, EDITORIAL_HANDLERS } from "./editorial/index.js";
+import { validateToolArgs } from "./argSchema.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
@@ -214,8 +215,16 @@ export class McpServer {
     // allowlist + nível de risco × autonomy (este só quando MCP_ZERO_TRUST=on) +
     // fail-closed para capability fora do catálogo. Os checks por-caso
     // (`authorizeTool`/`requireSoul`) continuam como defesa em profundidade.
+    // Roda ANTES da validação de forma dos args (abaixo) de propósito: uma
+    // chamada não autorizada deve ser rejeitada por autorização, não por
+    // "seus args estão malformados" — mesma ordem de antes do SPEC-EP2.
     const gate = this.zeroTrustGate(name, args);
     if (!gate.ok) return respond(null, { code: -32000, message: gate.message });
+
+    // SPEC-EP2 Frente 2 (Fatia 2): valida args contra o inputSchema já
+    // declarado da tool (fonte única — sem schema Zod duplicado por tool).
+    const argsCheck = validateToolArgs(tool, args);
+    if (!argsCheck.ok) return respond(null, { code: -32602, message: argsCheck.message });
 
     // Rastreabilidade ISO/IEC 42001 (SPEC-HR3): registra a intenção de TODA
     // chamada de tool no cabeçalho da sessão Markdown da soul — roda no
