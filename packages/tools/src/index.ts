@@ -16,6 +16,7 @@ import { SALES_TOOLS, SALES_HANDLERS } from "./sales/index.js";
 import { SOULS_TOOLS, SOULS_HANDLERS } from "./souls/index.js";
 import { JOURNAL_TOOLS, JOURNAL_HANDLERS } from "./journal/index.js";
 import { MEMORY_TOOLS, MEMORY_HANDLERS } from "./memory/index.js";
+import { SPEC_GRILL_TOOLS, SPEC_GRILL_HANDLERS } from "./specGrill/index.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
@@ -95,19 +96,7 @@ const TOOLS: Tool[] = [
   ...JOURNAL_TOOLS,
   ...GUARDIAN_TOOLS,
   ...SALES_TOOLS,
-  {
-    name: "spec_grill_plan",
-    description: "Refina requisitos de uma feature em duas fases antes de autorizar o modo build. Sem 'answers': gera 3-5 perguntas de esclarecimento e persiste em contexto.md como pendente. Com 'answers' (mínimo 3): valida e autoriza o plano, retornando buildModeAuthorized=true.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul dona da feature" },
-        featureDraft: { type: "string", description: "descrição da feature a especificar (mesmo texto nas duas fases)" },
-        answers: { type: "array", items: { type: "string" }, description: "respostas às perguntas geradas na Fase 1 (mínimo 3) — presença dispara a Fase 2" },
-      },
-      required: ["soul", "featureDraft"],
-    },
-  },
+  ...SPEC_GRILL_TOOLS,
   {
     name: "agenda_add",
     description: "Agenda uma tarefa para o daemon despachar (imediatamente se due_at ausente, ou quando devida).",
@@ -221,6 +210,7 @@ Object.assign(FAMILY_HANDLERS, SALES_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SOULS_HANDLERS);
 Object.assign(FAMILY_HANDLERS, JOURNAL_HANDLERS);
 Object.assign(FAMILY_HANDLERS, MEMORY_HANDLERS);
+Object.assign(FAMILY_HANDLERS, SPEC_GRILL_HANDLERS);
 
 export class McpServer {
   private config;
@@ -399,53 +389,6 @@ export class McpServer {
 
       case "router_status":
         return { tiers: this.config.routerTiers, ollamaUrl: this.config.ollamaUrl, ollamaChatModel: this.config.ollamaChatModel, ollamaEmbedModel: this.config.ollamaEmbedModel };
-
-      case "spec_grill_plan": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const featureDraft = typeof args.featureDraft === "string" && args.featureDraft.trim() ? args.featureDraft.trim() : null;
-        if (!featureDraft) throw new Error("parâmetro featureDraft é obrigatório");
-        const soulDir = join(this.config.home, "souls", soul.id);
-        const answers = Array.isArray(args.answers) ? args.answers.filter((a): a is string => typeof a === "string") : undefined;
-
-        let result: GrillPlanResult;
-        if (answers) {
-          const { arquivo } = finalizarPlanoGrill(soulDir, featureDraft, answers);
-          result = { ok: true, soulId: soul.id, buildModeAuthorized: true, arquivo };
-        } else {
-          const { questions, usage } = await gerarPerguntasGrill(featureDraft);
-          const arquivo = persistirPerguntasGrill(soulDir, featureDraft, questions);
-          result = { ok: true, soulId: soul.id, questions, arquivo };
-          if (usage) {
-            try {
-              await recordLlmCall({
-                pool: getPool(this.config.databaseUrl),
-                soul: { id: soul.id },
-                route: "spec-grill",
-                provider: "ollama",
-                model: process.env.OLLAMA_CHAT_MODEL || "nemotron-3-ultra-free",
-                promptTokens: usage.promptTokens,
-                completionTokens: usage.completionTokens,
-                latencyMs: usage.latencyMs,
-                source: usage.source,
-              });
-            } catch {
-              /* telemetria best-effort */
-            }
-          }
-        }
-
-        logFullAuditEntry({
-          ts: new Date().toISOString(),
-          sessionId: "mcp-tool",
-          soulId: soul.id,
-          intention: answers ? "spec_grill_plan: plano autorizado (Fase 2)" : "spec_grill_plan: perguntas geradas (Fase 1)",
-          toolsCalled: [name],
-          params: { featureDraft, phase: answers ? 2 : 1 },
-        });
-        return result;
-      }
 
       case "agenda_add": {
         const title = typeof args.title === "string" && args.title.trim() ? args.title.trim() : null;
