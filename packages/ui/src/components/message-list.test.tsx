@@ -142,6 +142,23 @@ test("has no a11y violations once the jump-to-latest button is visible", async (
   await expectNoA11yViolations(container);
 });
 
+// DS13: MutationObserver alone misses pure reflow with no DOM mutation (a
+// late-loading avatar image, a web-font swap settling). jsdom stubs
+// ResizeObserver as a no-op (vitest.setup.ts), so the resize-triggered
+// auto-scroll itself can't be exercised here — this only proves the content
+// node is actually wired up to a ResizeObserver, which is the part this
+// environment can verify.
+test("DS13: observes the content node with a ResizeObserver (belt-and-braces alongside MutationObserver)", () => {
+  const observeSpy = vi.spyOn(ResizeObserver.prototype, "observe");
+  const { container } = render(
+    <MessageList>
+      <div>msg 1</div>
+    </MessageList>,
+  );
+  const content = container.querySelector('[role="log"]');
+  expect(observeSpy).toHaveBeenCalledWith(content);
+});
+
 // DS15: without role="log"/aria-live, a screen reader is never told a new
 // message arrived — the transcript grows silently under it.
 test("DS15: content region is announced as a log (role=log, aria-live=polite)", () => {
