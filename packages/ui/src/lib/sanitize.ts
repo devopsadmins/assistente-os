@@ -21,7 +21,18 @@ export function sanitizeHtml(html: string): string {
       "blockquote",
       "table", "thead", "tbody", "tr", "th", "td",
       "sup", "sub", "span",
+      // DS11: GFM markdown produces these for images and task-list
+      // checkboxes; sem eles o nó inteiro desaparecia silenciosamente em vez
+      // de degradar (perda de conteúdo, não de estilo). `img`/`input` só
+      // ganham os atributos abaixo — `srcset`/`onerror`/`onload` etc. seguem
+      // fora de ALLOWED_ATTR, então o DOMPurify os descarta como qualquer
+      // atributo não listado, tag nenhuma precisa de allowlist própria.
+      "img", "input",
     ],
-    ALLOWED_ATTR: ["href", "rel", "class"],
+    ALLOWED_ATTR: [
+      "href", "rel", "class",
+      "src", "alt", // <img>
+      "type", "checked", "disabled", // <input type="checkbox"> de task list — o `marked` já emite disabled="" por padrão (checkbox somente leitura, não formulário interativo)
+    ],
   });
 }

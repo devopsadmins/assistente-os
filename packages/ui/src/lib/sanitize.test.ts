@@ -30,6 +30,28 @@ describe("sanitizeHtml", () => {
     expect(clean).toContain('href="https://example.com"');
   });
 
+  // DS11: img/checkbox não desapareciam com estilo degradado — o nó inteiro
+  // sumia (perda de conteúdo silenciosa), porque nenhuma das duas tags
+  // estava em ALLOWED_TAGS.
+  test("keeps <img src alt> (GFM image) but still strips onerror/srcset", () => {
+    const dirty = '<img src="https://example.com/x.png" alt="descrição" onerror="alert(1)" srcset="evil.png 2x">';
+    const clean = sanitizeHtml(dirty);
+    expect(clean).toContain("<img");
+    expect(clean).toContain('src="https://example.com/x.png"');
+    expect(clean).toContain('alt="descrição"');
+    expect(clean).not.toContain("onerror");
+    expect(clean).not.toContain("srcset");
+  });
+
+  test("keeps GFM task-list checkboxes (disabled, read-only) but strips a form-enabling checkbox", () => {
+    const dirty = '<input type="checkbox" disabled checked> feito';
+    const clean = sanitizeHtml(dirty);
+    expect(clean).toContain("<input");
+    expect(clean).toContain('type="checkbox"');
+    expect(clean).toContain("disabled");
+    expect(clean).toContain("checked");
+  });
+
   test("throws instead of returning unsanitized HTML when DOMPurify cannot run", () => {
     // DOMPurify.isSupported is a plain writable data property on the module
     // singleton (not a getter/setter), so it isn't spyable via
