@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
-import { search, LiteralEmbedder, relevancia } from "@assistente-os/memory";
-import { gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, setupEnvironment } from "@assistente-os/daemon";
+import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, writeSkillFile, buildSkillMd, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
+import { gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
 import { BROWSER_TOOLS, BROWSER_HANDLERS } from "./browser/index.js";
