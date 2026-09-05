@@ -10,6 +10,12 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **`docs/adr/ADR-HR5-001.md`** — veredito keep/replace para as 22 dependências
+  da zona backend fora do conjunto original STDLIB_FIRST (`node:*`,
+  `playwright-core`, `@langchain/*`, `pg`, `zod`). Todas mantidas — cada uma
+  sustenta uma feature real sem equivalente stdlib viável. Fecha o gap do
+  SPEC-HR5 apontado desde o fechamento do gate de CI.
+
 - **`zod` na allowlist de dependências do backend** (`.github/scripts/deps-zones.mjs`):
   SPEC-EP2 Frente 2 (Fatia 1) introduz validação de schema real nas rotas
   HTTP do daemon via `zod`, agora declarado como dependência de verdade em

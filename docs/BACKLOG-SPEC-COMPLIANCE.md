@@ -23,20 +23,20 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 
 | ID | Item | Regra | Prio | Esforço | Status | Depende |
 |---|---|---|---|---|---|---|
-| SPEC-HR1 | Degradação suave DB/LLM → Markdown, sem travar o daemon | HR1 LOCAL_FIRST | P1 | M | Fatia 1+2 ✅ (chat, decisões, lições, agenda-tool) / REST+job de agenda e RAG ingest TODO | — |
-| SPEC-HR2 | `purgeCredentials(taskId)` em `finally` de toda execução | HR2 CREDENTIAL_ISOLATION | P0 | M | TODO | — |
-| SPEC-HR3 | Todo handler MCP: `authorizeTool` + evento em `audit-trail.ts` | HR3 IDENTITY_SCOPED_TOOLS | P1 | M | TODO | — |
-| SPEC-HR4 | `maxIterations`/`LANGGRAPH_MAX_ITERATIONS=5` como hard-stop no runner | HR4 RECURSION_GUARD | P1 | S | TODO | — |
-| SPEC-HR5 | Reconciliar dependências com a allowlist STDLIB_FIRST | HR5 STDLIB_FIRST | P2 | S–M | TODO | — |
-| SPEC-HR6 | Hub WS: broadcast sem isolamento por conta vaza `chat.step`/`graph.step` entre clientes | (achado fora do system_prompt — ver nota) | P0 | M | TODO | — |
-| SPEC-GR1 | 4º loop: 3 reincidências → Regra de Ouro → aprovação 6 dígitos → `SOUL.md` + `.opencode/rules/golden-rules.md` | GR1 AUTOAPRENDIZADO | P1 | M | TODO | — |
+| SPEC-HR1 | Degradação suave DB/LLM → Markdown, sem travar o daemon | HR1 LOCAL_FIRST | P1 | M | ✅ 2026-09-05 (Fatia 3, fecha o item) | — |
+| SPEC-HR2 | `purgeCredentials(taskId)` em `finally` de toda execução | HR2 CREDENTIAL_ISOLATION | P0 | M | ✅ 2026-09-04 | — |
+| SPEC-HR3 | Todo handler MCP: `authorizeTool` + evento em `audit-trail.ts` | HR3 IDENTITY_SCOPED_TOOLS | P1 | M | ✅ 2026-09-05 | — |
+| SPEC-HR4 | `maxIterations`/`LANGGRAPH_MAX_ITERATIONS=5` como hard-stop no runner | HR4 RECURSION_GUARD | P1 | S | ✅ (verificado já implementado, 2026-09-04) | — |
+| SPEC-HR5 | Reconciliar dependências com a allowlist STDLIB_FIRST | HR5 STDLIB_FIRST | P2 | S–M | ✅ 2026-09-05 (gate de CI + `ADR-HR5-001.md`) | — |
+| SPEC-HR6 | Hub WS: broadcast sem isolamento por conta vaza `chat.step`/`graph.step` entre clientes | (achado fora do system_prompt — ver nota) | P0 | M | ✅ 2026-09-04 | — |
+| SPEC-GR1 | 4º loop: 3 reincidências → Regra de Ouro → aprovação 6 dígitos → `SOUL.md` + `.opencode/rules/golden-rules.md` | GR1 AUTOAPRENDIZADO | P1 | M | ✅ (verificado já implementado, 2026-09-04) — resta só confirmar a escrita coordenada final via aprovação Guardian ao vivo | — |
 | SPEC-GR2 | Rodapé `usage_metadata` em toda `sessoes/YYYY-MM-DD.md` | GR2 TELEMETRIA | P1 | M | TODO | E1 (done) |
 | SPEC-GR3 | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel | GR3 BROWSER SEMÂNTICO | P2 | S | TODO | — |
-| SPEC-GR4 | Gate de merge: `build` + `test` + supervisor ≥ 95 no CI | GR4 DISCRIMINATOR | P1 | M | TODO | — |
+| SPEC-GR4 | Gate de merge: `build` + `test` + supervisor ≥ 95 no CI | GR4 DISCRIMINATOR | P1 | M | 🟡 mecanismo corrigido 2026-09-05 (não crasha mais em CI); falta cadastrar `ZEN_API_KEY` pra julgar de verdade | — |
 | SPEC-EP1 | Planejamento prévio em `<thinking>` no template de PR/contribuição | EP1 PLANEJAMENTO | P2 | S | ✅ 2026-09-05 | — |
-| SPEC-EP2 | Proibir `any` (lint `error`) + auditoria de cobertura Zod nos limites | EP2 TIPAGEM ESTRITA | P1 | M | Frente 1 ✅ / Frente 2 ✅ (Fatias 1-3) | — |
+| SPEC-EP2 | Proibir `any` (lint `error`) + auditoria de cobertura Zod nos limites | EP2 TIPAGEM ESTRITA | P1 | M | ✅ Frente 1 + Frente 2 (Fatias 1-3), 2026-09-05 | — |
 | SPEC-EP3 | Script único de DoD (`npm run dod`) rodado antes de encerrar turno | EP3 VERIFICAÇÃO | P2 | S | TODO | SPEC-GR4 |
-| SPEC-FO1 | Codificar FinOps guardrail (output conciso/zero-preâmbulo/formatos) no template de SOUL | FO GUARDRAIL | P2 | S | TODO | — |
+| SPEC-FO1 | Codificar FinOps guardrail (output conciso/zero-preâmbulo/formatos) no template de SOUL | FO GUARDRAIL | P2 | S | ✅ (verificado já implementado, 2026-09-04) | — |
 
 ---
 
@@ -94,10 +94,10 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 **Objetivo**: deps restritas a `node:*`, `playwright-core`, `@langchain/*`, `pg`, `zod`.
 **Estado atual (verificado 2026-09-05)**: `package.json` raiz também traz `@xenova/transformers`, `pino`, `pino-pretty`, `say`, `telegraf` (e mais ~15 deps de backend, todas já "grandfathered" em `.github/scripts/deps-zones.mjs` desde o ADR-UI-001, 2026-09-01). A zona frontend (`packages/ui`) **já estava fechada pelo ADR-UI-001** — só não tinha sido riscada aqui (pendência que o próprio ADR já apontava). `zod` está na allowlist original mas nenhum pacote do monorepo o usa hoje.
 **Gap fechado 2026-09-05**: o 3º critério de aceitação ("Check de CI falha em dep nova fora da lista aprovada") **não estava cumprido de fato** — `deps-zones.mjs` tinha testes unitários cobrindo suas funções, mas o `main()` (que varre os `package.json` reais) nunca rodava em CI; uma dependência nova fora da allowlist não era barrada por nada. Corrigido: novo step "Dependency zones gate" no job `compliance` do CI, rodando `node .github/scripts/deps-zones.mjs` de verdade — mesmo padrão já usado para `compliance-gate.mjs` no mesmo job. No caminho, `packages/web` (que não existia quando o guard foi escrito, comentário dizia "landing later") foi atribuído à zona frontend, e `FRONTEND_ALLOW`/`BACKEND_ALLOW` ganharam as entradas que faltavam pra passar contra o estado real (`@assistente-os/*` em frontend, `vite`/`@vitejs/plugin-react`/`undici`, e `eslint`/`typescript-eslint` no backend — estes dois adicionados pelo próprio SPEC-EP2 Frente 1 na mesma sessão).
-**Gap ainda aberto** (maior, não fechado nesta rodada): divergência entre a allowlist "grandfathered" (ampla, bate com a realidade) e a allowlist original de 5 itens do `system_prompt` (`hard_rules`) — decidir por item: manter (e atualizar a allowlist da spec com justificativa) ou remover/substituir por stdlib. Isso exige um ADR formal com veredito por dependência (~15 na zona backend), fora do escopo desta fatia.
+**Gap fechado 2026-09-05 (2ª rodada)**: `docs/adr/ADR-HR5-001.md` — 22 dependências fora do conjunto original de 5, cada uma verificada por uso real no código (grep, não suposição), agrupadas por categoria (runtime real / `@types/*` sem footprint / ferramental de build-lint-dev sem footprint). Veredito: **manter todas** — nenhuma tem equivalente stdlib viável pra feature que sustenta (`baileys`→WhatsApp, `@xenova/transformers`→embedder local, `azure-devops-node-api`→tools ADO, etc.); `baileys` registrado com ressalva de risco maior (protocolo não-oficial) mas aceito por ser o backbone de uma feature real. Decisão sobre `hard_rules`: mantida como está (o *objetivo* pra código novo), sem duplicar a lista real no texto da spec — `deps-zones.mjs` é a fonte de verdade executável, o ADR é a justificativa.
 **Aceitação**:
-- ADR curto listando cada dep fora da allowlist original + veredito (keep/replace) + razão. **Não feito.**
-- `hard_rules` da spec atualizada para refletir a allowlist real. **Não feito.**
+- ADR curto listando cada dep fora da allowlist original + veredito (keep/replace) + razão. ✅ **Feito 2026-09-05** (`docs/adr/ADR-HR5-001.md`).
+- `hard_rules` da spec atualizada para refletir a allowlist real. ✅ **Decisão registrada**: não duplicar — ver ADR, seção "Ação sobre a hard-rule original".
 - Check de CI (`depcheck`/allowlist) falha em dep nova fora da lista aprovada. ✅ **Feito 2026-09-05.**
 **Arquivos**: `package.json` (workspaces), `docs/adr/`, `system_prompt`, `.github/scripts/deps-zones.mjs`, `.github/workflows/ci.yml`.
 **Relacionado**: ROADMAP Onda 3d (centralizar config); ADR-UI-001 (zona frontend, já fechada).
