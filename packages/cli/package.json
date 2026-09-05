@@ -19,7 +19,8 @@
     "@assistente-os/daemon": "*",
     "@assistente-os/memory": "*",
     "archiver": "^8.0.0",
-    "ioredis": "^6.0.0"
+    "ioredis": "^6.0.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",
