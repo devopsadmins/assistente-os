@@ -153,7 +153,6 @@ async function ensureBrowser(): Promise<{ browser: Browser; context: BrowserCont
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--single-process",
       ],
     });
     _context = await _browser.newContext({
