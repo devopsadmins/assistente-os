@@ -2,9 +2,9 @@
 
 exports[`known seed produces a stable snapshot 1`] = `
 {
-  "--accent": "0.95 0.1218 259.81",
+  "--accent": "0.95 0.05 259.81",
   "--accent-foreground": "0.22 0 0",
-  "--chat-user-bubble": "0.9 0.1446 259.81",
+  "--chat-user-bubble": "0.9 0.05 259.81",
   "--chat-user-bubble-foreground": "0.22 0 0",
   "--primary": "0.54 0.1822 259.81",
   "--primary-foreground": "0.99 0 0",

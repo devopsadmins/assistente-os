@@ -6,9 +6,8 @@ import { sanitizeHtml } from "../lib/sanitize";
 import { CodeBlock } from "./code-block";
 import { CitationCardContent, type CitationSource } from "./citation";
 
-export interface MarkdownProps {
+export interface MarkdownProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick" | "onKeyDown"> {
   source: string;
-  className?: string;
   /**
    * Fontes indexadas por posição (`sources[0]` = citação `[[1]]`, etc.).
    * Sem esta prop (ou sem entrada pro índice pedido), `[[n]]` renderiza como
@@ -104,7 +103,16 @@ interface VirtualElement {
 
 const INERT_RECT: DOMRect = new DOMRect(0, 0, 0, 0);
 
-export function Markdown({ source, className, sources }: MarkdownProps) {
+/**
+ * DS7: `onClick`/`onKeyDown` are deliberately excluded from the spread
+ * (`MarkdownProps` omits them) rather than composed with a caller-supplied
+ * handler — both drive the citation-marker click delegation below, and a
+ * naive `{...props}` last would silently let a consumer's `onClick`
+ * override marker clicks instead of running alongside them. Every other
+ * DOM attribute (`id`, `data-testid`, `aria-*`, `style`, ...) passes through
+ * normally via `{...props}`.
+ */
+export const Markdown = React.forwardRef<HTMLDivElement, MarkdownProps>(({ source, className, sources, ...props }, ref) => {
   const hasSource = React.useCallback((index: number) => Boolean(sources?.[index - 1]), [sources]);
   const marked = React.useMemo(() => createMarkedInstance(hasSource), [hasSource]);
 
@@ -161,9 +169,11 @@ export function Markdown({ source, className, sources }: MarkdownProps) {
 
   return (
     <div
+      ref={ref}
       className={cn("ds-markdown space-y-3 text-sm text-foreground", MARKDOWN_TYPOGRAPHY, className)}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
+      {...props}
     >
       {tokens.map((token: Token, index: number) =>
         token.type === "code" ? (
@@ -195,4 +205,5 @@ export function Markdown({ source, className, sources }: MarkdownProps) {
       ) : null}
     </div>
   );
-}
+});
+Markdown.displayName = "Markdown";

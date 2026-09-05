@@ -25,12 +25,13 @@ export { Separator } from "./components/separator";
 export { Skeleton } from "./components/skeleton";
 export { Badge, badgeVariants, type BadgeProps } from "./components/badge";
 export { Avatar, AvatarImage, AvatarFallback } from "./components/avatar";
-export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "./components/card";
+export { Card, CardHeader, CardTitle, type CardTitleProps, CardDescription, CardContent, CardFooter } from "./components/card";
 
 export {
   Dialog,
   DialogTrigger,
   DialogClose,
+  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogFooter,
@@ -52,8 +53,8 @@ export { Select, SelectValue, SelectTrigger, SelectContent, SelectItem } from ".
 export { Switch } from "./components/switch";
 export { Checkbox } from "./components/checkbox";
 export { ScrollArea } from "./components/scroll-area";
-export { Toaster } from "./components/toaster";
-export { useToast, type ToastOptions } from "./hooks/use-toast";
+export { Toaster, type ToasterProps } from "./components/toaster";
+export { useToast, type ToastOptions, type ToastEntry } from "./hooks/use-toast";
 export { CodeBlock, type CodeBlockProps } from "./components/code-block";
 export { Markdown, type MarkdownProps } from "./components/markdown";
 export { Citation, type CitationProps, type CitationSource } from "./components/citation";

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "../lib/cn";
 
 export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
@@ -13,8 +14,16 @@ export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
 );
 CardHeader.displayName = "CardHeader";
 
-export const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => <h3 ref={ref} className={cn("text-lg font-semibold leading-none", className)} {...props} />,
+export interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+  /** Render the single child element instead of an <h3> (DS7) — lets AuthCard/SettingsPanel use a different heading level while keeping CardTitle's styling. */
+  asChild?: boolean;
+}
+
+export const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
+  ({ className, asChild, ...props }, ref) => {
+    const Comp = asChild ? Slot : "h3";
+    return <Comp ref={ref} className={cn("text-lg font-semibold leading-none", className)} {...props} />;
+  },
 );
 CardTitle.displayName = "CardTitle";
 

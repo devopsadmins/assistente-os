@@ -47,6 +47,30 @@ test("buildRamp: chroma peaks mid-ramp and tapers at the ends", () => {
   expect(mid).toBeGreaterThan(ramp[10]!.c);
 });
 
+// DS5: spec A1 §3.4 wants --accent/--chat-user-bubble (ramp indices 1/2) as
+// low-chroma tints (~step 100). Before this fix, a saturated seed at
+// CHROMA_CAP produced index 1 at bellCurve(1)*CHROMA_CAP ≈ 0.1425 — ~7x the
+// spec's own default (--accent chroma 0.02) and outside the sRGB gamut at
+// that lightness. Verifies the ceiling actually holds for the worst case
+// (a maximally saturated seed) without flattening lower-chroma seeds.
+test("DS5: the 3 lightest ramp steps (indices 0-2) stay low-chroma even for a maximally saturated seed", () => {
+  const saturated = parseColor("#3b82f6"); // real seed with high-ish chroma, not synthetic
+  const ramp = buildRamp({ ...saturated, c: 0.22 }); // force to CHROMA_CAP — the worst case
+  for (const i of [0, 1, 2]) {
+    expect(ramp[i]!.c).toBeLessThanOrEqual(0.05);
+  }
+  // sanity: the fix doesn't touch mid/dark steps — they should still carry
+  // meaningfully more chroma than the capped light steps.
+  expect(ramp[5]!.c).toBeGreaterThan(ramp[1]!.c);
+});
+
+test("DS5: a genuinely low-chroma seed is never clamped up by the tint ceiling", () => {
+  const subtle = { l: 0.7, c: 0.01, h: 264 };
+  const ramp = buildRamp(subtle);
+  // bellCurve(1) * 0.01 is far below TINT_CHROMA_CAP — the cap must not raise it.
+  expect(ramp[1]!.c).toBeCloseTo(0.01 * 0.6476, 3);
+});
+
 test("buildRamp: near-grey seed produces a near-grey ramp (no injected color)", () => {
   const ramp = buildRamp(parseColor("#808080"));
   for (const step of ramp) expect(step.c).toBeLessThan(0.03);
