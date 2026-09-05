@@ -37,7 +37,7 @@ Monorepo using **npm workspaces** (`packages/*`). TypeScript with ESM (`"type": 
 - **`~/.assistant-os/`** is the runtime home dir (souls, kernel.db, config). Created manually; not part of the repo.
 - **`kernel.db`** (SQLite, at `~/.assistant-os/kernel.db`) is immutable per-call cost tracking. **`memory.db`** (SQLite, per-soul) holds RAG chunks/embeddings/graph.
 - **Ollama is optional** — system degrades gracefully. With Ollama offline, embeddings fall back to `@xenova/transformers` locally, and the router skips the `local` tier.
-- **No linter or formatter configured** — no eslint, prettier, or biome in the repo.
+- **ESLint configured since 2026-09-05** (`eslint.config.js`, root) — scope deliberately minimal: `@typescript-eslint/no-explicit-any` as the only rule, test files excluded. Run with `npm run lint`. No prettier or biome.
 - **CLI shortcut:** `npm run os <args>` runs `node packages/cli/dist/index.js <args>`.
 - **PM2 deployment:** `ecosystem.config.cjs` is the process config. It deliberately does NOT set env vars — they come from `~/.assistant-os/.env` loaded by `loadDotEnv()`.
 - **`ASSISTENTE_OS_HOME`** env var overrides the default `~/.assistant-os` home directory.
@@ -50,6 +50,10 @@ Monorepo using **npm workspaces** (`packages/*`). TypeScript with ESM (`"type": 
 ## Language
 
 Code, comments, commit messages, and documentation are in **Brazilian Portuguese**. Maintain this convention.
+
+## Pull requests
+
+`.github/pull_request_template.md` has 4 required sections, all enforced by the `compliance` CI job (`.github/scripts/compliance-rules.mjs`): Descrição (min length), **Plano — arquivos + ordem** (SPEC-EP1, 2026-09-05: architectural reasoning before code — which files change, in what order, and why that order; "N/A" or a placeholder is rejected), Rastreabilidade (ADR-XXX, roadmap Exx, Tn.n, or #issue), Rollback (real plan, "N/A" rejected). Changes to sensitive paths (`packages/core/src/{config,policy,migrations,manifest}.ts`, `packages/core/src/{prompts,governance}/`, `.github/`, `docs/adr/`) also require a `CHANGELOG.md` or `docs/adr/` entry in the same PR.
 
 ## What NOT to do
 

@@ -5,6 +5,8 @@ import { evaluateCompliance } from "./compliance-rules.mjs";
 const GOOD_BODY = [
   "## Descrição",
   "Adiciona o gate de compliance no CI para validar PRs automaticamente.",
+  "## Plano (arquivos + ordem)",
+  "Plano: 1) .github/scripts/compliance-rules.mjs (regra nova), 2) ci.yml (liga o step).",
   "## Rastreabilidade",
   "Ref: T1.1 de docs/ARCHITECTURE-REVIEW.md",
   "## Rollback",
@@ -27,6 +29,32 @@ test("comentários HTML não contam para a descrição mínima", () => {
   const body = "<!-- " + "x".repeat(200) + " -->\nRollback: revert do merge\nRef: ADR-AI-003";
   const v = evaluateCompliance({ body, changedFiles: [] });
   assert.ok(v.some((m) => m.includes("muito curta")));
+});
+
+test("falta a seção Plano é reprovado (SPEC-EP1)", () => {
+  const body = GOOD_BODY.replace(/## Plano[\s\S]*?## Rastreabilidade/, "## Rastreabilidade");
+  const v = evaluateCompliance({ body, changedFiles: [] });
+  assert.ok(v.some((m) => m.includes("Plano")));
+});
+
+test('Plano "N/A" não é aceito (SPEC-EP1)', () => {
+  const body = GOOD_BODY.replace(/Plano:.*/, "Plano: N/A");
+  const v = evaluateCompliance({ body, changedFiles: [] });
+  assert.ok(v.some((m) => m.includes("Plano")));
+});
+
+test("Plano curto demais (menos que o mínimo) é reprovado (SPEC-EP1)", () => {
+  const body = GOOD_BODY.replace(/Plano:.*/, "Plano: ok");
+  const v = evaluateCompliance({ body, changedFiles: [] });
+  assert.ok(v.some((m) => m.includes("Plano")));
+});
+
+test("Plano com conteúdo real em múltiplas linhas é aceito (SPEC-EP1)", () => {
+  const body = GOOD_BODY.replace(
+    /Plano:.*/,
+    "Plano:\n1) packages/core/src/config.ts — adiciona o schema novo.\n2) packages/tools/src/misc/index.ts — consome o schema.",
+  );
+  assert.deepEqual(evaluateCompliance({ body, changedFiles: [] }), []);
 });
 
 test("falta linha Rollback é reprovado", () => {
@@ -98,5 +126,5 @@ test("arquivo comum (não sensível) não exige paper trail", () => {
 
 test("acumula múltiplas pendências", () => {
   const v = evaluateCompliance({ body: "muda coisas", changedFiles: ["packages/core/src/policy.ts"] });
-  assert.ok(v.length >= 3, `esperava >=3 pendências, obteve ${v.length}: ${JSON.stringify(v)}`);
+  assert.ok(v.length >= 4, `esperava >=4 pendências, obteve ${v.length}: ${JSON.stringify(v)}`);
 });

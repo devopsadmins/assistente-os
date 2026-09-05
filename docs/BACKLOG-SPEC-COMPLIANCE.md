@@ -33,7 +33,7 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 | SPEC-GR2 | Rodapé `usage_metadata` em toda `sessoes/YYYY-MM-DD.md` | GR2 TELEMETRIA | P1 | M | TODO | E1 (done) |
 | SPEC-GR3 | Browser harness: árvore de acessibilidade + CDP sandbox antes de pixel | GR3 BROWSER SEMÂNTICO | P2 | S | TODO | — |
 | SPEC-GR4 | Gate de merge: `build` + `test` + supervisor ≥ 95 no CI | GR4 DISCRIMINATOR | P1 | M | TODO | — |
-| SPEC-EP1 | Planejamento prévio em `<thinking>` no template de PR/contribuição | EP1 PLANEJAMENTO | P2 | S | TODO | — |
+| SPEC-EP1 | Planejamento prévio em `<thinking>` no template de PR/contribuição | EP1 PLANEJAMENTO | P2 | S | ✅ 2026-09-05 | — |
 | SPEC-EP2 | Proibir `any` (lint `error`) + auditoria de cobertura Zod nos limites | EP2 TIPAGEM ESTRITA | P1 | M | Frente 1 ✅ / Frente 2 TODO | — |
 | SPEC-EP3 | Script único de DoD (`npm run dod`) rodado antes de encerrar turno | EP3 VERIFICAÇÃO | P2 | S | TODO | SPEC-GR4 |
 | SPEC-FO1 | Codificar FinOps guardrail (output conciso/zero-preâmbulo/formatos) no template de SOUL | FO GUARDRAIL | P2 | S | TODO | — |
@@ -155,9 +155,10 @@ Escopo: só governança/spec. Backlog de features fica em [`ROADMAP.md`](ROADMAP
 
 ### SPEC-EP1 — Planejamento prévio em `<thinking>`
 **Objetivo**: todo trabalho começa detalhando raciocínio arquitetural, arquivos impactados e ordem de modificação.
-**Gap**: não há artefato que force isso.
-**Aceitação**: template de PR (`.github/pull_request_template.md`) com seção obrigatória "Plano (arquivos + ordem)"; `AGENTS.md` referencia a regra.
-**Arquivos**: `.github/pull_request_template.md`, `AGENTS.md`.
+**Estado (✅ 2026-09-05)**: seção obrigatória "Plano (arquivos + ordem)" no template de PR, **validada de verdade** pelo gate `compliance` do CI (mesmo padrão de Rastreabilidade/Rollback, não é só decorativa) — `PLAN_RE`/`EMPTY_PLAN_RE` em `.github/scripts/compliance-rules.mjs`, 4 testes novos em `compliance-rules.test.mjs`. `AGENTS.md` ganhou a seção "## Pull requests" referenciando a regra (e, no caminho, corrigiu a linha desatualizada que ainda dizia "no eslint... in the repo" depois do SPEC-EP2 Frente 1 ter introduzido ESLint na mesma sessão).
+**Gap**: nenhum — item fechado.
+**Aceitação**: template de PR (`.github/pull_request_template.md`) com seção obrigatória "Plano (arquivos + ordem)". ✅ `AGENTS.md` referencia a regra. ✅
+**Arquivos**: `.github/pull_request_template.md`, `.github/scripts/compliance-rules.mjs`, `.github/scripts/compliance-rules.test.mjs`, `AGENTS.md`.
 
 ### SPEC-EP2 — Tipagem estrita + Zod nos limites
 **Objetivo**: zero `any`; schemas Zod validando toda entrada externa (HTTP, tools, env, arquivos de alma).

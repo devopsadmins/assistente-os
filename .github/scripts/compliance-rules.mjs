@@ -32,9 +32,15 @@ export const PAPER_TRAIL_REQUIRED_PATHS = [
 export const PAPER_TRAIL_PATHS = [/^docs\/adr\//, /^CHANGELOG\.md$/];
 
 const MIN_BODY_CHARS = 50;
+const MIN_PLAN_CHARS = 15;
 const TRACKING_RE = /(ADR-[A-Z]+-\d+|ADR-\d+|roadmap|#\d+|\bE\d+(?:\.\d+)?\b|\bT\d\.\d\b)/i;
 const ROLLBACK_RE = /^[ \t>*_-]*rollback\s*:\s*(.+?)\s*$/im;
 const EMPTY_ROLLBACK_RE = /^_*(n\/?a|nao|não|nenhum|tbd|todo|-+)_*\.?$/i;
+// SPEC-EP1: seção "Plano" — do marcador "Plano:" até o próximo heading `##`
+// (ou fim do corpo), diferente de Rollback (que é 1 linha só) porque um plano
+// de arquivos+ordem naturalmente ocupa mais de uma linha.
+const PLAN_RE = /^[ \t>*_-]*plano\s*:\s*([\s\S]*?)(?=^##\s|\s*$)/im;
+const EMPTY_PLAN_RE = /^_*(n\/?a|nao|não|nenhum|tbd|todo|vou mexer no código|-+)_*\.?$/i;
 
 /**
  * @param {{ body?: string, changedFiles?: string[] }} input
@@ -49,6 +55,14 @@ export function evaluateCompliance(input = {}) {
   if (stripped.length < MIN_BODY_CHARS) {
     violations.push(
       `Descrição do PR muito curta (${stripped.length} chars fora de comentários; mínimo ${MIN_BODY_CHARS}).`,
+    );
+  }
+
+  const plan = body.match(PLAN_RE);
+  const planText = plan ? plan[1].replace(/<!--[\s\S]*?-->/g, "").replace(/\s+/g, " ").trim() : "";
+  if (!plan || planText.length < MIN_PLAN_CHARS || EMPTY_PLAN_RE.test(planText)) {
+    violations.push(
+      'Falta a seção "Plano" (arquivos + ordem de modificação) com conteúdo real — raciocínio arquitetural antes do código, nomeando arquivo(s). "N/A" não é aceito.',
     );
   }
 
