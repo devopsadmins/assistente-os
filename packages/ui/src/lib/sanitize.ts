@@ -33,6 +33,7 @@ export function sanitizeHtml(html: string): string {
       "href", "rel", "class",
       "src", "alt", // <img>
       "type", "checked", "disabled", // <input type="checkbox"> de task list — o `marked` já emite disabled="" por padrão (checkbox somente leitura, não formulário interativo)
+      "role", "tabindex", "aria-label", // marcador de citação interativo (DS10 parte 2)
     ],
   });
 }

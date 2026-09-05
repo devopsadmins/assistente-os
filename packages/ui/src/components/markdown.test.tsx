@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { marked } from "marked";
-import { Markdown } from "./markdown";
+import userEvent from "@testing-library/user-event";
+import { createMarkedInstance, Markdown } from "./markdown";
 
 test("renders headings, bold, and links", () => {
   render(<Markdown source={"# Title\n\nSome **bold** text with a [link](https://example.com)."} />);
@@ -51,11 +51,45 @@ test("sanitizes a raw <script> injection attempt embedded in the source", () => 
   expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined();
 });
 
-test("renders a [[n]] citation marker as a static, non-interactive superscript", () => {
+test("renders a [[n]] marker as plain text when no `sources` prop backs it (anti-spoofing)", () => {
   render(<Markdown source={"Some claim [[1]] follows."} />);
+  expect(screen.getByText(/\[\[1\]\] follows\./)).toBeInTheDocument();
+  expect(screen.queryByText("1", { selector: "sup" })).toBeNull();
+});
+
+test("renders a [[n]] citation marker as an interactive superscript when a matching source exists", () => {
+  render(<Markdown source={"Some claim [[1]] follows."} sources={[{ title: "Fonte A" }]} />);
   const marker = screen.getByText("1");
   expect(marker.tagName).toBe("SUP");
-  expect(marker).not.toHaveAttribute("role", "button");
+  expect(marker).toHaveAttribute("role", "button");
+  expect(marker).toHaveAttribute("tabindex", "0");
+});
+
+test("renders a [[n]] marker as plain text when the index has no corresponding source", () => {
+  render(<Markdown source={"Some claim [[2]] follows."} sources={[{ title: "Fonte A" }]} />);
+  expect(screen.getByText(/\[\[2\]\] follows\./)).toBeInTheDocument();
+});
+
+test("clicking a citation marker opens a popover with the source details", async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(
+    <Markdown
+      source={"Some claim [[1]] follows."}
+      sources={[{ title: "Fonte A", url: "https://example.com/a", snippet: "trecho relevante" }]}
+    />,
+  );
+  await user.click(screen.getByText("1"));
+  expect(await screen.findByRole("link", { name: "Fonte A" })).toHaveAttribute("href", "https://example.com/a");
+  expect(screen.getByText("trecho relevante")).toBeInTheDocument();
+});
+
+test("activates a citation marker via keyboard (Enter)", async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<Markdown source={"Some claim [[1]] follows."} sources={[{ title: "Fonte A" }]} />);
+  const marker = screen.getByText("1");
+  marker.focus();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("Fonte A")).toBeInTheDocument();
 });
 
 test("drops empty spacer blocks between blocks instead of doubling the layout gap", () => {
@@ -77,12 +111,13 @@ test("does not transform a citation-marker-shaped string inside a link title att
   // reaches the DOM, both before and after this fix. Asserting against the
   // final sanitized DOM can't distinguish "title survived, correctly
   // un-corrupted" from "title never survived at all", so it can't prove the
-  // guarantee under test. Assert instead against marked's own rendered HTML —
-  // the exact same call `Markdown` makes internally, before sanitization —
-  // which is where the old regex-based citation-marker replace used to
-  // splice a `<sup>` into the middle of the attribute string. Importing
-  // `./markdown` above registers the citationMarker extension on marked's
-  // module singleton as a side effect, so this exercises the real extension.
+  // guarantee under test. Assert instead against a real citationMarker-aware
+  // Marked instance's own rendered HTML — the exact same call `Markdown`
+  // makes internally, before sanitization — which is where the old
+  // regex-based citation-marker replace used to splice a `<sup>` into the
+  // middle of the attribute string. `hasSource` is forced to `true` so the
+  // extension is actually exercised regardless of the title text.
+  const marked = createMarkedInstance(() => true);
   const html = marked.parser(marked.lexer('[click](https://example.com "hi [[1]] there")'));
   expect(html).toContain('title="hi [[1]] there"');
 
