@@ -872,3 +872,17 @@ test("sales_ingest_meeting: tools/list inclui a família sales_* (smoke — sem 
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("souls_*: tools/list inclui soul_chat e action_execute (smoke — sem execução real de opencode)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({ jsonrpc: "2.0", id: 250, method: "tools/list" });
+    const names = ((res?.result as { tools?: { name: string }[] }).tools ?? []).map((t) => t.name);
+    for (const n of ["souls_list", "soul_context", "soul_chat", "action_execute"]) {
+      assert.ok(names.includes(n), `tools/list deveria incluir ${n}`);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

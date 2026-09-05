@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, finishAgendaItem, anotar, registrarLicao, decidir, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
+import { loadConfig, listSouls, getSoul, isValidSoulId, getPool, runMigrations, sumCostBySoul, recentCalls, addAgendaItem, getAgendaItems, anotar, registrarLicao, decidir, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, sanitizeLLMResponse, recordAgentIncident, getLessons, generateAndWriteAiia, buscarFamiliaPorSoulId, validateSoulSpec, resolveSoulSpecDefaults, createSoulFromSpec, computePlanHash, canonicalJsonStringify, SOUL_SPEC_SCHEMA_VERSION, CAPABILITY_CATALOG_VERSION, DEFAULT_GLOBAL_GUARDRAILS, scanSkillDirs, parseSkillFrontmatter, listSkills, writeSkillFile, buildSkillMd, resolveRelevanceGate, type SoulSpec, type SkillFrontmatter, type AssistenteOsConfig } from "@assistente-os/core";
 import { indexDirectory, search, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, LiteralEmbedder, relevancia, type RelevanceRule } from "@assistente-os/memory";
-import { runOpenCode, gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, setupEnvironment } from "@assistente-os/daemon";
+import { gerarPerguntasGrill, persistirPerguntasGrill, finalizarPlanoGrill, recordLlmCall, type GrillPlanResult, setupEnvironment } from "@assistente-os/daemon";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { EOL } from "node:os";
 import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
 import { BROWSER_TOOLS, BROWSER_HANDLERS } from "./browser/index.js";
 import { ADO_TOOLS, ADO_HANDLERS } from "./ado/index.js";
@@ -14,6 +13,7 @@ import { WORKTREE_TOOLS, WORKTREE_HANDLERS } from "./worktree/index.js";
 import { SKILL_TOOLS, SKILL_HANDLERS } from "./skill/index.js";
 import { SOUL_CREATE_TOOLS, SOUL_CREATE_HANDLERS } from "./soulCreate/index.js";
 import { SALES_TOOLS, SALES_HANDLERS } from "./sales/index.js";
+import { SOULS_TOOLS, SOULS_HANDLERS } from "./souls/index.js";
 
 export const SERVER_NAME = "assistente-os";
 export const SERVER_VERSION = "0.1.0";
@@ -84,34 +84,7 @@ export interface Tool {
 }
 
 const TOOLS: Tool[] = [
-  {
-    name: "souls_list",
-    description: "Lista as souls disponíveis no Assistente OS.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "soul_context",
-    description: "Retorna o contexto (perfil/contexto/licoes/pessoas/soul.md) de uma soul.",
-    inputSchema: {
-      type: "object",
-      properties: { soul: { type: "string", description: "id da soul" } },
-      required: ["soul"],
-    },
-  },
-  {
-    name: "soul_chat",
-    description: "Roda opencode run headless na soul. Retorna o texto gerado.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        prompt: { type: "string", description: "instrução/consulta" },
-        model: { type: "string", description: "opcional: modelo a usar" },
-        timeoutSeconds: { type: "number", default: 300 },
-      },
-      required: ["soul", "prompt"],
-    },
-  },
+  ...SOULS_TOOLS,
   {
     name: "memory_search",
     description: "Busca RAG na memória da soul (semântica com Ollama; degrada para literal).",
@@ -174,21 +147,6 @@ const TOOLS: Tool[] = [
         source: { type: "string", description: "origem da observação (opcional)" },
       },
       required: ["soul", "entity_name", "body"],
-    },
-  },
-  {
-    name: "action_execute",
-    description: "Executa uma ação registrada na agenda ou dispara um fluxo de trabalho.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        soul: { type: "string", description: "id da soul" },
-        title: { type: "string", description: "título da ação" },
-        body: { type: "string", description: "descrição da ação" },
-        tier: { type: "string", description: "tier do opencode (local/zen/soul)", enum: ["local", "zen", "soul"] },
-        model: { type: "string", description: "modelo a usar" },
-      },
-      required: ["soul", "title", "body"],
     },
   },
   {
@@ -364,19 +322,6 @@ interface McpServerOptions {
   home: string;
 }
 
-/** Extrai o texto das partes NDJSON emitidas pelo `opencode run` no stdout. */
-function extractOpenCodeText(stdout: string): string {
-  const textLines = stdout.split(EOL).map((l) => {
-    try {
-      const j = JSON.parse(l) as { type?: string; part?: { text?: string } };
-      return j.type === "text" && j.part?.text ? j.part.text : "";
-    } catch {
-      return "";
-    }
-  });
-  return textLines.filter(Boolean).join("\n");
-}
-
 /**
  * Contexto passado aos handlers de família de tool (ToolHandler).
  * Expõe config, requireSoul e authorizeAgentSoul para que cada módulo
@@ -408,6 +353,7 @@ Object.assign(FAMILY_HANDLERS, WORKTREE_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SKILL_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SOUL_CREATE_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SALES_HANDLERS);
+Object.assign(FAMILY_HANDLERS, SOULS_HANDLERS);
 
 export class McpServer {
   private config;
@@ -577,37 +523,6 @@ export class McpServer {
     }
 
     switch (name) {
-      case "souls_list": {
-        return listSouls(this.config.home).map((s) => ({ id: s.id, description: s.config.description ?? null }));
-      }
-
-      case "soul_context": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const files = ["perfil.md", "contexto.md", "licoes.md", "pessoas.md", "soul.md"];
-        const parts: string[] = [];
-        for (const f of files) {
-          const p = join(this.config.home, "souls", soul.id, f);
-          if (existsSync(p)) parts.push(`# ${f}\n\n${readFileSync(p, "utf8")}`);
-        }
-        return { soul: soul.id, context: parts.join("\n\n") };
-      }
-
-      case "soul_chat": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const prompt = typeof args.prompt === "string" && args.prompt.trim() ? args.prompt : null;
-        if (!prompt) throw new Error("parâmetro prompt é obrigatório");
-        const model = typeof args.model === "string" && args.model ? args.model : undefined;
-        const timeoutSeconds = typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 300;
-        const result = await runOpenCode(prompt, { cwd: join(this.config.home, "souls", soul.id), model, timeoutSeconds });
-        const rawText = extractOpenCodeText(result.stdout);
-        const sanitized = sanitizeLLMResponse(rawText);
-        return { ok: result.code === 0 && !result.timedOut, code: result.code, timedOut: result.timedOut, text: sanitized.sanitized, stderr: result.stderr.slice(-1000), contentFilter: sanitized.count > 0 ? { detected: sanitized.count } : undefined };
-      }
-
       case "memory_search": {
         const soul = this.requireSoul(args.soul);
         if ("error" in soul) throw new Error(soul.error);
@@ -677,40 +592,6 @@ export class McpServer {
         const now = new Date().toISOString();
         await addObservation(pool, soul.id, entity_name, body, source ?? undefined);
         return { ok: true, entity_name, body, source, ts: now };
-      }
-
-      case "action_execute": {
-        const soul = this.requireSoul(args.soul);
-        if ("error" in soul) throw new Error(soul.error);
-        authorizeTool(this.config.home, soul.id, name);
-        const title = typeof args.title === "string" && args.title.trim() ? args.title : null;
-        const body = typeof args.body === "string" && args.body.trim() ? args.body : null;
-        const model = typeof args.model === "string" && args.model ? args.model : "nemotron-3-ultra-free";
-        if (!title || !body) throw new Error("title e body são obrigatórios");
-        // Registra na agenda e despacha de imediato (síncrono, fora do loop de dispatch do daemon)
-        const pool = getPool(this.config.databaseUrl);
-        {
-          const item = await addAgendaItem(pool, soul.id, title, body, null);
-          const prompt = `[action] Execução: ${title}\n\n${body}`;
-          const result = await runOpenCode(prompt, { cwd: this.config.home, model, timeoutSeconds: 300 });
-          // Marca concluído/falho aqui mesmo: já foi despachado, não deve ser reprocessado pelo loop do daemon.
-          await finishAgendaItem(
-            pool,
-            item.id,
-            result.code === 0 && !result.timedOut ? "completed" : "failed",
-            result.timedOut ? "timeout" : result.code !== 0 ? `opencode saiu com código ${result.code}` : undefined,
-          );
-          const rawText = extractOpenCodeText(result.stdout);
-          return {
-            ok: result.code === 0 && !result.timedOut,
-            code: result.code,
-            timedOut: result.timedOut,
-            agendaId: item.id,
-            title,
-            text: sanitizeLLMResponse(rawText).sanitized,
-            stderr: result.stderr.slice(-1000),
-          };
-        }
       }
 
       case "soul_anotar": {
