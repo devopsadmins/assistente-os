@@ -1070,3 +1070,47 @@ test("mcp: editorial_add_idea → editorial_get_pipeline_status → editorial_ge
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("mcp: toda chamada de tool registra intenção no audit-trail (SPEC-HR3)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({
+      jsonrpc: "2.0", id: 300, method: "tools/call",
+      params: { name: "souls_list", arguments: {} },
+    });
+    assert.ok(res?.result, "souls_list deveria responder normalmente");
+
+    const dateISO = todayISODate();
+    const logPath = join(home, "souls", "main", "sessoes", `${dateISO}.md`);
+    assert.ok(existsSync(logPath), `deveria existir log de sessão em ${logPath}`);
+    const logContent = readFileSync(logPath, "utf8");
+    assert.match(logContent, /Chamada de tool: souls_list/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: audit-trail registra intenção mesmo quando a tool lança erro (best-effort, finally)", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const res = await server.handleMessage({
+      jsonrpc: "2.0", id: 301, method: "tools/call",
+      params: { name: "soul_context", arguments: { soul: "nao-existe" } },
+    });
+    assert.equal(res?.result, undefined, "soul_context com soul inexistente deveria falhar");
+
+    // logIntention usa args.soul cru (a falha de soul_context acontece DENTRO
+    // do handler, depois do audit-trail já ter capturado a intenção) — o log
+    // cai em souls/nao-existe/sessoes/, mesmo essa soul nunca tendo sido
+    // criada de verdade (soulDir só valida formato, não existência).
+    const dateISO = todayISODate();
+    const logPath = join(home, "souls", "nao-existe", "sessoes", `${dateISO}.md`);
+    assert.ok(existsSync(logPath), "audit-trail deveria registrar a tentativa mesmo com a tool falhando");
+    const logContent = readFileSync(logPath, "utf8");
+    assert.match(logContent, /Chamada de tool: soul_context/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

@@ -389,7 +389,7 @@ export async function preparePromptContext(params: {
     logger.warn(
       `[prompt-injection] ${injection.matches.length} padrão(ões) detectado(s) (severidade máx: ${injection.maxSeverity}) no prompt da soul ${soul.id}`,
     );
-    logFullAuditEntry({
+    logFullAuditEntry(home, {
       ts: new Date().toISOString(),
       sessionId: String(session.id),
       soulId: soul.id,
@@ -430,7 +430,7 @@ export async function preparePromptContext(params: {
 
   // ---- Skills por soul: registra quais foram ativadas neste turno ----
   if (built.skills && built.skills.active.length > 0) {
-    logFullAuditEntry({
+    logFullAuditEntry(home, {
       ts: new Date().toISOString(),
       sessionId: String(session.id),
       soulId: soul.id,
@@ -473,7 +473,7 @@ export async function preparePromptContext(params: {
     // embedder de indexação incompatível com o de consulta) passava
     // despercebida. Grava no audit trail já existente, sem infra nova.
     if (verdict?.sources && verdict.sources.length > 0) {
-      logFullAuditEntry({
+      logFullAuditEntry(home, {
         ts: new Date().toISOString(),
         sessionId: String(session.id),
         soulId: soul.id,
@@ -510,7 +510,7 @@ export async function preparePromptContext(params: {
       logger.warn(
         `[prompt-injection] ${ragInjection.length} chunk(s) de RAG com padrão de injection (sev. máx ${maxSev}) na soul ${soul.id}`,
       );
-      logFullAuditEntry({
+      logFullAuditEntry(home, {
         ts: new Date().toISOString(),
         sessionId: String(session.id),
         soulId: soul.id,

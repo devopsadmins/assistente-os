@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { loadConfig, getSoul, getPool, runMigrations, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, type AssistenteOsConfig } from "@assistente-os/core";
+import { loadConfig, getSoul, getPool, runMigrations, isToolAllowed, resolveAllowedTools, authorizeExecution, mcpZeroTrustOn, logFullAuditEntry, logIntention, type AssistenteOsConfig } from "@assistente-os/core";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { GUARDIAN_TOOLS, GUARDIAN_HANDLERS } from "./guardian/index.js";
@@ -53,7 +53,7 @@ export function authorizeTool(configHome: string, soulId: string, toolName: stri
   const soul = getSoul(configHome, soulId);
   const patterns = resolveAllowedTools(soul?.config?.agent);
   if (!isToolAllowed(patterns, toolName)) {
-    logFullAuditEntry({
+    logFullAuditEntry(configHome, {
       ts: new Date().toISOString(),
       sessionId: "mcp-guard",
       soulId,
@@ -217,8 +217,24 @@ export class McpServer {
     const gate = this.zeroTrustGate(name, args);
     if (!gate.ok) return respond(null, { code: -32000, message: gate.message });
 
-    const result = await this.executeTool(name, args);
-    return respond({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+    // Rastreabilidade ISO/IEC 42001 (SPEC-HR3): registra a intenção de TODA
+    // chamada de tool no cabeçalho da sessão Markdown da soul — roda no
+    // `finally` pra cobrir sucesso e falha, best-effort (logIntention nunca
+    // lança, só loga e segue se a escrita falhar).
+    const soulId = (typeof args.soul === "string" && args.soul.trim()) || process.env.AGENT_SOUL_ID || "main";
+    try {
+      const result = await this.executeTool(name, args);
+      return respond({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+    } finally {
+      logIntention(this.config.home, {
+        ts: new Date().toISOString(),
+        sessionId: "mcp-tool",
+        soulId,
+        intention: `Chamada de tool: ${name}`,
+        toolsCalled: [name],
+        params: args,
+      });
+    }
   }
 
   /**
@@ -252,7 +268,7 @@ export class McpServer {
       enforcePolicyGates: true,
     });
     if (!decision.allow) {
-      logFullAuditEntry({
+      logFullAuditEntry(this.config.home, {
         ts: new Date().toISOString(),
         sessionId: "mcp-zt-gate",
         soulId,

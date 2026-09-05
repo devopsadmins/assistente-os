@@ -17,7 +17,6 @@ import { todayISODate } from "../alma.js";
 import { soulDir } from "../souls.js";
 import { nowIso } from "../costs.js";
 import { sanitizeText } from "../security/content-filter.js";
-import { resolveHome } from "../config.js";
 
 // ── Tipos ──────────────────────────────────────────────────────────────
 
@@ -89,9 +88,14 @@ export function buildSessionHeader(entry: AuditEntry): string {
 /**
  * Registra a intenção de uma ação no cabeçalho da sessão Markdown.
  * Idempotente: se o cabeçalho já existir, appenda seção adicional.
+ *
+ * `home` é sempre o home CONFIGURADO do chamador (ex.: `AssistenteOsConfig.home`,
+ * `ctx.config.home`) — nunca resolvido internamente, pra não divergir do home
+ * real em cenários multi-home/teste (bug corrigido 2026-09-05: as 3 funções
+ * de escrita deste módulo resolviam `resolveHome()` global, ignorando o home
+ * configurado de quem chamava).
  */
-export function logIntention(entry: AuditEntry): string {
-  const home = resolveHome();
+export function logIntention(home: string, entry: AuditEntry): string {
   const dateISO = todayISODate();
   const header = buildSessionHeader(entry);
 
@@ -205,9 +209,10 @@ export function buildTelemetryBlock(metrics: TokenMetrics, operationDesc: string
 /**
  * Registra métricas e telemetria no final do arquivo de sessão Markdown.
  * Filosofia Local-First: append garantido, best-effort, nunca bloqueia.
+ *
+ * `home` é sempre o home configurado do chamador — ver nota em `logIntention`.
  */
-export function logTelemetry(soulId: string, metrics: TokenMetrics, operationDesc: string): string {
-  const home = resolveHome();
+export function logTelemetry(home: string, soulId: string, metrics: TokenMetrics, operationDesc: string): string {
   const dateISO = todayISODate();
   const block = buildTelemetryBlock(metrics, operationDesc);
 
@@ -225,9 +230,10 @@ export function logTelemetry(soulId: string, metrics: TokenMetrics, operationDes
 
 /**
  * Registra uma entrada completa de auditoria (intenção + métricas) em uma chamada.
+ *
+ * `home` é sempre o home configurado do chamador — ver nota em `logIntention`.
  */
-export function logFullAuditEntry(entry: AuditEntry): string {
-  const home = resolveHome();
+export function logFullAuditEntry(home: string, entry: AuditEntry): string {
   const dateISO = todayISODate();
 
   const lines = [

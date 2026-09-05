@@ -7,20 +7,16 @@ import { logIntention, logTelemetry, logFullAuditEntry, buildSessionHeader } fro
 
 function withHome<T>(fn: (home: string) => T): T {
   const home = mkdtempSync(join(tmpdir(), "aos-audit-"));
-  const prev = process.env.ASSISTENTE_OS_HOME;
-  process.env.ASSISTENTE_OS_HOME = home;
   try {
     return fn(home);
   } finally {
-    if (prev === undefined) delete process.env.ASSISTENTE_OS_HOME;
-    else process.env.ASSISTENTE_OS_HOME = prev;
     rmSync(home, { recursive: true, force: true });
   }
 }
 
 test("audit-trail: logIntention escreve o cabeçalho de sessão e devolve o path", () => {
   withHome((home) => {
-    const path = logIntention({
+    const path = logIntention(home, {
       ts: "2026-01-01T00:00:00.000Z",
       sessionId: "s1",
       soulId: "main",
@@ -32,12 +28,13 @@ test("audit-trail: logIntention escreve o cabeçalho de sessão e devolve o path
   });
 });
 
-test("audit-trail: logTelemetry e logFullAuditEntry funcionam com ASSISTENTE_OS_HOME custom (sem require() ESM)", () => {
-  withHome(() => {
-    const telemetryPath = logTelemetry("main", { promptTokens: 10, completionTokens: 5, latencyMs: 100 }, "teste");
+test("audit-trail: logIntention/logTelemetry/logFullAuditEntry usam o `home` explícito (não resolveHome() global)", () => {
+  withHome((home) => {
+    const telemetryPath = logTelemetry(home, "main", { promptTokens: 10, completionTokens: 5, latencyMs: 100 }, "teste");
     assert.ok(telemetryPath);
+    assert.ok(telemetryPath.startsWith(home), `telemetryPath (${telemetryPath}) deveria estar dentro de ${home}`);
 
-    const fullPath = logFullAuditEntry({
+    const fullPath = logFullAuditEntry(home, {
       ts: "2026-01-01T00:00:00.000Z",
       sessionId: "s1",
       soulId: "main",
@@ -45,13 +42,14 @@ test("audit-trail: logTelemetry e logFullAuditEntry funcionam com ASSISTENTE_OS_
       toolsCalled: [],
     });
     assert.ok(fullPath);
+    assert.ok(fullPath.startsWith(home), `fullPath (${fullPath}) deveria estar dentro de ${home}`);
   });
 });
 
 test("audit-trail: soulId com path traversal degrada (retorna string vazia), não lança", () => {
-  withHome(() => {
+  withHome((home) => {
     assert.doesNotThrow(() => {
-      const path = logIntention({
+      const path = logIntention(home, {
         ts: "2026-01-01T00:00:00.000Z",
         sessionId: "s1",
         soulId: "../../etc",

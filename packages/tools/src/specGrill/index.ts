@@ -56,7 +56,7 @@ export const SPEC_GRILL_HANDLERS: Record<string, ToolHandler> = {
       }
     }
 
-    logFullAuditEntry({
+    logFullAuditEntry(ctx.config.home, {
       ts: new Date().toISOString(),
       sessionId: "mcp-tool",
       soulId: soul.id,
