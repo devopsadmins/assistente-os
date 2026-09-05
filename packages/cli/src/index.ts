@@ -121,8 +121,12 @@ async function main(): Promise<void> {
 
   // Comandos que não tocam o banco não precisam de conectividade pra funcionar.
   // backup também entra na lista: o dump é feito pelo pg_dump (conexão própria),
-  // e abrir pool aqui compete com o daemon por conexões do Postgres.
-  if (cmd !== undefined && cmd !== "help" && cmd !== "--help" && cmd !== "-h" && cmd !== "backup") {
+  // e abrir pool aqui compete com o daemon por conexões do Postgres. discriminator
+  // (SPEC-GR4) só fala com git + Zen/Ollama — sem isto, o job Discriminator do CI
+  // (sem serviço Postgres, só build-and-test tem) crashava em ECONNREFUSED antes
+  // de sequer chegar a julgar o diff (achado ao vivo, 2026-09-05).
+  const NO_DB_COMMANDS = new Set(["help", "--help", "-h", "backup", "discriminator"]);
+  if (cmd !== undefined && !NO_DB_COMMANDS.has(cmd)) {
     const applied = await runMigrations(getPool(config.databaseUrl));
     if (applied.length > 0) console.log(`migrações aplicadas: ${applied.join(", ")}`);
   }
