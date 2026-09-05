@@ -489,6 +489,45 @@ export async function captureAuditedScreenshot(
   }
 }
 
+// ── Isolated-world execution (SPEC-GR3) ─────────────────────────────────
+
+/**
+ * Executa `code` num "isolated world" CDP da página — mesmo DOM (document
+ * compartilhado, então o script ainda pode remover overlay, fechar popup
+ * etc.), mas um realm de JS **separado** do contexto principal: `window` do
+ * isolated world é um objeto novo, não o `window` real da página, então o
+ * script não enxerga variáveis/funções que o site definiu nem herda
+ * prototypes que o site tenha adulterado (`Object.prototype`, etc.) — a
+ * mesma técnica que content-scripts de extensão de browser usam.
+ *
+ * Achado ao escrever isto: `getCDPSession` (abaixo) já existia desde que a
+ * árvore de acessibilidade foi implementada, mas nunca tinha sido chamado
+ * por `executeDynamicFix` — o "sandbox" documentado no docblock antigo era
+ * só uma lista de substrings bloqueadas (`code.includes("fetch(")`),
+ * trivialmente contornável (`window["fe"+"tch"]`) e sem isolamento real: o
+ * script rodava via `page.evaluate`, no mesmo realm da página.
+ */
+async function evaluateInIsolatedWorld(session: CDPSession, code: string): Promise<unknown> {
+  await session.send("Page.enable");
+  const { frameTree } = await session.send("Page.getFrameTree");
+  const { executionContextId } = await session.send("Page.createIsolatedWorld", {
+    frameId: frameTree.frame.id,
+    worldName: "assistente-os-sandbox",
+    grantUniveralAccess: false,
+  });
+  const evalResult = await session.send("Runtime.evaluate", {
+    expression: `(function(){\n${code}\n})()`,
+    contextId: executionContextId,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  if (evalResult.exceptionDetails) {
+    const desc = evalResult.exceptionDetails.exception?.description ?? evalResult.exceptionDetails.text;
+    throw new Error(desc);
+  }
+  return evalResult.result.value;
+}
+
 // ── New: executeDynamicFix ────────────────────────────────────────────
 
 /**
@@ -496,9 +535,12 @@ export async function captureAuditedScreenshot(
  * destravar obstáculos de página (ex.: remoção de overlays invisíveis,
  * desbloqueio de z-index, fechar popups abusivos ou scroll forçado).
  *
- * Executa o script em sandbox com tratamento estrito de exceção (try/catch),
- * retornando { ok: boolean, data?: unknown, error?: string } sem quebrar
- * o processo do daemon.
+ * Executa o script num isolated world CDP (`evaluateInIsolatedWorld`) — sem
+ * acesso ao realm/contexto principal da página — com tratamento estrito de
+ * exceção (try/catch), retornando { ok: boolean, data?: unknown, error?:
+ * string } sem quebrar o processo do daemon. O bloqueio por substring
+ * (dialogs/fetch/storage/import) continua como defesa em profundidade —
+ * isolamento de realm não bloqueia Web APIs por si só.
  *
  * Scripts bem-sucedidos são armazenados em ~/.assistant-os/souls/<soulId>/tools_cache/browser_helpers.json.
  */
@@ -511,30 +553,24 @@ export async function executeDynamicFix(
   if (!page) return { ok: false, error: `Nenhuma página aberta para a tarefa: ${taskId}` };
 
   try {
-    // Execute the script in the page context using page.evaluate
-    const result = await page.evaluate((code: string) => {
-      // Block dangerous operations
-      if (code.includes("alert(") || code.includes("prompt(") || code.includes("confirm(")) {
-        throw new Error("Operações de diálogo não permitidas");
-      }
-      if (code.includes("fetch(") || code.includes("XMLHttpRequest")) {
-        throw new Error("Requisições de rede não permitidas");
-      }
-      if (code.includes("localStorage") || code.includes("sessionStorage")) {
-        throw new Error("Armazenamento local não permitida");
-      }
-      if (code.includes("import") || code.includes("require")) {
-        throw new Error("Importações não permitidas");
-      }
+    // Defesa em profundidade — isolamento de realm (abaixo) não bloqueia Web
+    // APIs por si só, então a lista de substrings continua valendo.
+    if (scriptContent.includes("alert(") || scriptContent.includes("prompt(") || scriptContent.includes("confirm(")) {
+      throw new Error("Operações de diálogo não permitidas");
+    }
+    if (scriptContent.includes("fetch(") || scriptContent.includes("XMLHttpRequest")) {
+      throw new Error("Requisições de rede não permitidas");
+    }
+    if (scriptContent.includes("localStorage") || scriptContent.includes("sessionStorage")) {
+      throw new Error("Armazenamento local não permitida");
+    }
+    if (scriptContent.includes("import") || scriptContent.includes("require")) {
+      throw new Error("Importações não permitidas");
+    }
 
-      // Executa em escopo restrito (só document/window/console do próprio contexto da página)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- acesso a globalThis.document dentro de escopo de execução restrita da página — não é o document do Node
-      const doc = (globalThis as any).document;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- acesso a globalThis.window, mesmo motivo
-      const win = (globalThis as any).window;
-      const fn = new Function("document", "window", "console", code);
-      return fn(doc, win, console);
-    }, scriptContent);
+    const cdp = await getCDPSession(taskId);
+    if ("error" in cdp) throw new Error(cdp.error);
+    const result = await evaluateInIsolatedWorld(cdp.session, scriptContent);
 
     // Store the successful helper in the tools cache
     const soulId = process.env.AGENT_SOUL_ID || "default";
