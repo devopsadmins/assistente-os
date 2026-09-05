@@ -331,6 +331,28 @@ test("mcp: agenda_add agenda uma tarefa e agenda_list lista por status", async (
   }
 });
 
+test("mcp: costs_summary e router_status respondem com o shape esperado", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const costs = await server.handleMessage({
+      jsonrpc: "2.0", id: 280, method: "tools/call",
+      params: { name: "costs_summary", arguments: {} },
+    });
+    const costsParsed = JSON.parse((costs?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { bySoul?: Record<string, number>; recent?: unknown[] };
+    assert.ok(costsParsed.bySoul !== undefined && Array.isArray(costsParsed.recent));
+
+    const router = await server.handleMessage({
+      jsonrpc: "2.0", id: 281, method: "tools/call",
+      params: { name: "router_status", arguments: {} },
+    });
+    const routerParsed = JSON.parse((router?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { tiers?: unknown; ollamaUrl?: string };
+    assert.ok(routerParsed.tiers !== undefined && typeof routerParsed.ollamaUrl === "string");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("mcp: tools/list inclui spec_grill_plan", async () => {
   const home = await tempHome();
   const server = new McpServer({ home });
