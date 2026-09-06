@@ -10,6 +10,17 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **FM1 — ingestão de PDF/DOCX/XLSX no upload self-service** (2026-09-06). Esses
+  formatos eram salvos e nunca indexados. Novo `packages/daemon/src/extract.ts`
+  (`extractDocumentText` + `writeKnowledgeSidecar`): PDF via `pdf-parse` (dep
+  nova — adicionada ao allowlist do backend em `.github/scripts/deps-zones.mjs`
+  com justificativa; DOCX/XLSX reaproveitam o `adm-zip` já presente). O handler
+  `POST /souls/:id/upload` grava um sidecar `<arquivo>.md` (que entra no caminho
+  de indexação RAG existente — `indexFile`/CLI intactos) e responde com
+  `documents: { indexed, skipped }`; documento sem texto extraível
+  (escaneado/protegido/corrompido) é salvo para proveniência, reportado em
+  `skipped`, e não derruba o upload. Sem OCR. `docs/FRIENDLY-MODE.md` e o README
+  atualizados; `docs/ROADMAP.md` fecha FM1.
 - **Nota de coordenação em `docs/AI-INVENTORY.md`**: o domínio de famílias
   (perfil AI-4) foi excluído do escopo deste projeto em 2026-09-05 (vira
   produto separado) — o arquivo ainda apontava pra um ADR dedicado

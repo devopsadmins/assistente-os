@@ -102,7 +102,7 @@ Camada de acesso self-service sobre o daemon — detalhes em **[docs/FRIENDLY-MO
 - **Guarda de posse centralizada**: todo `/souls/:id/*` é verificado contra `ownerAccountId` no gate central de `server.ts` — não rota por rota.
 - **Wizard** (`POST /accounts/me/souls`): cria soul com payload mínimo (`purpose`), default seguro (`autonomy: "ask"`, zero tools), fluxo `dry_run → plan_hash → confirmar`. Teto `ASSISTENTE_OS_MAX_SOULS_PER_ACCOUNT` (default 2).
 - **Configurações escopadas** (`GET`/`PATCH /accounts/me/souls/:id`): `displayName`, `description`, `perfil.md`, `contexto.md`, guardrails numéricos (re-clampados contra o teto global, nunca afrouxam), e `capabilities`/`skills` **só dentro da allowlist do admin**.
-- **Upload de conhecimento self-service**: teto **em KB por conta** (`friendlyUploadKbLimit()`), não em nº de chunks.
+- **Upload de conhecimento self-service**: teto **em KB por conta** (`friendlyUploadKbLimit()`), não em nº de chunks. `.md`/`.txt` indexam direto; `.pdf`/`.docx`/`.xlsx` passam por `extractDocumentText()` e viram um sidecar `<arquivo>.md` que entra na indexação (resposta com `documents: { indexed, skipped }`; documento sem texto extraível é salvo e reportado, não derruba o upload).
 - **Allowlist de admin** (`friendly_allowlist`, `kind ∈ {capability, skill}`, **fechada por padrão**): `GET`/`PUT /admin/friendly-allowlist` — exige token admin, **nunca** sessão de conta. Skills oferecidas ao self-service = só as de escopo global.
 
 ### RAG + Knowledge Graph
@@ -239,7 +239,7 @@ interface; ambos pausados junto com o Modo Amigável, ver
 | GET | `/souls/:id/buffer` | Inspeciona o prompt/contexto montado (RAG incluso) |
 | POST | `/souls/:id/chat` | Chat com a soul (tier: local/zen/soul/langgraph) |
 | GET | `/souls/:id/langgraph/status` \| `/history` | Status/histórico do agente LangGraph |
-| POST | `/souls/:id/upload` | Upload de arquivos (zip-slip protected) |
+| POST | `/souls/:id/upload` | Upload de arquivos (zip-slip protected); PDF/DOCX/XLSX extraídos para sidecar `.md` e indexados |
 | GET | `/souls/:id/memory/status` | Stats de memória (chunks + grafo) |
 | POST | `/souls/:id/memory/search` | Busca RAG com gate de relevância |
 | GET | `/souls/:id/graph` | Grafo (entidades/relações/observações) da soul |
