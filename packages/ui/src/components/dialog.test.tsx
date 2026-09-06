@@ -51,3 +51,14 @@ test("has no a11y violations while open", async () => {
   await user.click(screen.getByRole("button", { name: "Abrir" }));
   await expectNoA11yViolations(screen.getByRole("dialog"));
 });
+
+// DS8: o scrim usava bg-foreground/40 — funcionava só porque --foreground é
+// quase-preto no tema claro; um --overlay dedicado não depende disso.
+test("DS8: scrim usa o token --overlay dedicado, não --foreground", async () => {
+  const user = userEvent.setup();
+  render(<Example />);
+  await user.click(screen.getByRole("button", { name: "Abrir" }));
+  const overlay = document.body.querySelector(".fixed.inset-0");
+  expect(overlay?.className).toMatch(/\bbg-overlay\/40\b/);
+  expect(overlay?.className).not.toMatch(/\bbg-foreground\b/);
+});

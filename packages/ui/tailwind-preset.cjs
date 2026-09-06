@@ -21,6 +21,7 @@ module.exports = {
         foreground: color("foreground", "0.2 0 0"),
         border: color("border", "0.92 0 0"),
         input: color("input", "0.92 0 0"),
+        overlay: color("overlay", "0.2 0 0"),
         ring: color("ring", "0.55 0.1 264"),
         card: { DEFAULT: color("card", "1 0 0"), foreground: color("card-foreground", "0.2 0 0") },
         popover: { DEFAULT: color("popover", "1 0 0"), foreground: color("popover-foreground", "0.2 0 0") },

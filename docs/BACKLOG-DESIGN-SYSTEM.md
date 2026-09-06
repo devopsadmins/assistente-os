@@ -34,7 +34,7 @@ amigável em [`BACKLOG-FRIENDLY-MODE.md`](BACKLOG-FRIENDLY-MODE.md).
 | DS5 | `--accent`/`--chat-user-bubble` não são o "tint de baixo chroma" da spec A1 §3.4 | A1 → A2b | P2 | S–M | ✅ 2026-09-05 | — |
 | DS6 | Preset Tailwind sem fallback se `tokens.css` não for importado | A1 → B | P2 | S | ✅ 2026-09-05 | — |
 | DS7 | Limpeza cosmética em lote (ver item) | A2a | P3 | S | ✅ 2026-09-05 | — |
-| DS8 | Token `--overlay` pro scrim do Dialog (hoje usa `--foreground`, quebra no dark mode) | A1 → futuro dark mode | P3 | S | BLOCKED | dark mode nem existe ainda |
+| DS8 | Token `--overlay` pro scrim do Dialog (hoje usa `--foreground`, quebra no dark mode) | A1 → futuro dark mode | P3 | S | ✅ 2026-09-05 | — |
 | DS9 | Reformular a Global Constraint de `forwardRef` no spec do A1 | A1 (doc) | P3 | S | ✅ 2026-09-05 | — |
 | DS10 | `CodeBlock` + syntax highlight real; `Markdown` renderiza `[[n]]` como `<Citation>` interativo | A2b-1 → A2b | P2 | M | ✅ 2026-09-05 | A2b-1 |
 | DS11 | `Markdown` perde silenciosamente imagens e checkboxes de task-list GFM sob o `ALLOWED_TAGS` atual | A2b-1 → A2b | P2 | S | ✅ 2026-09-05 | A2b-1 |
@@ -98,11 +98,11 @@ Junta vários achados Minor das revisões (nenhum sozinho justifica uma tarefa).
 - ✅ `Markdown` e `Citation` viraram `React.forwardRef` (pro `<div>` wrapper e pro `<button>` do trigger, respectivamente) e espalham `{...props}` — `id`/`data-testid`/`aria-*` agora passam. Em `Markdown`, `onClick`/`onKeyDown` ficam deliberadamente fora do spread (documentado no código): ambos already-drive a delegação de clique do marcador de citação, e um `{...props}` ingênuo por último deixaria um `onClick` do consumidor *substituir* silenciosamente esse comportamento em vez de coexistir com ele.
 **Arquivos**: `packages/ui/src/components/{card,toaster,markdown,citation,no-hardcoded-color.test}.ts(x)`, `packages/ui/src/index.ts`.
 
-### DS8 — Token `--overlay` pro scrim do Dialog  ·  P3  ·  BLOCKED
-**Objetivo**: `dialog.tsx` usa `bg-foreground/40` pro scrim atrás do modal. Hoje é correto (`--foreground` é quase-preto no tema claro), mas quando o dark mode existir `--foreground` vira quase-branco e o scrim vira um "lavado" branco em vez de escurecer o fundo.
-**Bloqueado por**: dark mode não existe ainda (não estava no escopo do A1 nem do A2a — spec do A1 explicitamente não entrega tema escuro no v1).
-**Aceitação**: token `--overlay` dedicado, independente de `--foreground`.
-**Arquivos**: `packages/ui/src/tokens.css`, `packages/ui/src/components/dialog.tsx`.
+### DS8 — Token `--overlay` pro scrim do Dialog  ·  P3
+**Objetivo**: `dialog.tsx` usava `bg-foreground/40` pro scrim atrás do modal. Funcionava só porque `--foreground` é quase-preto no tema claro; quando o dark mode existir, `--foreground` vira quase-branco e o scrim ficaria "lavado" em vez de escurecer o fundo.
+**Estado (✅ 2026-09-05)**: `--overlay` (novo, `0.2 0 0` — mesmo valor de `--foreground` hoje, mas independente) adicionado a `tokens.css` e ao preset Tailwind (com fallback, seguindo o padrão do DS6). `dialog.tsx` usa `bg-overlay/40`. Não precisou esperar dark mode existir de verdade — a correção (desacoplar o token) é independente de quando/se dark mode for implementado.
+**Aceitação**: ✅ token `--overlay` dedicado, independente de `--foreground`.
+**Arquivos**: `packages/ui/src/tokens.css`, `packages/ui/src/components/dialog.tsx`, `packages/ui/tailwind-preset.cjs` (+ `dialog.test.tsx`).
 
 ### DS9 — Reformular a Global Constraint de `forwardRef`  ·  P3
 **Objetivo**: o texto do spec do A1 diz "todo componente é um `forwardRef`" — a revisão final do A2a mostrou que isso é amplo demais: `Dialog`/`Popover`/`Select`/`DropdownMenu`/`Tooltip`/`Tabs` (as raízes) são re-exports de providers de contexto do Radix que não renderizam nó DOM nenhum — um `forwardRef` ali mentiria sobre o que existe.
