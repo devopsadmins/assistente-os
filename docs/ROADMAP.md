@@ -20,6 +20,55 @@ link, com o resultado/decisão já registrado no texto.
 
 ---
 
+## Posicionamento / modelo de negócio
+
+Consolidado de uma análise externa de tendências de IA para 2026 que
+corroborou três teses já assumidas no projeto. Não é backlog — é o
+enquadramento que orienta o que vira produto (ver nota de arquivamento
+acima e **FM2** em Aberto).
+
+### Diagnóstico de mercado 2026 (validação externa)
+
+- **FOMO não gera lucro.** Adoção por medo de ficar pra trás — licenças
+  avulsas, chatbots soltos no WhatsApp — gera churn. Automatizar processo
+  ruim só escala o erro mais rápido.
+- **Processo e dados antes da ferramenta.** "Base limpa" é pré-requisito,
+  não consequência da adoção de IA.
+- **Virada agêntica: de responder a executar.** O modelo deixa de ser
+  interlocutor e passa a motor cognitivo que planeja, chama ferramentas
+  (MCP/APIs), navega sistemas e devolve ao humano só o julgamento de
+  exceção (Human-in-the-Loop). Fim da era do prompt simples.
+- **SLMs especializados + hardware próprio** no lugar da corrida por
+  modelos gigantes: elimina custo abusivo de token de nuvem em rotinas
+  mecânicas e dá soberania sobre os dados.
+- **Governança como critério de compra.** Conformidade (LGPD,
+  rastreabilidade, auditoria) é critério de fechamento comercial em PMEs e
+  médias empresas — não burocracia.
+
+### Diferencial arquitetural: memória canônica local-first em Markdown
+
+O Markdown em `~/.assistant-os/souls/` é a fonte da verdade; o
+Postgres/pgvector é só índice descartável e reconstruível. Frente a
+concorrentes presos a um banco vetorial proprietário, isso mantém a base
+legível, versionável e portável — a resposta técnica direta ao "organize
+os dados primeiro".
+
+### Modelo de negócio: consultoria produtizada de infraestrutura (AI-First OS)
+
+O ponto que o texto de tendências omite — *como implementar sem gastar
+milhões nem inchar a equipe de TI* — é onde está a monetização:
+
+- O cliente não quer mais um SaaS nem horas de desenvolvimento; quer a
+  **arqueologia dos próprios processos** — regras tácitas que ele não sabe
+  documentar.
+- O serviço extrai essas regras, estrutura a base em Markdown e instala o
+  "cérebro".
+- **Cobrança:** setup estruturado para resolver o gargalo + mensalidade de
+  sustentação e governança. O `assistente-os` é engine/moat, não um SaaS
+  vendido avulso.
+
+---
+
 ## Aberto
 
 ### Governança / infraestrutura de release
