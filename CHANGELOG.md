@@ -8,6 +8,17 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Removido
+
+- **Job `discriminator` do CI** (`.github/workflows/ci.yml`, 2026-09-06, decisão
+  do usuário). O gate SPEC-GR4 (Guardian/LLM pontuando o diff do PR 0-100 e
+  reprovando abaixo de 95) chamava um LLM — Zen cloud no runner, ou Ollama.
+  Nenhum PR depende mais de IA; os gates que permanecem (`compliance`,
+  `build-and-test`) são determinísticos. O comando continua disponível para uso
+  local sob demanda: `node packages/cli/dist/index.js discriminator --base origin/main`.
+  CONTRIBUTING.md atualizado (lista de status checks de branch protection, seção
+  de secrets). O secret `ZEN_API_KEYS`/`ZEN_API_KEY` deixa de ser usado pelo CI.
+
 ### Adicionado
 
 - **FM1 — ingestão de PDF/DOCX/XLSX no upload self-service** (2026-09-06). Esses

@@ -122,57 +122,9 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  # SPEC-GR4 — gate Discriminator: julga o diff do PR via Guardian
-  # (packages/core/src/governance/golden-rules.ts::auditExecution, score
-  # 0-100 ISO/IEC 42001) e falha o job (exit != 0) se vier abaixo de 95/100.
-  # Roda depois de build-and-test (não gasta chamada de LLM num build quebrado).
-  # Usa o Zen (cloud) — o runner não tem Ollama local; requer o secret
-  # ZEN_API_KEYS (lista separada por vírgula, rodízio round-robin — ver
-  # packages/core/src/zen-keys.ts) ou ZEN_API_KEY (chave única, compat) no
-  # repositório (Settings → Secrets and variables → Actions). ZEN_API_KEYS
-  # tem precedência: com várias chaves cadastradas, espalha o consumo entre
-  # PRs em vez de bater rate-limit numa única chave.
-  # Rodar localmente: `node packages/cli/dist/index.js discriminator --base origin/main`
-  # (sem nenhuma configurada na máquina, cai pro Ollama local automaticamente).
-  discriminator:
-    name: Discriminator
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    env:
-      ZEN_API_KEYS: ${{ secrets.ZEN_API_KEYS }}
-      ZEN_API_KEY: ${{ secrets.ZEN_API_KEY }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # git diff origin/<base>...HEAD precisa do histórico completo dos
-          # dois lados — checkout raso (default) não tem o ref da base.
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Discriminator
-        run: node packages/cli/dist/index.js discriminator --out "discriminator-${GITHUB_SHA}.json"
-
-      # if: always() — o parecer (mesmo reprovado) precisa ficar disponível
-      # pra revisão manual; sem isto, um exit!=0 no passo acima pularia o upload.
-      - name: Upload discriminator verdict
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: discriminator-${{ github.sha }}
-          path: discriminator-*.json
-          if-no-files-found: warn
-          retention-days: 90
+  # NOTA: o job `discriminator` (SPEC-GR4 — Guardian/LLM pontuando o diff do PR
+  # 0-100 e reprovando abaixo de 95) foi removido em 2026-09-06 por decisão do
+  # usuário: nenhum PR depende mais de chamada de IA. O gate continua disponível
+  # sob demanda, localmente:
+  #   node packages/cli/dist/index.js discriminator --base origin/main
+  # (usa Zen se ZEN_API_KEYS/ZEN_API_KEY estiver no ambiente, senão Ollama local).
