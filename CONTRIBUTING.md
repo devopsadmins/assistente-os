@@ -14,17 +14,17 @@ mesmo assim.
 1. Ramifique de `dev`: `git checkout -b <tipo>/<slug>` (`feat/…`, `fix/…`, `docs/…`, `refactor/…`, `ci/…`).
 2. Commits pequenos. Mensagem termina com `Co-Authored-By:` quando aplicável.
 3. Abra o PR contra `dev` (nunca direto contra `main`). O template (`.github/pull_request_template.md`) tem 3 seções obrigatórias.
-4. O CI roda três jobs (em push pra `dev`/`main` e em todo PR):
+4. O CI roda dois jobs (em push pra `dev`/`main` e em todo PR):
    - **`compliance`** — valida descrição mínima, referência de rastreabilidade
      (`ADR-XXX` / `roadmap` / `Exx` / `Tn.n` / `#issue`), linha `Rollback:` com
      plano real, e — se o PR toca caminho sensível — uma entrada em `CHANGELOG.md`
      ou `docs/adr/` no mesmo PR.
    - **`build-and-test`** — `npm run build` → `typecheck` → `test` + manifesto de execução.
-   - **`Discriminator`** (SPEC-GR4) — depois de `build-and-test` passar, julga o
-     diff do PR via Guardian (`auditExecution`, score 0-100 ISO/IEC 42001) e
-     falha se vier abaixo de 95/100. O parecer (JSON com `score`/`feedback`) sai
-     no log do step e como artefato `discriminator-<sha>` — sempre, mesmo
-     reprovado. Ver "Rodando o gate Discriminator localmente" abaixo.
+
+   > O job **`Discriminator`** (SPEC-GR4 — Guardian/LLM pontuando o diff do PR e
+   > reprovando abaixo de 95/100) foi **removido do CI em 2026-09-06**: nenhum PR
+   > depende mais de chamada de IA. O gate segue disponível sob demanda,
+   > localmente — ver "Rodando o gate Discriminator localmente" abaixo.
 5. Todos verdes → merge em `dev` (squash ou merge commit; não force-push).
 6. Promoção pra produção: PR `dev`→`main`, depois que o conjunto acumulado em
    `dev` passou por testes + homologação manual.
@@ -50,15 +50,14 @@ Se/quando fizer sentido pagar pelo GitHub Pro (ou tornar o repo público),
 em **Settings → Branches → Branch protection rules** para `main`:
 
 - ✅ Require a pull request before merging
-- ✅ Require status checks to pass — selecione `compliance`, `build-and-test` e `Discriminator`
+- ✅ Require status checks to pass — selecione `compliance` e `build-and-test`
 - ✅ Require branches to be up to date before merging
 - (opcional) ✅ Require conversation resolution before merging
 
-Em **Settings → Secrets and variables → Actions → Repository secrets**, adicione
-`ZEN_API_KEY` (chave do OpenCode Zen — o job `Discriminator` roda num runner
-sem Ollama local). Sem o secret, o step falha com "Guardian indisponível".
-
 ### Rodando o gate Discriminator localmente
+
+Opcional — não é mais exigido em nenhum PR; use quando quiser um parecer da IA
+sobre um diff antes de abrir/mergear.
 
 ```bash
 npm run build --workspace=packages/cli

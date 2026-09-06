@@ -7,8 +7,13 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
 import { extractDocumentText, writeKnowledgeSidecar, DOC_EXT_RE } from "../extract.js";
+
+// Fixtures ficam na árvore de fonte (o tsc não copia .pdf para dist/): a partir
+// de dist/test/ subimos dois níveis até packages/daemon/ e entramos em src/test/.
+const FIXTURES = fileURLToPath(new URL("../../src/test/fixtures/", import.meta.url));
 
 // ---------- fixture builders ----------
 
@@ -160,17 +165,19 @@ test("DOC_EXT_RE casa pdf/docx/xlsx e ignora o resto", () => {
 });
 
 test("extractDocumentText: PDF com texto", async () => {
-  const p = tmp("contrato.pdf", makePdf("Contrato de prestacao de servicos - clausula 1"));
-  const r = await extractDocumentText(p);
-  assert.equal(r.ok, true);
-  assert.match((r as { text: string }).text, /Contrato de prestacao de servicos/);
+  const r = await extractDocumentText(join(FIXTURES, "contrato.pdf"));
+  assert.equal(r.ok, true, r.ok ? "" : (r as { reason: string }).reason);
+  assert.match((r as { text: string }).text, /Contrato de presta/i);
 });
 
-test("extractDocumentText: PDF sem camada de texto → ok:false com motivo", async () => {
+test("extractDocumentText: PDF sem texto extraível → ok:false com motivo", async () => {
+  // makePdf("") produz um PDF válido mas sem run de texto; o pdf.js antigo do
+  // pdf-parse ora devolve texto vazio, ora rejeita o xref — os dois casos são
+  // "não indexável", só o texto do motivo varia.
   const p = tmp("scan.pdf", makePdf(""));
   const r = await extractDocumentText(p);
   assert.equal(r.ok, false);
-  assert.match((r as { reason: string }).reason, /texto/i);
+  assert.ok(typeof (r as { reason: string }).reason === "string" && (r as { reason: string }).reason.length > 0);
 });
 
 test("extractDocumentText: PDF corrompido → ok:false, não lança", async () => {
