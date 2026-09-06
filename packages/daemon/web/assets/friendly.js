@@ -405,8 +405,16 @@ $("#friendly-settings-upload-btn").addEventListener("click", async () => {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const savedCount = (data.saved ?? []).length;
     const rejected = data.rejected ?? [];
+    const docsIndexed = data.documents?.indexed ?? [];
+    const docsSkipped = data.documents?.skipped ?? [];
     const rejectedHtml = rejected.map((r) => `<div class="friendly-upload-err">✗ ${esc(r.name)}: ${esc(r.reason)}</div>`).join("");
-    result.innerHTML = `${savedCount ? `<div>✓ ${savedCount} arquivo(s) enviado(s)${data.indexing ? " — indexando…" : ""}</div>` : ""}${rejectedHtml}`;
+    const docsIndexedHtml = docsIndexed.length
+      ? `<div>📄 ${docsIndexed.length} documento(s) convertido(s) em conhecimento</div>`
+      : "";
+    const docsSkippedHtml = docsSkipped
+      .map((d) => `<div class="friendly-upload-err">⚠ ${esc(d.name)}: ${esc(d.reason)}</div>`)
+      .join("");
+    result.innerHTML = `${savedCount ? `<div>✓ ${savedCount} arquivo(s) enviado(s)${data.indexing ? " — indexando…" : ""}</div>` : ""}${docsIndexedHtml}${docsSkippedHtml}${rejectedHtml}`;
     input.value = "";
     await refreshSettingsView(); // atualiza "X de Y KB usados"
   } catch (err) {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { loadConfig, getPool, getSoul, anotar, registrarLicao, decidir, logger } from "@assistente-os/core";
 import { indexFile, indexStats, searchWithVerdict, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder } from "@assistente-os/memory";
 import { handleUpload, directoryTotalBytes, friendlyUploadKbLimit } from "../upload.js";
+import { extractDocumentText, writeKnowledgeSidecar, DOC_EXT_RE } from "../extract.js";
 import { relevanceRule } from "../relevance.js";
 import { sendJson, parseBody, requiredTrimmedString, type RequestContext } from "./shared.js";
 import { getRequestAccountId } from "./accountAuth.js";
@@ -157,25 +158,62 @@ export async function handleMemory(
     // a soul inteira (indexDirectory) a cada upload re-embeda tudo via Ollama —
     // horas em CPU — e a resposta HTTP ficava presa até o fim (a UI travava em
     // "enviando…"). Reindex completo continua disponível pela CLI (comando index).
+    //
+    // FM1: PDF/DOCX/XLSX não são texto — extraímos aqui (síncrono, rápido para
+    // o volume típico do self-service, já limitado pelo teto de KB), gravando um
+    // sidecar `<arquivo>.md` que entra no mesmo caminho de indexação.
     const TEXT_EXT = /\.(md|markdown|txt)$/i;
     const newFiles: string[] = [];
+    const docsIndexed: { from: string; sidecar: string; chars: number }[] = [];
+    const docsSkipped: { name: string; reason: string }[] = [];
+
+    const candidatePaths: string[] = [];
     for (const s of result.saved) {
       if (s.extracted) {
         const destDir = join(uploadsDir, s.name.replace(/\.zip$/i, ""));
-        for (const entry of s.extracted) if (TEXT_EXT.test(entry)) newFiles.push(join(destDir, entry));
+        for (const entry of s.extracted) {
+          if (TEXT_EXT.test(entry)) newFiles.push(join(destDir, entry));
+          else if (DOC_EXT_RE.test(entry)) candidatePaths.push(join(destDir, entry));
+        }
       } else if (TEXT_EXT.test(s.name)) {
         newFiles.push(join(uploadsDir, s.name));
+      } else if (DOC_EXT_RE.test(s.name)) {
+        candidatePaths.push(join(uploadsDir, s.name));
       }
     }
+    for (const docPath of candidatePaths) {
+      const extracted = await extractDocumentText(docPath);
+      const shortName = docPath.slice(uploadsDir.length + 1);
+      if (extracted.ok) {
+        const sidecar = writeKnowledgeSidecar(docPath, extracted.text);
+        newFiles.push(sidecar);
+        docsIndexed.push({ from: shortName, sidecar: sidecar.slice(uploadsDir.length + 1), chars: extracted.text.length });
+      } else {
+        docsSkipped.push({ name: shortName, reason: extracted.reason });
+      }
+    }
+
     try {
       hub.broadcast(
-        { type: "upload.done", soul: soul.id, saved: result.saved.length, rejected: result.rejected.length },
+        {
+          type: "upload.done",
+          soul: soul.id,
+          saved: result.saved.length,
+          rejected: result.rejected.length,
+          documents: docsIndexed.length,
+          documentsSkipped: docsSkipped.length,
+        },
         { accountId: soul.config.ownerAccountId ?? null },
       );
     } catch {
       /* ws opcional */
     }
-    sendJson(res, result.rejected.length > 0 && result.saved.length === 0 ? 400 : 200, { ok: true, ...result, indexing: newFiles.length });
+    sendJson(res, result.rejected.length > 0 && result.saved.length === 0 ? 400 : 200, {
+      ok: true,
+      ...result,
+      indexing: newFiles.length,
+      documents: { indexed: docsIndexed, skipped: docsSkipped },
+    });
     if (newFiles.length > 0) {
       const config = loadConfig({ home });
       const pool = getPool(config.databaseUrl);

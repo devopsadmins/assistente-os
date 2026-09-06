@@ -93,8 +93,8 @@ funcional, sem manutenção ativa. Detalhe item-a-item (critério de aceite,
 arquivos afetados) arquivado na soul `consultoria_ia` (cliente SousaLima) —
 aqui só o resumo:
 
-- **FM1** (P0) — ingestão de PDF/DOCX/XLSX no upload self-service; hoje um
-  upload desses é gravado mas nunca indexado (fica morto).
+- **FM1** (P0) — ~~ingestão de PDF/DOCX/XLSX no upload self-service~~ **FEITO
+  2026-09-06** (ver Concluído).
 - **FM2** (P1) — decisão de posicionamento SaaS hospedado × auto-hospedável;
   onboarding hoje é 100% dev (Node/Postgres/Docker/`.env` manual).
 - **FM3** (P1) — white-label: marca/logo hoje hardcoded em `friendly.html`.
@@ -168,6 +168,24 @@ nesta página.
 ---
 
 ## Concluído (histórico)
+
+### 2026-09-06 — FM1: ingestão de PDF/DOCX/XLSX no upload self-service
+
+Upload de PDF/DOCX/XLSX deixou de "ficar morto". Novo
+`packages/daemon/src/extract.ts`: PDF via `pdf-parse` (dep nova, no allowlist
+de `deps-zones.mjs` com justificativa; import do módulo interno
+`pdf-parse/lib/pdf-parse.js` + warm-up do pdf.js pra contornar o
+"bad XRef entry" da 1ª invocação); DOCX/XLSX via `adm-zip` já presente
+(parse manual do XML — parágrafos do `word/document.xml`; `sharedStrings` +
+`## <planilha>` + células por ` | ` no XLSX); teto defensivo de 5 M de
+caracteres. O handler `/souls/:id/upload` (`routes/memory.ts`) extrai
+síncrono, grava um sidecar `<arquivo>.md` (cabeçalho de origem + texto) que
+entra no caminho de indexação existente, e responde com
+`documents: { indexed, skipped }`; documento ilegível (escaneado/protegido/
+corrompido) é salvo para proveniência, reportado em `skipped` e **não**
+derruba o upload. `indexFile`/CLI seguem intactos (já ignoram binário via
+`scanTextFiles`). Testes: `extract.test.ts` (8, fixtures OOXML/PDF montadas
+em memória) + `friendly-doc-upload.test.ts` (2, rota ponta a ponta).
 
 ### 2026-08-27 — E1–E10
 
