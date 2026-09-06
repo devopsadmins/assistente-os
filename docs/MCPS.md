@@ -43,7 +43,7 @@ Design de UI (texto → componentes) via o hosted MCP da Google
 (`https://stitch.googleapis.com/mcp`). **Não está configurado** em nenhum
 `opencode.json` / `opencode.jsonc` (projeto ou global) desde 2026-08-18.
 
-> **Decisão (2026-08-27 — T1.2 de `docs/ARCHITECTURE-REVIEW.md`):** manter fora.
+> **Decisão (2026-08-27 — T1.2 de `docs/ARCHITECTURE-REVIEW.md` (arquivado)):** manter fora.
 > O Stitch não é usado desde a remoção e não há demanda de geração de UI no fluxo
 > atual. Reintroduzir só quando essa necessidade aparecer — e, aí, via OAuth
 > nativo do opencode (ver abaixo), **nunca** com token estático.

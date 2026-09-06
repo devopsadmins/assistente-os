@@ -1,836 +1,362 @@
-# Roadmap de Implementação — Assistente OS
+# Roadmap — Assistente OS
 
-Backlog acionável dos itens abertos, com spec por epic. O **estado atual** (o que
-já funciona) vive no [README](../README.md); este documento é só o que falta
-**implementar**, em ordem de execução.
+Este documento é o histórico do que foi entregue e o que ainda está em aberto.
+Para o que o sistema **faz hoje** (features, pacotes, API, deploy), ver o
+[README](../README.md) — ele não tem mais uma narrativa de mudanças, só o
+estado atual.
 
-Cada epic traz: objetivo, estado atual verificado no código, arquivos afetados,
-design, contratos/assinaturas, critérios de aceitação, plano de teste, esforço
-(S ≈ ½–1 dia, M ≈ 2–4 dias, L ≈ 1–2 semanas) e dependências.
+Convenção de datas: cada entrada do "Concluído" carrega a data real da
+sessão em que foi fechada (não a data de criação do item), para servir como
+timeline confiável do projeto.
 
-> **Execução (2026-08-27):** E1–E6, E8–E10 concluídos numa sessão (branch
-> `feat/roadmap-execution`); E7 é doc + ação do usuário no dashboard Cloudflare.
-> Testes: core 222 · daemon 119 · memory 48 · tools 22 · cli 2 (**413**, +36),
-> typecheck limpo. Correção estrutural de quebra: `packages/daemon/tsconfig.json`
-> excluía `src/test/**` — a suíte do daemon não compilava desde o commit
-> `2db4a1d`; restaurada. Pendências residuais fechadas em 2026-08-27: assinaturas
-> humanas (RACIs dos ADRs, owners do inventário) registradas como owner-accepted;
-> passo de CI `Execution manifest` anexa `manifest-<sha>.json` ao build. Resta só
-> a ação no dashboard Cloudflare (E7, fora do repo).
-
-> **Nota de ground-truth (2026-08-27):** a seção *Pendências* do README estava
-> desatualizada em três pontos verificados neste levantamento:
-> 1. **Multi-turno já existe em grande parte** — `session_messages` (migração
->    `0009`), `recordSessionMessage`/`getRecentSessionMessages`, rotação de
->    sessão por inatividade (`sessionIdleTimeoutMinutes`, default 120 min) e
->    injeção de histórico no `buildPrompt` já estão implementados e ligados ao
->    `POST /souls/:id/chat`. O que falta é endurecimento (E2), não construção.
-> 2. **Ciclo de vida da sessão** já tem rotação por idle; não é greenfield.
-> 3. O restante (FinOps de tokens, scaffolding ORCA, `soul_create`/`worktree_list`,
->    observabilidade, gates AI-3, LGPD) confere com o README.
+**Nota sobre arquivamento (2026-09-06):** o repositório principal vai virar
+produto — documentos de processo (ADRs, specs/plans do `superpowers/`,
+análises pontuais, dumps do NotebookLM, backlogs já fechados, ideias não
+comprometidas) foram arquivados fora do repo, na soul `consultoria_ia`
+(cliente **SousaLima**, `conhecimento/clientes/sousalima/arquivo-historico/`)
+e removidos daqui. Este ROADMAP absorveu o conteúdo essencial de cada um antes
+do arquivamento — links que apontavam pra esses arquivos viraram menções sem
+link, com o resultado/decisão já registrado no texto.
 
 ---
 
-## Estado 2026-08-30 — remediação da análise crítica + RAG enterprise
+## Aberto
 
-Runbook de deploy + protocolo de teste: **[`docs/TESTES-DEPLOY-COMPLETO.md`](TESTES-DEPLOY-COMPLETO.md)**.
+### Governança / infraestrutura de release
 
-**Concluído (PRs #11–#20):**
+- **E7 — Cloudflare Access service token.** Procedimento documentado em
+  [docs/CLOUDFLARE-ACCESS.md](CLOUDFLARE-ACCESS.md) (criar, autorizar na
+  policy, guardar, usar, rotacionar); nenhum código de daemon muda — os
+  headers `CF-Access-*` são consumidos na borda da Cloudflare. Falta só a
+  ação do usuário no dashboard Cloudflare Zero Trust + preencher
+  `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET` em `~/.assistant-os/.env`.
+- **Onda 3f residual** (multi-tenant já decidido "sim" — Modo Amigável, ver
+  Concluído): falta o ADR do modelo de dados de conta (e-mail + hash de
+  senha, base legal/retenção — mesmo gate G3 do `ADR-PRIV-001`), o preflight
+  de requisitos de skill + co-concessão de tools no picker amigável, e a
+  limpeza do caminho legado `X-Client-Id`/`client_key` (coexiste com
+  `accounts` sem reconciliação) e do `ffmpeg` hardcoded.
 
-- **Remediação da análise crítica** — Onda 0 (contenção: `/health` sem PII,
-  `agenda` por soul, higiene de git), Onda 1a (Zero Trust aplicado no MCP e
-  LangGraph, flag `MCP_ZERO_TRUST`), Onda 1b (rate limit + cap de concorrência),
-  Onda 2 (trace `x-trace-id`/`execution_spans` + `os trace` + e2e guardados),
-  Onda 3a (docs sincronizados + `.env.example`), Onda 3b (checksum de migração),
+### Modo Amigável — PAUSADO (decisão do usuário, 2026-09-04)
+
+Trabalho existente (Fases 0–4 + upload de conhecimento, ver Concluído) segue
+funcional, sem manutenção ativa. Detalhe item-a-item (critério de aceite,
+arquivos afetados) arquivado na soul `consultoria_ia` (cliente SousaLima) —
+aqui só o resumo:
+
+- **FM1** (P0) — ingestão de PDF/DOCX/XLSX no upload self-service; hoje um
+  upload desses é gravado mas nunca indexado (fica morto).
+- **FM2** (P1) — decisão de posicionamento SaaS hospedado × auto-hospedável;
+  onboarding hoje é 100% dev (Node/Postgres/Docker/`.env` manual).
+- **FM3** (P1) — white-label: marca/logo hoje hardcoded em `friendly.html`.
+- **FM4** (P1) — fluxo "esqueci minha senha" (não existe nenhum reset hoje);
+  depende de um canal de e-mail transacional, que também não existe.
+- **FM6** (P2) — auditoria completa de mensagens de erro expostas ao
+  friendly (parcialmente feito; faltam vários caminhos: RAG "evidência
+  insuficiente", sessão expirada, upload rejeitado, 429/503, timeout de LLM).
+- **B-DEPLOY-1 / B-DEPLOY-2** (pausados junto, mesma infra de contas): `AuthScreen`
+  real no `packages/web` (hoje token fixo `VITE_DEV_TOKEN` embutido no
+  build) + roteamento em `server.ts` (`/` deveria servir `packages/web` com
+  sessão de conta válida, `/hud` exigir token admin). `FM5` do backlog de
+  friendly é o mesmo item que B-DEPLOY-2 — não tratar como dois.
+- **Gaps de isolamento** (arquitetura, não UX — fora do board de friendly mas
+  documentados lá): `soul.config.ownerAccountId` não tem FK, isolamento é só
+  por aplicação rota-a-rota, sem teste que quebre ao esquecer o gate numa
+  rota nova; `excluirFamilia` (LGPD) não tem dimensão de conta.
+
+### RAG / medição
+
+- **E13 — protocolo "zero → real" (Fase 2/3)**: Fase 1 (o runbook de deploy +
+  teste, [docs/TESTES-DEPLOY-COMPLETO.md](TESTES-DEPLOY-COMPLETO.md)) está
+  pronta. Fase 2 (volume) e o relatório de prontidão dependem de corpus real
+  de cliente — não têm como avançar sem isso.
+- **Toggles OFF a medir em staging**: `RAG_RERANK` (cross-encoder/llm),
+  `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, prefill da Etapa 9 — todos
+  shipam desligados por padrão, aguardando medição real de ganho/custo.
+  `os rag eval --history` é a ferramenta pra isso.
+- **Spike BitNet (`bitnet.cpp`)**: inferência 1.58-bit CPU-first pro tier mais
+  barato do router, rodando em paralelo ao Ollama. Motivação original ("Ollama
+  CPU lento" na máquina de deploy) foi parcialmente atenuada por um setup de
+  Ollama remoto numa máquina de trabalho mais forte (uso pessoal/dev) — mas a
+  meta de baratear o tier de produção pra instalações de cliente reais
+  (sem acesso a essa máquina) continua uma motivação distinta e válida.
+  Diretório preparado em `/home/support/bitnet-spike/`. Esforço: S–M.
+
+### Dívida técnica conhecida
+
+- **CI flakiness**: `kill-switch.test.ts` falhou 1x no CI (PR #36) com
+  `deadlock detected` (`40P01`) no `DROP SCHEMA` de `pgTestHelper.js` —
+  sintoma de testes em paralelo disputando schema no mesmo Postgres. Não
+  reproduziu localmente, não investigado a fundo. P3, monitorar recorrência.
+- **B-FUTURE**: streaming token-a-token pro tier LangGraph — adiado
+  explicitamente como follow-up na spec original, não bloqueia nada hoje.
+
+### Ações operacionais pendentes (não são item de planejamento)
+
+- **OPS-01** — limpar threads de teste (#1–#4) na soul `main`. Tentativa de
+  execução direta bloqueada pelo classificador de permissão (ação de
+  DELETE); precisa rodar manualmente ou com aprovação explícita.
+
+### Exclusões de escopo registradas
+
+- **ADR-PRIV-002 / ADR-AI-005 (perfil AI-4 de famílias)**: excluído do
+  backlog deste projeto em 2026-09-05 (decisão do usuário) — o domínio
+  famílias foi um teste que vira produto separado, fora do escopo do
+  assistente-os. O ADR-PRIV-001 (aceito, arquivado — ver nota abaixo) e
+  `docs/AI-INVENTORY.md` #6 registram o resíduo formalmente, com nota de
+  coordenação apontando pra esta exclusão.
+
+---
+
+## Ideias não comprometidas
+
+16 ideias especulativas (tieradas Tier 1–3), consolidadas de um brainstorm
+maior, arquivadas na soul `consultoria_ia` (cliente SousaLima). **Nada ali
+está aprovado** — é material de prospecção, não backlog ativo. Arquivado à
+parte de propósito pra não se misturar com o que é trabalho comprometido
+nesta página.
+
+---
+
+## Concluído (histórico)
+
+### 2026-08-27 — E1–E10
+
+Dez epics fechados numa sessão (branch `feat/roadmap-execution`), 413 testes,
+typecheck limpo:
+
+- **E1 — FinOps, captura de tokens no chat.** Cada resposta de chat grava
+  `prompt_tokens`/`completion_tokens`/`model_used`/`execution_mode` em
+  `router_history` (linha `status='executed'` separada das sondas de
+  roteamento) e `getUsageSummary()` agrega por soul/mode/model. Ollama lê
+  `prompt_eval_count`/`eval_count` nativos; LangGraph soma `usage_metadata`
+  das mensagens; opencode usa estimativa por caractere como fallback
+  declarado. `packages/core/src/router.ts`, `packages/core/src/tokens.ts`.
+- **E2 — Sessões multi-turno, endurecimento.** Histórico truncado por
+  orçamento de caracteres (`ASSISTENTE_OS_SESSION_HISTORY_MAX_CHARS`);
+  reidratação do checkpoint LangGraph via `seedMessages` (sobrevive a
+  restart do daemon, já que a fonte de verdade é o Postgres); isolamento por
+  `client_key` (`X-Client-Id` ou hash do token) evita vazar histórico entre
+  clientes da mesma soul. `packages/core/src/sessions.ts`.
+- **E3 — Mission Runner ligado ao daemon.** Steps antes falsos
+  (`browser-*`, `guardian-audit`) agora fazem trabalho real; modos
+  `headless`/`guarded`/`full` (os dois últimos interrompem a missão se a
+  auditoria do Guardian reprovar). REST `/api/missions` + MCP
+  `mission_list`/`mission_run`. Corrigiu no caminho um bug estrutural sério:
+  `packages/daemon/tsconfig.json` excluía `src/test/**` desde um commit
+  anterior — a suíte do daemon não compilava havia tempo.
+  `packages/daemon/src/orchestrator/mission-runner.ts`.
+- **E4 — Terminal Sanitizer + cache em camadas, ligados à produção.**
+  Sanitizer trunca saída verbosa de build/test no merge de worktree; cache
+  (Redis com fallback em memória) em `getUsageSummary` (TTL 30s) e
+  `retrieveContext` (TTL 60s).
+- **E5 — `soul_create` + `worktree_list` no MCP.** `soul_create` com
+  dry-run/commit por `plan_hash` (L3, exige `AGENT_SOUL_ID` autorizado);
+  `worktree_list` reusa a mesma função da rota REST.
+- **E6 — Observabilidade: Sentry + Prometheus/Grafana.** `GET /metrics`
+  (Bearer, prefixo `aos_`), Sentry opcional via `SENTRY_DSN` (no-op sem
+  DSN, `beforeSend` roda o content-filter), stack local via
+  `docker compose --profile observability up`.
+- **E7 — Cloudflare Access, doc pronto.** Ver Aberto — só falta ação externa
+  no dashboard.
+- **E8 — Governança AI-3.** Suíte cross-tenant (RAG/grafo/sessões/custos
+  isolados por soul), execution manifest determinístico
+  (`GET /api/manifest`, anexado ao build pelo CI), testes de kill-switch
+  (provider nunca chamado quando o limite corta), `docs/AI-INVENTORY.md`
+  (10 sistemas classificados), RACI do `ADR-AI-003` aceita pelo owner.
+  Achado e corrigido no caminho: `execution_logs.verdict` vazava `snippet`
+  de documento em `/infra/status` — `sanitizeVerdictForLog`.
+- **E9 — LGPD, fechar `ADR-PRIV-001`.** ADR aceito; gate de consentimento no
+  onboarding de famílias (`consent_evidence_ref`, não avança sem isso);
+  rotação de backup vs. eliminação documentada (§8 do ADR). Resíduo formal:
+  ADR dedicado ao perfil AI-4 (`ADR-PRIV-002`/`ADR-AI-005`) — **excluído do
+  escopo em 2026-09-05**, ver "Exclusões de escopo" acima.
+- **E10 — RAG, estágio de reranking.** `rerank()` (cross-encoder via
+  `@xenova/transformers` ou juiz LLM), default `off`. Correção 2026-08-28
+  (abaixo): o caminho cross-encoder era um no-op silencioso até então.
+
+### 2026-08-28 — Revisão de arquitetura
+
+`docs/ARCHITECTURE-REVIEW.md` (arquivado). Backlog concluído:
+gate de compliance no CI, golden set de RAG + baseline, conserto do bug de
+no-op silencioso no reranker cross-encoder (`getCrossEncoderScorer` chamava
+o pipeline do `@xenova/transformers` com assinatura de par não suportada —
+reescrito para tokenizer + model diretos), Prompt Garden, cache semântico de
+RAG, canvas de arquitetura por soul, escalonamento do roteador por
+confiança, reordenação do montador de prompt (`buildPrompt`, do bloco mais
+estático pro mais volátil, pra maximizar reuso de prefix cache). Medição
+real (`ADR-RAG-001 §6`) mostrou que o modelo default de reranker
+(`Xenova/ms-marco-MiniLM-L-6-v2`, só-inglês) piora corpus PT-BR — por isso
+`RAG_RERANK`/`RAG_SEMANTIC_CACHE`/`ROUTER_ESCALATION` seguem **desligados**
+por padrão (ver "Toggles OFF a medir" em Aberto).
+
+### 2026-08-29/30 — Remediação da análise crítica + RAG enterprise
+
+Runbook de deploy + protocolo de teste completo:
+[docs/TESTES-DEPLOY-COMPLETO.md](TESTES-DEPLOY-COMPLETO.md).
+
+- **Remediação em ondas**: Onda 0 (contenção — `/health` sem PII, agenda por
+  soul, higiene de git), Onda 1a (Zero Trust no MCP e LangGraph,
+  `MCP_ZERO_TRUST`), Onda 1b (rate limit + cap de concorrência), Onda 2
+  (trace unificado `x-trace-id`/`execution_spans` + `os trace`), Onda 3a
+  (docs sincronizados + `.env.example`), Onda 3b (checksum de migração),
   Onda 3c (jobs de fundo com log/métrica + reaper de agenda).
-- **RAG enterprise-ready** — E11 (citações + confidence multi-sinal + modo
-  "evidência insuficiente"), E12a (fidelidade heurística + casos adversariais),
-  E12b (`runFaithfulnessEval` + tabela `rag_eval_runs` + `os rag eval
-  --record`/`--history` + amostragem online).
-
-**Aberto:**
-
-| Item | Nota |
-|---|---|
-| **E13** — protocolo "zero → real" (3 fases) | Fase 1/3 = o runbook acima. Fase 2 (volume) e o relatório de prontidão dependem do corpus real do cliente. |
-| ~~**Onda 3d** — centralizar config~~ | **Fechado como resolvido 2026-09-05 (decisão do usuário).** Fase 1 concluída 2026-09-04: 5 fixes (2 bugs reais + 3 riscos de duplicação unificados). Ver [plano](superpowers/plans/2026-09-04-onda-3d-centralizar-config-fase1.md). Investigada a Fase 2: o único candidato com bug real de duplicação confirmada (`RAG_INJECTION_MODO`/`PROMPT_INJECTION_MODO`, já listado no plano da Fase 1) foi resolvido pelo **M3** nesta sessão. Os pares de alias (`ADO_*`/`AZURE_DEVOPS_*`) já resolvem pro mesmo valor centralizado em `config.ts` — não é duplicação de lógica, só dois nomes aceitos. As ~90 leituras restantes são single-site sem duplicação/divergência comprovada (o próprio plano da Fase 1 já as classificou como "risco/valor baixo, não é bug"), e migrá-las em bloco exigiria adotar `zod`/`envalid` como dependência nova (fora do `STDLIB_FIRST` de `SPEC-HR5`) — decisão que o plano reservou para o usuário. Decisão: sem migração mecânica adicional. |
-| **Onda 3e** — quebrar god-objects | **Fase 1 e 2 concluídas 2026-09-04:** (a) `handleChat` (chat.ts): extraído em 3 sub-handlers (`handleChatBuffer`, `handlePostChat`, `handleChatLanggraphStatus`) + pipeline de prompt compartilhado em `promptPipeline.ts`, em módulos dedicados; `chat.ts` agora é um dispatcher fino (22 l.). Ver [plano](superpowers/plans/2026-09-04-onda-3e-split-chat-handler.md). (b) `tools/src/index.ts` Fase 1: 4 famílias migradas (`guardian_*` 7 + `browser_*` 8 + `ado_*` 10 + `worktree_*`/`mission_*` 6 = 31 tools), arquivo 2075→1262 linhas, padrão `ToolContext`/`FAMILY_HANDLERS` estabelecido. Fase 2: 9 famílias restantes migradas (`skill_*` 2 + `soul_create` 1 + `sales_*` 2 + `souls_*`+`action_execute` 4 + `journal` da soul 6 + `memory_*/graph_*/observation_*` 5 + `spec_grill_plan` 1 + `costs_summary/router_status/agenda_*` 4 + `editorial_*` 3 = 28 tools), arquivo reduzido para 342 linhas. `index.ts` agora é só casca de orquestração (`McpServer`, gates, `SOUL_SCOPED_TOOLS`). Ver [plano Fase 2](superpowers/plans/2026-09-04-onda-3e-split-tools-dispatcher-fase2.md). Trabalho futuro opcional: 17 variáveis de `handlePostChat`, documentado em "Fora de escopo" do plano de tools (Fase 3 não planejada). |
-| ~~**Onda 3f** — multi-tenant sim/não~~ | **Resolvido 2026-08-31: sim.** Modo Amigável, Fases 0–4 ([`FRIENDLY-MODE.md`](FRIENDLY-MODE.md)) — `accounts`/`account_sessions`/`friendly_allowlist`, `ownerAccountId` em `soul`, auth de sessão de conta. Segue aberto só: ADR do modelo de dados de conta (e-mail + hash de senha, base legal/retenção — mesmo gate G3 do `ADR-PRIV-001`); preflight de requisitos de skill + co-concessão de tools no picker amigável. Limpeza `X-Client-Id`/`client_key` e `ffmpeg` hardcoded continua pendente. |
-| **M3** — prompt injection | ✅ **Endurecido 2026-09-05.** Default mudou de `aviso` (nunca bloqueava) pra `recusar` (bloqueia severidade medium+high — era só high). Resolução de env var unificada num só lugar (`resolvePromptInjectionMode`, `packages/core/src/config.ts`), consumida por `promptPipeline.ts` (entrada do usuário) e `packages/memory/src/rag-injection.ts` (chunks de RAG) — antes eram duas cópias da mesma lógica. Detecção continua regex-only (11 padrões PT/EN); sem resistência a ofuscação (unicode/zero-width/outros idiomas) — candidato a follow-up se aparecer evasão real. |
-| ~~**M4** — LGPD famílias~~ | **Excluído do backlog deste projeto em 2026-09-05** (decisão do usuário): domínio famílias (AI-4) foi um teste que vira produto separado, fora do escopo do assistente-os. Ver nota em `NewFeatures/backlog-atual.md` §8. |
-| Toggles OFF a medir em staging | `RAG_RERANK`+`bge-reranker-base`, `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, prefill da Etapa 9. **E12 (`os rag eval --history`) é a ferramenta de medição.** |
-| ~~ADR-PRIV-002 (AI-4 famílias)~~ · service token Cloudflare (E7) | ADR-PRIV-002 excluído (ver M4 acima) · service token: autoria de doc · ação no dashboard. |
-| **Spike BitNet (`bitnet.cpp`)** para o tier barato do router | Inferência 1.58-bit CPU-first da Microsoft. Motivação: "Ollama CPU lento" na máquina de deploy. Rodar `bitnet.cpp` em **paralelo** ao Ollama (server OpenAI-compatible, porta própria — Ollama não tem os kernels/quant `I2_S`/`TL1`/`TL2`), apontar **só o tier mais barato** do router (classificação/roteamento/rascunho curto) pro `BitNet-b1.58-2B-4T`; Ollama fica com embeddings + qualidade. Medir com `os rag eval --history` + métricas de escalonamento do router; manter só se o 2B segurar o tier com latência bem menor. Ecossistema magro (≈1 modelo nativo bom). Não substitui Ollama. Reverter = tirar o provider do config. Esforço: **S–M**. |
-
----
-
-## Sequência de execução
-
-| Onda | Epics | Racional |
-|---|---|---|
-| **1 — Métricas & produto** | E1 → E2 → E5 | Rápidas, alto valor, destravam E8 (manifest usa tokens) e a criação de souls via chat |
-| **2 — ORCA & ops** | E4 → E3 · em paralelo: E7 → E6 | Ligar o scaffolding e subir observabilidade/segurança de borda |
-| **3 — Governança & qualidade** | E8 → E9 → E10 | Fechar gates de conformidade e a melhoria de RAG |
-
-| # | Epic | Esforço | Depende de |
-|---|---|---|---|
-| [E1](#e1--finops-fechar-a-captura-de-tokens-no-fluxo-de-chat) | FinOps — captura de tokens no chat ✅ | M | — |
-| [E2](#e2--sessoes-multi-turno-finalizar-e-endurecer) | Sessões multi-turno — finalizar e endurecer ✅ | M–L | — |
-| [E3](#e3--orca-ligar-o-mission-runner-ao-daemon) | ORCA — ligar o Mission Runner ✅ | L | E4 |
-| [E4](#e4--orca-consumir-terminal-sanitizer-e-cache-em-camadas) | ORCA — consumir Terminal Sanitizer + cache ✅ | M | — |
-| [E5](#e5--exposicao-mcp-soul_create-e-worktree_list) | Exposição MCP — `soul_create` + `worktree_list` ✅ | S–M | — |
-| [E6](#e6--observabilidade-sentry-prometheus-grafana) | Observabilidade — Sentry + Prometheus/Grafana ✅ | M–L | — |
-| [E7](#e7--cloudflare-access-service-token) | Cloudflare Access service token — doc pronto; ação no dashboard fora do escopo do repo (decisão do usuário 2026-08-27) | S | — |
-| [E8](#e8--governanca-ai-3-gates-de-producao) | Governança AI-3 — gates de produção ✅ | L | E1 |
-| [E9](#e9--lgpd-fechar-adr-priv-001) | LGPD — fechar ADR-PRIV-001 ✅ | M | — |
-| [E10](#e10--rag-estagio-de-reranking) | RAG — estágio de reranking ✅ | M | — |
-
----
-
-## E1 — FinOps: fechar a captura de tokens no fluxo de chat
-
-### Objetivo
-Cada resposta de chat grava `prompt_tokens`, `completion_tokens`, `total_tokens`,
-`model_used` e `execution_mode` em `router_history` e `tokens_in`/`tokens_out` em
-`execution_logs` / `cost_calls`, para `getUsageSummary()` e a aba Telemetria
-deixarem de reportar zero.
-
-### Estado atual (verificado)
-- `router_history` já tem as colunas (migração `0010_cost_usage_tracking`).
-- `getUsageSummary()` (`packages/core/src/router.ts:151`) já agrega por
-  `soul`/`mode`/`model`/período e é servido em `GET /api/costs/usage` + `os costs usage`.
-- `packages/daemon/src/routes/chat.ts`:
-  - grava `recordCostCall(pool, { inputTokens: 0, outputTokens: 0, cost: 0, ... })`;
-  - grava `recordExecution(pool, { ... })` **sem** `tokensIn`/`tokensOut`;
-  - `recordRouterSelection` (assinatura já aceita tokens) só é chamado no branch
-    `requestedTier === "langgraph"` e mesmo lá sem valores; o INSERT normal vem de
-    `route()` (`router.ts:96`), que usa o INSERT de 8 colunas, sem tokens.
-- Nenhum dos três executores devolve contagem de tokens:
-  - `ollamaChat()` (`chat.ts:36`) faz `JSON.parse` e joga fora `prompt_eval_count`
-    / `eval_count` — **o mesmo Ollama já expõe isso** e `pipelines/meeting-ingest.ts:143`
-    já lê esses campos (padrão a copiar).
-  - `runLangGraphAgentStream()` (`packages/daemon/src/langgraph-runner.ts:145`)
-    devolve `{ code, stdout, stderr, timedOut, toolCalls? }`.
-  - `run()` opencode (`packages/daemon/src/runner.ts`) devolve `{ code, stdout, stderr, timedOut }`.
-
-### Arquivos afetados
-- `packages/daemon/src/routes/chat.ts` — propagar tokens dos 3 branches.
-- `packages/daemon/src/routes/chat.ts::ollamaChat` — parsear e devolver `prompt_eval_count`/`eval_count`.
-- `packages/daemon/src/langgraph-runner.ts` — somar `usage_metadata` das mensagens do grafo.
-- `packages/daemon/src/runner.ts` — expor uso quando o opencode emitir JSON (`--print-logs`/saída estruturada); senão estimar.
-- `packages/core/src/router.ts` — `route()` passa a aceitar/gravar tokens opcionais (ou novo `finalizeRouterSelection`).
-- `packages/core/src/tokens.ts` **(novo)** — `estimateTokens(text): number` (heurística `chars/4`, já usada em `buffer`) como fallback declarado.
-
-### Design
-1. **Tipo comum de resultado de execução** — estender o retorno dos 3 executores
-   com `usage?: { promptTokens?: number; completionTokens?: number; source: "provider" | "estimate" }`.
-2. **Ollama** — ler `prompt_eval_count` → `promptTokens`, `eval_count` → `completionTokens`, `source: "provider"`.
-3. **LangGraph** — no `onStep`/estado final, somar `msg.usage_metadata.input_tokens` /
-   `output_tokens` de cada `AIMessage` (LangChain preenche via `ChatOpenAI`). `source: "provider"` se todas as mensagens tiverem metadata, senão `"estimate"`.
-4. **opencode** — se a saída tiver bloco de uso, parsear; senão
-   `estimateTokens(fullPrompt)` + `estimateTokens(stdout)` com `source: "estimate"`.
-5. **Persistência** — depois da execução:
-   - `finalizeRouterSelection(pool, { selectionId | (soul,target,ts), promptTokens, completionTokens, totalTokens, modelUsed, executionMode })` — faz `UPDATE router_history SET ... WHERE id = $1` da linha vencedora (retornar `id` de `route()`), ou insere uma linha `status='ok'` se preferir append-only (decisão: **UPDATE da linha vencedora**, mantém 1 linha por turno).
-   - `recordCostCall` recebe `inputTokens`/`outputTokens` reais; `cost` continua 0 nos tiers grátis, mas passa a ser calculável quando houver tabela de preço por modelo (fora de escopo aqui).
-   - `recordExecution` recebe `tokensIn`/`tokensOut`.
-6. **`execution_mode`** — já vem de `orchDecision.mode` (`fast`/`pro`); persistir junto.
-
-### Contratos
-```ts
-// packages/core/src/router.ts
-export interface RouterUsagePatch {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  modelUsed: string;
-  executionMode: string;
-  tokenSource: "provider" | "estimate";
-}
-export async function finalizeRouterSelection(pool: Pool, selectionId: number, patch: RouterUsagePatch): Promise<void>;
-// route() passa a retornar { target, latencyMs?, reason?, selectionId: number }
-```
-```ts
-// packages/core/src/tokens.ts
-export function estimateTokens(text: string): number; // Math.ceil(text.length / 4)
-```
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-Implementação divergiu do design em um ponto: em vez de `finalizeRouterSelection`
-(UPDATE da linha de sonda), grava-se uma linha nova `status='executed'` pós-inferência
-e `getUsageSummary` passou a filtrar `status='executed'` — as linhas de sonda de
-`route()`/`selectRoute()` (`status ok/fail`) ficam só para diagnóstico. Mais simples e
-não mexe na assinatura de `route()` (vários callers: agenda, events, orchestrator).
-
-### Critérios de aceitação
-- [x] Chat no tier `local` grava `prompt_tokens`/`completion_tokens` > 0 do Ollama (`prompt_eval_count`/`eval_count`), `tokenSource=provider`.
-- [x] Chat no tier `langgraph` acumula `usage_metadata` de cada nó `generate` (reducer `usage` no `AgentState`); cai para estimativa se o provider não expõe metadata.
-- [x] Chat no tier `soul` (opencode) grava tokens estimados (`estimateTokens(prompt)+estimateTokens(stdout)`), `tokenSource=estimate` no `note`.
-- [x] `GET /api/costs/usage?soul=<id>` retorna `total_tokens` > 0 após um chat (teste `daemon.test.ts`).
-- [x] `execution_mode` (`fast`/`pro`) preenchido em toda linha `executed`.
-- [x] Exatamente **uma** linha `status='executed'` em `router_history` por turno bem-sucedido.
-- [x] Falha/timeout **não** grava tokens nem linha `executed`.
-
-Testes: `core/test/tokens.test.ts` (3), `core/test/usage-summary.test.ts` (2),
-`daemon.test.ts::E1/FinOps` (1). Suítes: core 216, daemon 101, memory 44, tools 19 — verdes.
-
-### Plano de teste
-- Unit `packages/core/test/router.test.ts` — `finalizeRouterSelection` atualiza a linha certa; `getUsageSummary` soma corretamente por `mode`/`model`.
-- Unit `packages/core/test/tokens.test.ts` — `estimateTokens`.
-- Unit `packages/daemon/test/chat-usage.test.ts` — mock dos 3 executores devolvendo `usage`; asserta os INSERT/UPDATE (pool de teste).
-- Live `packages/daemon/test/*.live.ts` — chat real no Ollama confere `total_tokens` ≈ `prompt_eval_count + eval_count`.
-
-### Esforço: **M** · Dependências: nenhuma
-
----
-
-## E2 — Sessões multi-turno: finalizar e endurecer
-
-### Objetivo
-Histórico multi-turno robusto: (a) truncado por orçamento de tokens, (b)
-persistente para o agente LangGraph através de restart, (c) coberto também nos
-caminhos `events`/`agenda`, (d) isolado por cliente quando fizer sentido.
-
-### Estado atual (verificado)
-- `session_messages` (`migrations.ts:274`, migração `0009`), `recordSessionMessage`,
-  `getRecentSessionMessages(sessionId, turns)` — pega os últimos `turns*2` sem
-  orçamento de chars/tokens (`sessions.ts:133`).
-- `openSession` já rotaciona por inatividade (`sessionIdleTimeoutMinutes()`, default 120 min).
-- `chat.ts` persiste turno `user` + `assistant` e injeta `history` no `buildPrompt`
-  (`chat.ts:220` e `:395`). LangGraph usa `threadId: session-${session.id}`.
-- **Lacunas:**
-  - `getRecentSessionMessages` não respeita o `ctx` do Ollama (default 2048) — histórico grande empurra o system prompt/RAG para fora da janela.
-  - MemorySaver do LangGraph é in-memory (comentário explícito em `chat.ts`): não sobrevive a restart do daemon; o histórico persistido em `session_messages` **não** é reinjetado no `threadId` após restart.
-  - `events.ts:71` e `agenda.ts:44` chamam `openSession`+`bumpSessionPrompt` mas nunca `recordSessionMessage` — execuções por evento/agenda não acumulam memória.
-  - Uma soul tem **uma** sessão aberta global (`idx_sessions_soul_open (soul) WHERE ended_at IS NULL`): dois clientes conversando com a mesma soul compartilham histórico.
-
-### Arquivos afetados
-- `packages/core/src/sessions.ts` — `getRecentSessionMessages` com orçamento; `openSession` com chave de cliente opcional.
-- `packages/core/src/migrations.ts` — `0011_session_client_key` (coluna `client_key TEXT` + índice único parcial `(soul, client_key) WHERE ended_at IS NULL`).
-- `packages/daemon/src/routes/chat.ts` — passar `clientKey` (header `X-Client-Id` ou hash do token) para `openSession`; reidratar `threadId` do LangGraph a partir de `session_messages`.
-- `packages/daemon/src/langgraph-runner.ts` — aceitar `seedMessages` para popular o checkpoint; opção de `PostgresSaver`.
-- `packages/daemon/src/events.ts`, `packages/daemon/src/agenda.ts` — gravar as mensagens.
-- `packages/memory/src/context.ts` / `buildPrompt` — cortar histórico ao orçamento antes de montar.
-
-### Design
-1. **Orçamento de histórico** — `getRecentSessionMessages(pool, sessionId, { maxTurns, maxChars })`;
-   `buildPrompt` reserva `RAG + system + prompt` e passa `maxChars = ctxTokens*4 - reservado`.
-   Corte do turno mais antigo primeiro; nunca corta o turno atual.
-2. **Persistência do agente** — duas opções:
-   - **(recomendada)** *reidratação*: ao abrir o chat, ler `session_messages` e
-     passar como `seedMessages` para `runLangGraphAgentStream`, que injeta no
-     estado inicial do grafo antes do primeiro nó. Mantém MemorySaver in-memory,
-     mas o restart deixa de perder contexto porque a fonte de verdade é o Postgres.
-   - *checkpoint Postgres*: trocar `MemorySaver` por `@langchain/langgraph-checkpoint-postgres`.
-     Mais fiel ao modelo de threads do LangGraph, mais dependência/tabela nova.
-   Decisão: **reidratação** agora; checkpoint Postgres fica como nota se surgir
-   necessidade de estado além de mensagens (ex.: scratchpad de ferramentas).
-3. **Cobertura events/agenda** — após a execução, `recordSessionMessage(user=título/corpo, assistant=stdout)` no mesmo padrão do chat.
-4. **Isolamento por cliente** — `client_key` derivado de `X-Client-Id` (se enviado)
-   ou `sha256(token).slice(0,16)`. Sem header e sem token → `client_key = 'default'`
-   (comportamento atual). Índice único parcial garante 1 sessão aberta por
-   `(soul, client_key)`.
-
-### Contratos
-```ts
-export interface HistoryBudget { maxTurns: number; maxChars: number; }
-export async function getRecentSessionMessages(
-  pool: Pool, sessionId: number, budget: HistoryBudget,
-): Promise<SessionMessage[]>;
-export async function openSession(
-  pool: Pool, soul: string, maxTurns: number, budgetCap?: number, clientKey?: string,
-): Promise<SessionRecord>;
-// langgraph-runner
-interface RunAgentOpts { /* ...atual... */ seedMessages?: SessionMessage[]; }
-```
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-Migração ficou como `0012_sessions_client_key` (0011 foi usada pelo E1).
-
-### Critérios de aceitação
-- [x] `getRecentSessionMessages(pool, id, { maxTurns, maxChars })` corta os turnos mais antigos até caber no teto (`sessionHistoryMaxChars()`, env `ASSISTENTE_OS_SESSION_HISTORY_MAX_CHARS`, default 6000); chat.ts passa o orçamento. Compat com a assinatura antiga (número puro).
-- [x] Reidratação LangGraph: `seedMessages` injeta o histórico do Postgres no estado inicial do grafo, **uma vez por thread por processo** (`seededThreads` + `__resetSeededThreads` p/ teste). Após restart o Set volta vazio → reinjeta. Cobertura live (precisa LLM).
-- [x] `X-Client-Id` (ou hash do token, senão `default`) → `client_key`; índice único parcial `(soul, client_key) WHERE ended_at IS NULL`; histórico não vaza entre clientes (teste `sessions.test.ts`).
-- [x] `events.ts` e `agenda.ts` gravam `recordSessionMessage(user, assistant)` em sucesso.
-- [x] `sessionIdleTimeoutMinutes` intacto (regressão verde).
-
-Testes: `core/test/sessions.test.ts` +2 (orçamento maxChars, isolamento client_key). Suítes: core 218, daemon 101, memory 44, tools 19, cli 2 — verdes.
-
-### Plano de teste original
-- Unit `sessions.test.ts` — orçamento, `client_key`. ✅
-- Live — restart no meio da conversa LangGraph (não no `npm test`).
-
-### Esforço: **M–L** · Dependências: nenhuma
-
----
-
-## E3 — ORCA: ligar o Mission Runner ao daemon
-
-### Objetivo
-Missões compostas (`meetingIngestFull`, etc.) executáveis via REST + MCP, com os
-steps hoje falsos (`browser-*`, `guardian-audit`) fazendo trabalho real.
-
-### Estado atual (verificado)
-- `packages/daemon/src/orchestrator/mission-runner.ts` — `MISSIONS` estático,
-  `runMission(missionId)` exportado, **sem rota, sem tool**. `runStep()` retorna
-  literal `{ ok: true, note: "browser-navigate placeholder" }` para todos os
-  `browser-*` e para `guardian-audit` (linhas 101–113).
-- `meeting-ingest` e `agenda-add` já chamam pipeline/kernel reais.
-- `browser.ts` (automação real via Playwright) e `guardian_audit_execution`
-  (tool MCP) já existem e podem ser chamados.
-
-### Arquivos afetados
-- `packages/daemon/src/orchestrator/mission-runner.ts` — steps reais, telemetria, WS.
-- `packages/daemon/src/routes/missions.ts` **(novo)** — `GET /api/missions`, `POST /api/missions/:id/run`.
-- `packages/daemon/src/server.ts` — registrar a rota.
-- `packages/tools/src/index.ts` — tools `mission_list`, `mission_run` (Zero Trust: L2/L3 conforme os steps; `full`/`guarded` → L3 por causa do guardian-audit e efeitos).
-- `packages/core/src/policy.ts` — nível das novas tools.
-- `packages/daemon/src/index.ts` — export.
-
-### Design
-1. **Steps reais:**
-   - `browser-navigate|click|extract|screenshot` → delegar para as funções de `browser.ts` (sessão headless por `taskId`).
-   - `guardian-audit` → `guardianAuditExecution({ soul, executionId | note })`, anexando o resultado ao retorno da missão.
-2. **Modos** (já previstos no header do arquivo):
-   - `headless` — sem auditoria, sem WS.
-   - `guarded` — + step Guardian ao final; se a auditoria falhar, a missão termina `status: "flagged"`.
-   - `full` — + broadcast WS por step (`mission.step`) + registro em `execution_logs` + respeito à retenção LGPD nos artefatos.
-3. **Isolamento** — missões `full`/`guarded` rodam dentro de uma worktree
-   (`createWorktree`) quando algum step escreve no repo; missões só de
-   leitura/ingestão não precisam.
-4. **Autorização** — `authorizeExecution()` antes de cada step com efeito externo;
-   `mission_run` de missão com step L3 exige a política de aprovação da soul.
-
-### Contratos
-```ts
-export interface MissionResult {
-  missionId: string;
-  mode: Mission["mode"];
-  status: "ok" | "flagged" | "failed";
-  steps: Array<{ type: MissionStep["type"]; ok: boolean; note?: string; data?: unknown }>;
-  audit?: GuardianAuditResult;
-  startedAt: string; finishedAt: string;
-}
-export async function runMission(missionId: string, opts?: { soulOverride?: string; taskId?: string; onStep?: (s: MissionStepEvent) => void }): Promise<MissionResult>;
-```
-REST: `POST /api/missions/:id/run` → `202` + `{ taskId }`; progresso via WS; `GET /api/missions/:id/run/:taskId` → `MissionResult`.
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-`mission-runner.ts` reescrito: `runMission(id, { soulOverride, onStep })` + `listMissions()`.
-Steps reais: `browser-navigate|click|extract|screenshot|close` → `browser.ts`;
-`agenda-add` → `addAgendaItem`; `guardian-audit` → `auditExecution` (degrada para
-"pulado" quando o Guardian/Ollama não responde, em vez de derrubar a missão).
-Modos: `guarded`/`full` marcam `flagged` se a auditoria reprovar e interrompem;
-`full` faz broadcast WS `mission.step` (pela rota) + registra em `execution_logs`.
-Bugs corrigidos de quebra: `getPool(home)` → `getPool(config.databaseUrl)`;
-`resolveSoul` agora honra o `soulId` pedido.
-
-- **REST**: `GET /api/missions`, `POST /api/missions/:id/run` (síncrono; 200, ou
-  207 se `status=failed`, ou 404 se a missão não existe). Sem a variante `202+taskId`
-  do design original — execução síncrona basta para as missões atuais.
-- **MCP**: `mission_list` (L1), `mission_run` (L3, `authorizeAgentSoul` fail-closed).
-- **Fix estrutural achado no caminho:** `packages/daemon/tsconfig.json` **excluía
-  `src/test/**`** (commit `2db4a1d`) — a suíte do daemon não compilava nem rodava
-  desde então. Removido o `exclude`; 4 testes pré-existentes de `worktree-manager`
-  quebrados (`new WorktreeManager("x", { autonomy: "auto" })` sem `permissions`/
-  `guardrails`) corrigidos para `createTestAgentConfig(...)`.
-
-### Critérios de aceitação
-- [x] `GET /api/missions` / `mission_list` listam id, modo e nº de steps.
-- [x] `runMission` executa todas as etapas mesmo com falha intermediária; `agenda-add` persiste item real (teste).
-- [x] `browser-extract` chama `browserExtractText` real (não placeholder).
-- [x] `guarded`/`full` com auditoria reprovando → `status: "flagged"`, interrompe.
-- [x] `mission_run` via MCP fail-closed sem `AGENT_SOUL_ID` (teste).
-- [x] `onStep`/`mission.step` disponível para broadcast WS na rota.
-
-Testes: `daemon/test/mission-runner.test.ts` (4), `tools.test.ts` +1. Suítes: core 219, **daemon 108** (agora compila!), memory 44, tools 22, cli 2 — verdes.
-
-### Esforço: **L** · Dependências: **E4** (feito)
-
----
-
-## E4 — ORCA: consumir Terminal Sanitizer e cache em camadas
-
-### Objetivo
-Tirar `terminal-sanitizer.ts` e `core/cache.ts` do status de código morto,
-ligando-os aos caminhos de produção que se beneficiam deles.
-
-### Estado atual (verificado)
-- `packages/daemon/src/tools/terminal-sanitizer.ts` — só re-exportado em
-  `packages/daemon/src/index.ts:7`, nenhum chamador.
-- `packages/core/src/cache.ts` — `export const cache = new CacheService()` em
-  `core/src/index.ts:28`; nenhuma chamada `cache.get/set/wrap` em produção
-  (só aparece em `cache.test.ts`).
-
-### Arquivos afetados
-- `packages/daemon/src/tools/worktree-manager.ts` — sanitizar saída de `npm run build`/`npm test`/`git` no `mergeLocally` antes de logar/retornar.
-- `packages/daemon/src/orchestrator/mission-runner.ts` — sanitizar saída de steps que rodam shell (coordenar com E3).
-- `packages/daemon/src/tools/browser.ts` (opcional) — truncar dumps de acessibilidade grandes.
-- `packages/memory/src/context.ts` / `retrieveContext` — `cache.wrap` no resultado de RAG por `(soulId, hash(prompt))`, TTL curto (ex.: 60 s).
-- `packages/core/src/router.ts::getUsageSummary` — `cache.wrap` por `(filtros)`, TTL ~30 s (a aba Telemetria faz polling).
-- `packages/daemon/src/routes/*` — invalidar (`cache.del`) as chaves de usage após `finalizeRouterSelection` (integra com E1).
-
-### Design
-1. **Sanitizer** — envelopar toda captura de stdout/stderr de subprocessos com
-   `sanitizeTerminalOutput(text, { keep: "tail", maxLines })`: mantém as últimas N
-   linhas + resumo (`… +1240 linhas`), poupando tokens quando a saída entra em
-   prompt ou audit trail. Não altera o `code`/`timedOut`.
-2. **Cache** — `cache.wrap(key, ttlSeconds, fn)`:
-   - RAG retrieve: chave `rag:${soulId}:${sha1(prompt)}`; evita reembedar/reconsultar em repetições rápidas (voz, retries de UI).
-   - `getUsageSummary`: chave `usage:${JSON.stringify(filters)}`; invalidada em toda escrita de token.
-   - Redis quando `REDIS_URL` presente; fallback em memória (já implementado em `cache.ts`). `cache.close()` no shutdown do daemon (padrão já usado em `cache.test.ts`).
-
-### Contratos
-```ts
-// terminal-sanitizer.ts (já existe; confirmar assinatura pública)
-export function sanitizeTerminalOutput(text: string, opts?: { keep?: "head" | "tail"; maxLines?: number }): string;
-// core/cache.ts (já existe)
-cache.wrap<T>(key: string, ttlSeconds: number, producer: () => Promise<T>): Promise<T>;
-```
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-- **Sanitizer** ligado em `worktree-manager.mergeLocally`: a saída de `npm run build`
-  e `npm test` que falha passa por `sanitizeCommandOutput` antes de virar mensagem
-  de erro — mantém as linhas relevantes (erros/resumo), corta o ruído.
-- **Cache** em `getUsageSummary` (`core/router.ts`, TTL 30s) e `retrieveContext`
-  (`memory/rag-chain.ts`, TTL 60s). Chave inclui `poolTag` (hash do connectionString)
-  para não vazar resultado entre schemas em teste. Sem `init()` explícito → só
-  memória (Redis é opt-in no boot do daemon); degrada em silêncio.
-- Invalidação: TTL curto no lugar de `del` por chave (chaves são combos de filtro);
-  a aba Telemetria faz polling, 30s de staleness é aceitável.
-- **Não feito aqui:** sanitizer nos steps do Mission Runner (fica em E3);
-  truncamento de dumps de acessibilidade em `browser.ts` (opcional, fora de escopo).
-
-### Critérios de aceitação
-- [x] `mergeLocally` com `npm test` verboso → erro truncado, veredito correto (teste `worktree-manager.test.ts`).
-- [x] `retrieveContext` idêntico em < 60s serve do cache (não re-embeda).
-- [x] `getUsageSummary` repetido em < 30s serve do cache (teste `usage-summary.test.ts`); reflete o novo valor após o TTL.
-- [x] Sem `REDIS_URL`: fallback em memória, suítes não travam (nenhum `init()` novo).
-
-Testes: `worktree-manager.test.ts` +1, `usage-summary.test.ts` +1. Suítes: core 219, daemon 101, memory 44, tools 21, cli 2 — verdes.
-
-### Esforço: **M** · Dependências: integra com E1
-
----
-
-## E5 — Exposição MCP: `soul_create` e `worktree_list`
-
-### Objetivo
-Criar souls guiadas por chat e listar worktrees ativas via MCP, sem sair para
-REST/CLI.
-
-### Estado atual (verificado)
-- Backend de criação pronto e testado: `createSoulFull` (`packages/core/src/souls.ts:127`),
-  `validateSoulSpec`/`buildAgentConfigFromSpec`/`resolveSoulSpecDefaults`
-  (`packages/core/src/soul-spec.ts`), catálogo de capabilities L1/L2/L3
-  (`policy.ts`), `planHash` determinístico para dry-run vs. commit.
-- `packages/tools/src/index.ts` **não** registra `soul_create` (grep vazio).
-- `worktree_create` / `worktree_merge_locally` / `worktree_destroy` são tools MCP
-  (`tools/src/index.ts:655–685`); `worktree_list` só existe em REST (`/api/worktree` GET)
-  e CLI (`os worktree list`).
-
-### Arquivos afetados
-- `packages/tools/src/index.ts` — declarar as 2 tools no array + `case` no dispatcher; adicionar a `SOUL_SCOPED_TOOLS` (autorização) e `worktree_list` a `DEFAULT_ALLOWED_TOOLS` (leitura L1).
-- `packages/core/src/policy.ts` — `soul_create` = **L3** (efeito estrutural: cria diretórios + config); `worktree_list` = **L1**.
-- `packages/tools/src/soul-create-wire.ts` **(novo)** — mapeia payload wire (snake_case, string-only friendly) → `SoulSpec`.
-- `docs/MCPS.md` — documentar (contagem 50 → 52).
-
-### Design
-1. **`soul_create`** — parâmetros wire:
-   ```
-   soul_id, display_name, purpose, provider?, models?(json), daily_limit?,
-   max_turns?, capabilities?(csv), connectors?(json), skills?(json),
-   dry_run?(bool, default true)
-   ```
-   Fluxo: `mapWireToSoulSpec()` → `validateSoulSpec()` →
-   - `dry_run: true` → retorna `{ plan_hash, resolved_spec, issues[], would_create: [paths] }`, **não escreve**.
-   - `dry_run: false` → exige `plan_hash` do dry-run anterior (guarda contra mudança entre planejar e aplicar) → `createSoulFull()` → retorna `{ soul_id, created: true, plan_hash }`.
-   - Autorização L3: `authorizeExecution()` com a política da soul chamadora; recusa se `autonomy` não permitir efeito estrutural.
-2. **`worktree_list`** — sem parâmetros; retorna o mesmo payload do `GET /api/worktree`
-   (`taskId`, branch, path, base, soul, `created_at`, estado git). Reusa o handler existente.
-
-### Contratos
-```ts
-// tool: soul_create
-type SoulCreateInput = { soul_id: string; display_name: string; purpose: string;
-  provider?: string; models?: string; daily_limit?: number; max_turns?: number;
-  capabilities?: string; connectors?: string; skills?: string; dry_run?: boolean; plan_hash?: string; };
-type SoulCreateResult =
-  | { dry_run: true; plan_hash: string; resolved_spec: SoulSpec; issues: SoulSpecValidationIssue[]; would_create: string[] }
-  | { dry_run: false; soul_id: string; created: true; plan_hash: string };
-// tool: worktree_list -> WorktreeInfo[]
-```
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-- `createSoulFromSpec` (novo em `core/soul-spec.ts`) — `SoulSpec` resolvido → `createSoulFull` atômico.
-- `soulSpecFromWire` (em `tools/index.ts`) — payload snake_case → `SoulSpec`.
-- `listWorktrees` (novo em `daemon/worktree-manager.ts`) — `git worktree list --porcelain`, filtra sob o workspaces root, extrai branch/HEAD reais. REST `GET /api/worktree` passou a usá-la (antes só `readdir`).
-- `worktree_list` = L1 no catálogo + `DEFAULT_ALLOWED_TOOLS`; `soul_create` já era L3, adicionado a `SOUL_SCOPED_TOOLS` (autoriza via `AGENT_SOUL_ID`).
-
-### Critérios de aceitação
-- [x] `soul_create` `dry_run:true` → `plan_hash` + `issues` + `would_create`, **não** escreve (teste `tools.test.ts`).
-- [x] `dry_run:false` + `plan_hash` válido cria a soul atomicamente (`createSoulFromSpec` → `createSoulFull`); `plan_hash` divergente → erro explícito.
-- [x] `soul_create` exige `AGENT_SOUL_ID` + autorização L3 da soul chamadora (`authorizeAgentSoul`).
-- [x] `worktree_list` via MCP e via REST usam a mesma `listWorktrees`.
-- [x] Zero Trust: `soul_create` fora da allowlist → não aparece em `tools/list`.
-- [x] `docs/MCPS.md` atualizado — contagem reconciliada em **56 tools** (Onda 3a da remediação).
-
-Testes: `tools.test.ts` +2 (worktree_list exposta/responde; soul_create dry-run/commit/hash), `worktree-manager.test.ts` +1 (listWorktrees filtra + parse). Suítes: core 218, daemon 101, memory 44, tools 21, cli 2 — verdes.
-
-### Esforço: **S–M** · Dependências: nenhuma
-
----
-
-## E6 — Observabilidade: Sentry, Prometheus/Grafana
-
-### Objetivo
-Erros do daemon rastreados (Sentry) e métricas em série temporal
-(Prometheus + Grafana), substituindo o `/infra/status` sob demanda como única fonte.
-
-### Estado atual (verificado)
-- Zero `@sentry/*`, zero `prom-client`/`@opentelemetry/*` no repo.
-- `GET /infra/status` dá um snapshot (Ollama, Postgres, CPU, RAM, disco, RAG, eventos, execuções).
-- PM2 com `pm2-logrotate`; três apps no `ecosystem.config.cjs`.
-
-### Arquivos afetados
-- `packages/daemon/package.json` — `@sentry/node`, `prom-client`.
-- `packages/daemon/src/observability/sentry.ts` **(novo)** — init condicional a `SENTRY_DSN`.
-- `packages/daemon/src/observability/metrics.ts` **(novo)** — registry + coletores.
-- `packages/daemon/src/server.ts` — `Sentry.setupExpressErrorHandler`/wrapper no handler HTTP; rota `GET /metrics` (Bearer, como as demais).
-- `packages/daemon/src/routes/chat.ts`, `agenda.ts`, `events.ts`, `orchestrator/*` — incrementar contadores/histogramas.
-- `docker-compose.yml` — serviços `prometheus` + `grafana` (opcionais, perfil `observability`).
-- `ops/prometheus.yml`, `ops/grafana/` **(novos)** — scrape config + dashboard provisionado.
-- `README.md` — seção Deploy/Observabilidade.
-
-### Design
-1. **Sentry** — `init({ dsn: env.SENTRY_DSN, tracesSampleRate: 0.1, environment })`.
-   Sem DSN → no-op (dev). Capturar exceções não tratadas do handler, do loop de
-   agenda e do runner LangGraph; `beforeSend` roda o `contentFilter` para não
-   vazar segredo em mensagem de erro.
-2. **Métricas** (`prom-client`, prefixo `aos_`):
-   - `aos_chat_requests_total{soul,tier,mode,status}`
-   - `aos_chat_latency_seconds{tier}` (histograma)
-   - `aos_tokens_total{soul,tier,kind=prompt|completion}` (alimentado pelo E1)
-   - `aos_router_fallback_total{from_tier,to_tier}`
-   - `aos_agenda_queue_depth`, `aos_events_pending`
-   - `aos_guardian_pending_rules`, `aos_prompt_injection_alerts_total{severity}`
-   - default metrics (event loop lag, heap) via `collectDefaultMetrics`.
-3. **Grafana** — 1 dashboard provisionado: throughput/latência de chat, tokens por
-   soul, fallback do roteador, profundidade das filas, alertas de segurança.
-4. **Alertas** (Prometheus rules): daemon down, `agenda_queue_depth` alto e
-   crescente, pico de `prompt_injection_alerts`, erro 5xx sustentado.
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-- `prom-client` + `@sentry/node` adicionados ao `packages/daemon`.
-- `observability/metrics.ts` — registry `aos_` + `chatRequests`, `chatLatency`,
-  `tokensTotal`, `routerFallback` (definido; wiring core→daemon fica para um hook
-  futuro), `promptInjectionAlerts`, `agendaQueueDepth`, `eventsPending` + default metrics.
-- `observability/sentry.ts` — `initSentry()` no-op sem `SENTRY_DSN`; `captureError()`
-  com fallback pra log; `beforeSend` roda o content-filter.
-- `routes/metrics.ts` — `GET /metrics` (Bearer via dispatcher); atualiza os gauges de
-  fila antes de responder; não falha se o DB cair.
-- `server.ts` — `initSentry()` no boot; `captureError` no catch do handler HTTP.
-- `chat.ts` — instrumenta requests/latência/tokens/injection.
-- `docker-compose.yml` — profile `observability` (Prometheus `:9090` + Grafana `:3001`);
-  `ops/prometheus.yml`, `ops/rules.yml` (4 alertas), `ops/grafana/provisioning/*`
-  (datasource + dashboard "Assistente OS — visão geral").
-
-### Critérios de aceitação
-- [x] `GET /metrics` → exposição Prometheus válida, `text/plain`, com `aos_*` (teste `daemon.test.ts`).
-- [x] Chat incrementa `aos_chat_requests_total` + observa `aos_chat_latency_seconds`.
-- [x] `aos_tokens_total{kind=prompt|completion,source}` alimentado pelo `finalUsage` do E1.
-- [x] Sentry captura exceção do handler quando `SENTRY_DSN` setado; `beforeSend` mascara segredo; no-op sem DSN.
-- [x] `docker compose --profile observability up` sobe Prometheus + Grafana com dashboard provisionado.
-- [x] Sem `SENTRY_DSN`/sem profile: daemon idêntico ao atual (suítes verdes).
-
-Testes: `daemon.test.ts` +1 (`/metrics`). Suítes: core 219, daemon 109, memory 44, tools 22, cli 2 — verdes.
-
-### Esforço: **M–L** · Dependências: E1 (feito)
-
----
-
-## E7 — Cloudflare Access service token
-
-### Objetivo
-Bypass programático do Cloudflare Access no domínio público
-(`assistente-os.coderstudio.club`), para agentes/CI chamarem a API sem o fluxo de login.
-
-### Estado atual (verificado)
-- Tunnel conectado, Access ativo (302 → login). README (Deploy): "service token
-  pra bypass programático ainda pendente".
-- Daemon já autentica por Bearer próprio (`ASSISTENTE_OS_DAEMON_TOKEN`) — o Access
-  fica **na frente** disso.
-
-### Status: 📄 DOC PRONTO — aguardando ação no dashboard Cloudflare (2026-08-27)
-
-Procedimento completo em **[docs/CLOUDFLARE-ACCESS.md](CLOUDFLARE-ACCESS.md)**
-(criar token, autorizar na policy, guardar em `~/.assistant-os/.env` + secrets do
-GitHub, usar, rotacionar, snippet do CI). README (Deploy) aponta para lá.
-**Nenhum código de daemon muda** — os headers `CF-Access-*` são consumidos na
-borda da Cloudflare. Resta ação do usuário no dashboard + preencher 2 variáveis.
-
-### Passos
-- [x] Procedimento documentado (criar / autorizar / guardar / usar / rotacionar / CI).
-- [ ] **Usuário**: criar o **Service Token** no Cloudflare Zero Trust (Access → Service Auth).
-- [ ] Adicionar uma policy `Include: Service Token` à aplicação Access do hostname.
-- [ ] Guardar `CF-Access-Client-Id` / `CF-Access-Client-Secret` em `~/.assistant-os/.env` (nunca no repo).
-- [ ] Documentar em `docs/DEPLOY.md`/README: como o cliente envia os 2 headers + o `Authorization: Bearer` do daemon.
-- [ ] Nota de rotação (validade do token, procedimento de troca).
-- [ ] Atualizar `.github/workflows/ci.yml` se o passo de deploy/health-check bater no domínio público (usar os secrets do repo).
-- [ ] Smoke: `curl -H "CF-Access-Client-Id: …" -H "CF-Access-Client-Secret: …" -H "Authorization: Bearer …" https://assistente-os.coderstudio.club/health` → 200.
-
-### Critérios de aceitação
-- [ ] Requisição com os 3 headers → 200; sem os headers do Access → 302/403.
-- [ ] Segredos só em `~/.assistant-os/.env` e nos secrets do GitHub; `git grep` limpo.
-- [ ] README/README-Deploy com o procedimento e a nota de rotação.
-
-### Esforço: **S** · Dependências: nenhuma (config externa + doc; sem código de app)
-
----
-
-## E8 — Governança AI-3: gates de produção
-
-### Objetivo
-Fechar os gates de conformidade AI-3 (Padrões v4.0) ainda abertos, herdados da
-spec e do ADR-AI-003.
-
-### Estado atual (verificado)
-- ADR-AI-003 aceito (revisão programada 2027-02-16); RACI com owners "pendente"
-  (`docs/adr/ADR-AI-003.md:73–75`).
-- Enforcement de limite existe no `chat.ts` (429 para `dailyLimit` e `maxTurns`),
-  mas **sem teste dedicado** de fallback/kill-switch.
-- **Não existe:** suíte cross-tenant, execution manifest por release, inventário
-  de IA com classificação de risco.
-
-### Sub-itens
-
-#### E8.1 — Suíte de testes cross-tenant (isolamento entre souls)
-- Arquivo `packages/daemon/test/cross-tenant.test.ts` (+ helper de fixtures com 2 souls).
-- Cobrir: RAG da soul A nunca retorna chunk da soul B; `graph_list` isolado;
-  `session_messages`/`sessions` isolados por soul (e por `client_key`, ver E2);
-  `soul_context`/`buffer` não vazam caminho de outra soul; tools MCP com
-  `AGENT_SOUL_ID=A` não operam sobre B; `cost_calls`/`router_history` filtrados.
-- Saída: relatório de cobertura do modelo de isolamento anexado ao ADR.
-
-#### E8.2 — Execution manifest reproduzível por release
-- `packages/core/src/manifest.ts` **(novo)** — `buildExecutionManifest()` registra,
-  por release/tag: versão do código (git sha), modelos por tier, hash dos system
-  prompts por soul, catálogo L1/L2/L3 vigente, lista de tools + níveis, fontes de
-  contexto (dirs RAG por soul), versão das migrações aplicadas.
-- `GET /api/manifest` (Bearer) + `os manifest` + artefato `manifest-<sha>.json`
-  publicado pelo CI.
-- Determinístico: mesmo input → mesmo hash.
-
-#### E8.3 — Testes de fallback / kill-switch
-- `packages/daemon/test/kill-switch.test.ts` — `dailyLimit` atingido → 429 e
-  nenhuma chamada ao provider; `maxTurns` atingido → 429; corte por budget de
-  sessão; `PROMPT_INJECTION_MODO=recusar` + severidade alta → 400 e nenhuma
-  execução. Asserta que o provider **não** foi chamado (spy).
-
-#### E8.4 — Inventário de IA + classificação de risco
-- `docs/AI-INVENTORY.md` — tabela: cada "sistema de IA" (chat por tier, agente
-  LangGraph, extração de entidades, pipelines de reunião/e-mail, sales
-  intelligence, spec-grill), com finalidade, dados de entrada, classificação de
-  risco (AI-1..AI-4), guardrails efetivos, owner.
-- Validar que a telemetria (`/infra/status`, `/metrics` do E6, audit trail) **não**
-  emite conteúdo de contexto/PII — teste `daemon/test/telemetry-no-leak.test.ts`.
-- Preencher a RACI do ADR-AI-003 (owners de negócio/risco/governança).
-
-### Arquivos afetados
-- `packages/core/src/manifest.ts` (novo), `packages/daemon/src/routes/manifest.ts` (novo), `packages/cli/src/index.ts` (comando).
-- `packages/daemon/test/{cross-tenant,kill-switch,telemetry-no-leak}.test.ts` (novos).
-- `docs/AI-INVENTORY.md` (novo), `docs/adr/ADR-AI-003.md` (RACI), `.github/workflows/ci.yml` (publica manifest).
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-- **E8.1** `daemon/test/cross-tenant.test.ts` (4 testes): RAG / grafo / sessões
-  (por soul **e** por `client_key`) / custos (`cost_calls`, `getUsageSummary`) isolados.
-- **E8.2** `core/manifest.ts::buildExecutionManifest` — git sha, tiers, catálogo
-  L1/L2/L3 versionado, hash do system prompt por soul, dirs RAG, migrações aplicadas;
-  `hash` determinístico (`generatedAt` fora). `GET /api/manifest` + `os manifest`.
-- **E8.3** `daemon/test/kill-switch.test.ts` (3 testes): `dailyLimit` / `maxTurns` /
-  `PROMPT_INJECTION_MODO=recusar` cortam **antes** de chamar o provider (contador `run`).
-- **E8.4** `docs/AI-INVENTORY.md` (10 sistemas, risco AI-1..AI-4, guardrails).
-  **Achado corrigido:** `execution_logs.verdict` carregava `snippet` (200 chars do
-  doc) e vazava em `/infra/status` → `sanitizeVerdictForLog` (`core/sessions.ts`)
-  corta `snippet`/`body`, mantém `ok`/`motivo`/`path`/`method`/`score`. Teste
-  `daemon/test/telemetry-no-leak.test.ts`. ADR-AI-003 §8: RACI aceita pelo owner
-  em 2026-08-27 (registro owner-accepted).
-- **CI** `.github/workflows/ci.yml` — passo `Execution manifest` roda `os status`
-  (drena a linha de migrações) → `os manifest` → `manifest-<sha>.json`, anexado
-  como artefato `execution-manifest-<sha>` (retenção 90 dias, `if-no-files-found: error`).
-
-### Critérios de aceitação
-- [x] Suíte cross-tenant verde (RAG, grafo, sessões, custos).
-- [x] `GET /api/manifest` determinístico (teste `core/manifest.test.ts` + REST `daemon.test.ts`); `manifest-<sha>.json` anexado ao build pelo passo `Execution manifest` do CI.
-- [x] Kill-switch: provider não é chamado quando o limite corta.
-- [x] `docs/AI-INVENTORY.md` cobre os sistemas de IA com classificação (owners assinados 2026-08-27).
-- [x] Telemetria sem PII/contexto — `sanitizeVerdictForLog` + teste.
-- [x] **Assinatura humana** da RACI do ADR-AI-003 — owner-accepted 2026-08-27.
-
-Testes: +11 (`cross-tenant` 4, `kill-switch` 3, `manifest` 2, `telemetry-no-leak` 2) + 1 REST. Suítes: core 221, daemon 119, memory 44, tools 22, cli 2 — verdes.
-
-### Esforço: **L** · Dependências: **E1** (feito)
-
----
-
-## E9 — LGPD: fechar ADR-PRIV-001
-
-### Objetivo
-Levar o ADR-PRIV-001 (domínio de famílias, dados sensíveis de saúde) de
-"Proposta" para "Aceito", fechando as pendências datadas do §7.
-
-### Estado atual (verificado)
-- `docs/adr/ADR-PRIV-001.md` — Status "Proposta (aguardando assinatura do owner de
-  risco/responsável clínico)". Retenção `FAMILIAS_RETENCAO_DIAS` default 1825;
-  sweep de eliminação em cascata implementado.
-- Pendências §7: P1 (confirmar prazo de prontuário com o Conselho Federal de
-  Psicologia); evidência de consentimento dos responsáveis capturada fora do
-  banco (canal WhatsApp), requisito do onboarding; política de rotação de
-  backup/dump respeitando pedido de eliminação; perfil AI-4 sem ADR próprio.
-
-### Trabalho
-- [ ] **Onboarding com evidência de consentimento** — no fluxo `POST /familias`
-  (onboarding), exigir e registrar referência à evidência de consentimento
-  (id da mensagem/mídia WhatsApp, timestamp, responsável). Coluna
-  `consent_evidence_ref` + validação; sem ela, `status` não avança para ativo.
-  Migração `0012_familias_consent`.
-- [ ] **Rotação de backup vs. eliminação** — documentar e automatizar: o job de
-  backup (`assistente-os-backup` no PM2) passa a registrar a data do dump; um
-  procedimento (`os familias purge-backups` ou nota operacional) garante que
-  dumps mais antigos que o ciclo sejam descartados após um sweep de eliminação,
-  para não reter linhas eliminadas além do previsto.
-- [x] **ADR AI-4 — verificado (2026-08-27):** `docs/adr/ADR-AI-004.md` é
-  exclusivamente sobre a **integração LangGraph** (streaming, mode routing, UI web),
-  perfil de conformidade **AI-3**. **Não cobre** o domínio de famílias, o perfil
-  AI-4, nem AIIA/RIPD/ROPA/retention. A referência "Relacionados: ADR-AI-004" em
-  ADR-PRIV-001 §1 é só um cross-link entre ADRs de IA, não uma formalização.
-  → Continua pendente **um ADR dedicado** (ADR-PRIV-002 / ADR-AI-005) para o
-  perfil AI-4 de famílias: classificação (dado sensível de saúde de criança),
-  AIIA, RIPD/DPIA, ROPA, retention schedule (parte já em `FAMILIAS_RETENCAO_DIAS`),
-  guardrails vigentes e RACI. Requer owner de risco/DPO + responsável clínico.
-- [x] **P1 (prazo de prontuário)** — owner (responsável clínico) registrado e
-  prazo aceito em 2026-08-27; `FAMILIAS_RETENCAO_DIAS` mantido em 1825 até
-  confirmação do CFP (issue org. aberta).
-- [x] Status do ADR-PRIV-001 e RACI atualizados — aceito (owner-accepted 2026-08-27).
-
-### Arquivos afetados
-- `packages/core/src/familias.ts` + `migrations.ts` (`0012`).
-- `packages/daemon/src/routes/familias.ts` — validação de consentimento no onboarding.
-- `packages/cli/src/index.ts` — `os familias purge-backups` (ou doc).
-- `docs/adr/ADR-PRIV-001.md`, `docs/adr/ADR-AI-004.md`, `docs/DEPLOY.md`.
-
-### Status: ✅ CONCLUÍDO (2026-08-27) — ADR aceito e itens org. assinados pelos owners; resta só redigir o ADR-PRIV-002 dedicado (perfil AI-4), já sob owner
-
-- Migration `0013_familias_consent_evidence` + `ativarFamilia(pool, id, consentEvidenceRef)`
-  que lança `ConsentEvidenceRequiredError` e **não** avança o status sem a referência;
-  `registrarConsentimento()`. `Familia.consentEvidenceRef`.
-- Rotação de backup vs. eliminação: `pruneOldBackups` já existe; **invariante documentada**
-  em ADR-PRIV-001 §8 (registro eliminado sobrevive ≤ `BACKUP_RETENTION_DAYS=7` em dumps;
-  procedimento de 3 passos para pedido de eliminação explícito; restauração de dump antigo
-  exige re-rodar o sweep).
-- ADR-PRIV-001 §8 (progresso de implementação) adicionado; P2 ✅, P3 ✅, P1/P4/P5 ⏳ (org/roadmap).
-- **P5** (ADR AI-4 de famílias): **verificado** — ADR-AI-004 é sobre a integração
-  LangGraph (perfil AI-3), **não** cobre. Segue pendente um ADR dedicado
-  (ADR-PRIV-002 / ADR-AI-005) com AIIA/RIPD/ROPA/retention + RACI; classificação
-  AI-4 provisória registrada em `docs/AI-INVENTORY.md` #6.
-
-### Critérios de aceitação
-- [x] Onboarding sem `consent_evidence_ref` não ativa a família (teste `familias.test.ts`).
-- [x] Rotação de backup vs. eliminação documentada com procedimento (ADR §8); `pruneOldBackups` existente.
-- [x] ADR AI-4 dedicado de famílias — owner (risco/DPO + responsável clínico) designado e escopo aceito em 2026-08-27; redação do ADR-PRIV-002 / ADR-AI-005 é o único resíduo (autoria de documento, sem bloqueio técnico). Classificação AI-4 provisória vigente em `docs/AI-INVENTORY.md` #6.
-- [x] P1 (prazo CFP) — owner registrado no ADR §8; prazo aceito 2026-08-27 (issue org. de confirmação com o CFP em aberto).
-- [x] `docs/adr/ADR-PRIV-001.md` §8 com progresso; riscos §5/§6 endereçados no texto.
-
-Testes: `familias.test.ts` +1. Suítes: core 222, daemon 119 — verdes.
-
-### Esforço: **M** · Dependências: nenhuma técnica (parte é organizacional/assinatura)
-
----
-
-## E10 — RAG: estágio de reranking
-
-### Objetivo
-Adicionar um passo de reordenação após a busca híbrida, para subir a precisão do
-top-K sem depender só do score vetorial/lexical.
-
-### Estado atual (verificado)
-- Busca híbrida 70/30 (semântica + literal) com scores no audit trail
-  (`orchestrator/router.ts` modo `pro`; debug `method`/`score` por fonte no
-  `chat.ts`). **Nenhum** rerank (grep `rerank` vazio).
-
-### Arquivos afetados
-- `packages/memory/src/rerank.ts` **(novo)** — `rerank(query, candidates, opts)`.
-- `packages/memory/src/context.ts` / `retrieveContext` — chamar o rerank entre "buscar" e "montar contexto".
-- `packages/core/src/config.ts` — flags `RAG_RERANK` (`off`|`llm`|`cross-encoder`), `RAG_RERANK_TOPN`.
-- `packages/daemon/src/routes/chat.ts` — expor `method: "reranked"` + score no debug do audit trail.
-
-### Design
-- Recuperar top-N amplo (ex.: 20) da busca híbrida → rerank → top-K (ex.: 5) para o prompt.
-- **Modo `cross-encoder`** (recomendado, local, sem custo): modelo cross-encoder
-  via `@xenova/transformers` (mesma stack do STT/embeddings fallback), ex.
-  `Xenova/ms-marco-MiniLM-L-6-v2`. Score par (query, chunk).
-- **Modo `llm`**: prompt binário/escala ao Ollama ("este trecho ajuda a responder
-  X? 0–3") — mais lento em CPU; útil quando o cross-encoder não estiver disponível.
-- **`off`** (default até validar): comportamento atual, custo zero.
-- Auto-skip com log se o modelo não carregar (mesmo padrão dos testes que
-  dependem de Ollama/Xenova).
-
-### Contratos
-```ts
-export interface RerankOpts { mode: "off" | "llm" | "cross-encoder"; topN: number; topK: number; }
-export async function rerank(query: string, candidates: RagChunk[], opts: RerankOpts): Promise<RagChunk[]>; // re-scored + reordenado + cortado em topK
-```
-
-### Status: ✅ CONCLUÍDO (2026-08-27)
-
-`memory/rerank.ts` — `rerank(query, candidates, cfg, scoreFn?)` + `rerankConfig()`
-(env `RAG_RERANK` = `off`|`llm`|`cross-encoder`, `RAG_RERANK_TOPN` default 20,
-`RAG_RERANK_TOPK`). `retrieveContext` busca top-N amplo e reordena antes de cortar
-no `limit` quando o modo ≠ `off`; com `off` (default) `fetchN == limit` (no-op).
-Cross-encoder via `@xenova/transformers` (`Xenova/ms-marco-MiniLM-L-6-v2`), lazy +
-cacheado; falha de modelo → `crossEncoderFailed` + log + fallback para ordem por
-score. `llm` pontua 0–3 via Ollama por trecho; timeout/erro → `-1` (não pontuado,
-mantém ordem original). Chave de cache RAG inclui o modo.
-
-> **Correção (2026-08-28, T1.4):** o caminho `cross-encoder` real era um **no-op
-> silencioso** de E10 até aqui — `getCrossEncoderScorer` chamava o pipeline
-> `text-classification` do `@xenova/transformers` com assinatura de par não
-> suportada (`text.split is not a function`), erro engolido pelo `try/catch`. Só o
-> teste com scorer injetado passava. Reescrito para tokenizer + model diretos +
-> env `RAG_RERANK_CE_MODEL`. Medição em `ADR-RAG-001 §6`: o modelo default
-> (só-inglês) **piora** o corpus PT-BR → `RAG_RERANK` segue `off`.
-
-### Critérios de aceitação
-- [x] `cross-encoder` (scorer injetado no teste): a isca lexical sai do top-K (teste `rerank.test.ts`). ⚠️ o caminho de modelo real só passou a funcionar em T1.4 (2026-08-28) — ver correção acima.
-- [x] `RAG_RERANK=off`: `fetchN == limit`, ordena só por score — idêntico ao atual (suítes memory/daemon verdes).
-- [x] Modelo ausente → auto-skip + log, não quebra (fallback `byOriginal`).
-- [x] Scorer que devolve `-1` preserva a ordem por score original.
-- [x] `method: "reranked"` no audit trail — **feito (2026-08-27)**: `RagChunk` ganhou `reranked?: boolean` (setado em `retrieveContext` quando `RAG_RERANK != off`); o bloco "RAG: retrieval debug" do `chat.ts` grava `method: "reranked"` para essas fontes, com `baseMethod` preservando `semantic`/`literal`. Teste em `rag-faithfulness.test.ts`.
-
-Testes: `memory/test/rerank.test.ts` (4). Suítes: memory 48, daemon 119 — verdes.
-
-### Plano de teste
-- Unit `memory/test/rerank.test.ts` — fixtures com isca; `off` == baseline; scorer não-pontuado. ✅
-- Fidelidade RAG (juiz LLM opcional) — comparar grounding com/sem rerank.
-
-### Esforço: **M** · Dependências: nenhuma (E4 dá cache para amortizar o custo do rerank em repetições)
+- **RAG enterprise-ready**: E11 (citações + confidence multi-sinal + modo
+  "evidência insuficiente"), E12a (fidelidade heurística + casos
+  adversariais), E12b (`runFaithfulnessEval` + tabela `rag_eval_runs` +
+  `os rag eval --record`/`--history` + amostragem online).
+
+### 2026-08-31 — Modo Amigável (Fases 0–4)
+
+Camada de acesso self-service completa — detalhe em
+[docs/FRIENDLY-MODE.md](FRIENDLY-MODE.md): contas (`accounts`,
+`account_sessions`, migrações `0018`/`0019`), wizard de criação de soul
+(`dry_run → plan_hash → confirmar`), configurações escopadas, upload de
+conhecimento com teto em KB por conta, allowlist de admin fechada por
+padrão. **Resolve a "Onda 3f" (decisão multi-tenant: sim)** — residual
+listado em Aberto. Pausado como iniciativa ativa desde 2026-09-04 (decisão
+do usuário) — ver "Modo Amigável — PAUSADO" em Aberto.
+
+### 2026-09-02 a 2026-09-05 — Design System (`packages/ui`, DS1–DS15)
+
+Backlog completo fechado (15 itens, detalhe original por tarefa/PR nos
+commits de `packages/ui`). Resumo:
+
+- **DS1** — `ScrollArea` expõe `viewportRef` + scrollbar horizontal (pré-requisito do `MessageList`).
+- **DS2** — notas de integração do A1 (fundação de tokens) formalizadas no spec do redesign de app (B).
+- **DS3** — `Field` ganhou uma forma render-prop pra compor com `Select` sem depender de `cloneElement`.
+- **DS4** — testes de regressão de a11y em Tabs/DropdownMenu/Switch/Checkbox.
+- **DS5** — cap de chroma (`TINT_CHROMA_CAP=0.05`) corrige `--accent`/`--chat-user-bubble` saindo ~7x mais saturados que o spec previa.
+- **DS6** — todo `color()` do preset Tailwind ganhou fallback igual a `tokens.css`, com teste de drift automático.
+- **DS7** — 6 achados cosméticos soltos (asChild em CardTitle, props do Toaster, barrel exports, sweep de cor hardcoded recursivo, Markdown/Citation viraram forwardRef).
+- **DS8** — token `--overlay` dedicado pro scrim do Dialog, desacoplado de `--foreground` (prepara dark mode futuro sem esperar ele existir).
+- **DS9** — Global Constraint de `forwardRef` reformulada no plano correto (estava referenciando o arquivo errado).
+- **DS10** — `CodeBlock` com highlight real (shiki) + `Markdown` renderiza `[[n]]` como `<Citation>` interativa só quando existe fonte real (fecha um achado de spoofing).
+- **DS11** — `Markdown` deixou de perder silenciosamente imagens e checkboxes de task-list GFM.
+- **DS12** — `ScrollArea` com `viewportLabel` opcional (`role="region"` + `aria-label`).
+- **DS13** — `MessageList` ganhou `ResizeObserver` além do `MutationObserver`, cobrindo reflow sem mutação de DOM.
+- **DS14** — `StreamingText` sinaliza fim do stream (`done`) sem remontar o conteúdo.
+- **DS15** — `MessageList`/`StreamingText` com `role="log"`/`aria-live`/`aria-busy`.
+
+### 2026-09-04 — Onda 3d, Onda 3e, contenção (SPEC-HR2/HR6/BUG-01)
+
+- **Onda 3d — centralizar config**: fechada sem migração mecânica adicional.
+  Fase 1 (5 fixes: 2 bugs reais + 3 riscos de duplicação unificados) já
+  tinha resolvido o único candidato com bug real confirmado
+  (`RAG_INJECTION_MODO`/`PROMPT_INJECTION_MODO`, unificado pelo M3 na mesma
+  sessão). As ~90 leituras restantes de `process.env` são single-site sem
+  duplicação comprovada — migrá-las exigiria adotar `zod`/`envalid` como
+  dependência nova, decisão reservada ao usuário; sem bug motivador, não
+  migrado.
+- **Onda 3e — quebrar god-objects**: `chat.ts` 1177→22 linhas (4 módulos +
+  `promptPipeline.ts` compartilhado); `tools/src/index.ts` 2075→338 linhas
+  (13 famílias, 59 tools, padrão `ToolContext`/`FAMILY_HANDLERS`).
+- **SPEC-HR6** (P0) — `WsHub` agora escopa cada cliente por `accountId`;
+  eventos sem escopo (voice/monitor/agenda/whatsapp/telegram/mission) vão só
+  pra admin, antes iam pra todo mundo. 2 bugs adjacentes corrigidos:
+  `daemon.close()` travava com WS aberto; close-frame do cliente nunca era
+  notado (socket pendurado).
+- **SPEC-HR2** (P0) — `purgeCredentials` tinha zero chamadores em produção;
+  segredo detectado em qualquer chat ficava em memória até o processo
+  reiniciar. Corrigido em 3 pontos (`chat.ts`, `stream.ts`, `sentry.ts`).
+  Gap residual conhecido e aceito: modo `recusar` (não é o default) pode
+  reter segredo até o próximo turno da mesma sessão — não corrigido por
+  exigir refactor maior de `preparePromptContext`.
+- **BUG-01** — watchdog externo do `/stream` (310s absoluto) corria em
+  `Promise.race` sem jeito de cancelar a chamada ao Ollama; corrigido com
+  `AbortSignal` real. Escopo: só o tier Ollama (era o caso reproduzido).
+- **SPEC-HR4, SPEC-FO1** — auditados e confirmados já implementados (hard-stop
+  de 5 iterações no LangGraph; diretriz FinOps incondicional no prompt) —
+  não precisaram de código novo, só deixaram de estar erroneamente listados
+  como pendentes.
+
+### 2026-09-05 — Governança (SPEC-HR1/HR3/HR5, GR1–4, EP1–3, M3)
+
+Dia de maior atividade — 12+ PRs.
+
+- **SPEC-HR1 — degradação suave DB/LLM.** Fatia 3 fecha o item:
+  `routes/agenda.ts` (GET/POST) e o job `processDueAgenda` sondam
+  `isDbHealthy` e respondem/pulam com erro claro em vez de deixar o timeout
+  de conexão do `pg` estourar; RAG ingest (`indexFile`) ganhou a mesma
+  sonda nos 4 pontos de entrada (CLI, tool MCP, LangGraph, upload HTTP).
+- **SPEC-HR3 — tools MCP com autorização + auditoria.** `authorizeTool` já
+  era blanket check; `logIntention` (audit-trail) agora roda no `finally`
+  de `handleToolCall` — toda chamada registra intenção, sucesso ou falha.
+  Bug pré-existente corrigido no caminho: 3 funções de log resolviam `home`
+  via `resolveHome()` global em vez do `home` do chamador (7 call sites).
+- **SPEC-HR5 — reconciliar dependências (STDLIB_FIRST).** `deps-zones.mjs`
+  nunca rodava de fato em CI (só tinha testes unitários das próprias
+  funções) — novo step "Dependency zones gate" no job `compliance`.
+  ADR-HR5-001 (arquivado): 22 dependências fora do conjunto original
+  verificadas por uso real no código — veredito manter todas, nenhuma tem
+  equivalente stdlib viável.
+- **SPEC-GR1 — 4º loop de autoaprendizado.** Reincidência (3+ lições do
+  mesmo tópico) → proposta de Regra de Ouro → aprovação por código de 6
+  dígitos via Telegram → `buildPrompt` injeta a regra ativa **ao vivo, a
+  cada prompt**, pra qualquer soul do home (não um diff estático em
+  `SOUL.md` por soul — mecanismo mais robusto, cobre souls futuras
+  automaticamente).
+- **SPEC-GR2 — rodapé `usage_metadata`.** `appendUsageMetadata`
+  (`packages/core/src/alma.ts`) anexa o bloco na sessão do dia, idempotente
+  por `session_id`, ligado em `postChat.ts` sem risco de derrubar a
+  resposta do chat.
+- **SPEC-GR3 — browser harness semântico.** A ordem "a11y tree → seletor →
+  screenshot" já valia na prática (nunca existiu clique por coordenada). O
+  gap real era `browser_execute_fix`: sandbox por substring, trivialmente
+  contornável, rodando no mesmo realm JS da página. Corrigido com
+  `evaluateInIsolatedWorld()` (CDP), DOM compartilhado mas realm de JS
+  separado.
+- **SPEC-GR4 — gate Discriminator no CI.** Causa raiz do crash em ~2s: `os
+  discriminator` pulava migração de Postgres, mas o job do CI não tem
+  serviço Postgres — corrigido (mesma lista de skip de `help`/`backup`).
+  `ZEN_API_KEYS` (rodízio round-robin já existia em
+  `packages/core/src/zen-keys.ts`, só não estava ligado ao job) cadastrado
+  como secret de CI — **item fechado de ponta a ponta**: PR posterior já
+  mostrou o gate julgando um diff de verdade (score real, não mais
+  "Guardian indisponível").
+- **SPEC-EP1 — planejamento em PR.** Seção "Plano (arquivos + ordem)"
+  obrigatória no template, validada de verdade pelo gate `compliance`.
+- **SPEC-EP2 — tipagem estrita + Zod nos limites.** Frente 1: ESLint criado
+  do zero (`no-explicit-any: error`); dos ~36 `any` de produção, 8
+  corrigidos com tipo real, ~28 documentados com justificativa pontual.
+  Frente 2 (3 fatias): as 13 rotas HTTP do daemon que fazem parsing de body
+  ganharam schema Zod (`parseBody`); as ~50 tools MCP ganharam validação de
+  args derivada do próprio `inputSchema` (fonte única, sem duplicar
+  schema); a CLI ganhou validação de argumento obrigatório/enum,
+  corrigindo dois bugs reais de comportamento silencioso. Efeito colateral
+  consciente e recorrente: input malformado agora é **rejeitado**
+  (400/erro MCP/exit 1), não mais coagido a um default em silêncio.
+- **SPEC-EP3 — script único de DoD.** `npm run dod` encadeia build →
+  typecheck → lint → test → manifest → discriminator, sem parar na
+  primeira falha.
+- **M3 — endurecimento de prompt injection.** Default mudou de `aviso`
+  (nunca bloqueava) pra `recusar` (bloqueia severidade medium+high — era só
+  high). Resolução de env var unificada num só lugar
+  (`resolvePromptInjectionMode`).
+- Design System (DS2–DS9, finalização) — ver seção própria acima.
+
+Nota de coordenação: com o domínio famílias (AI-4) excluído do escopo neste
+mesmo dia (ver "Exclusões de escopo" em Aberto), `docs/AI-INVENTORY.md` ganhou
+uma nota apontando pra essa decisão — a aceitação do ADR-PRIV-001 (arquivado)
+e a classificação AI-4 provisória continuam válidas, só o "ADR dedicado ainda
+por vir" deixou de ser um resíduo real.
 
 ---
 
 ## Convenções
 
-- **Migrações**: string embutida em `packages/core/src/migrations.ts`, id sequencial
-  `00NN_nome`, idempotente (`IF NOT EXISTS`/`ADD COLUMN IF NOT EXISTS`).
+- **Migrações**: string embutida em `packages/core/src/migrations.ts`, id
+  sequencial `00NN_nome`, idempotente (`IF NOT EXISTS`/`ADD COLUMN IF NOT
+  EXISTS`).
 - **Tools novas**: entram negadas por Zero Trust; só ficam visíveis se em
-  `DEFAULT_ALLOWED_TOOLS` (leitura) ou no `agent.permissions.tools` da soul; nível
-  L1/L2/L3 declarado em `policy.ts`.
-- **Segredos**: só em `~/.assistant-os/.env` / secrets do GitHub; nunca no repo.
-- **Testes**: `npm run build` antes; `node --test` por workspace; conexões (Redis,
-  pool) fechadas no `after()`.
-- Ao concluir um epic, atualizar a seção **Status/Pendências** do [README](../README.md).
+  `DEFAULT_ALLOWED_TOOLS` (leitura) ou no `agent.permissions.tools` da soul;
+  nível L1/L2/L3 declarado em `policy.ts`.
+- **Segredos**: só em `~/.assistant-os/.env` / secrets do GitHub; nunca no
+  repo.
+- **Testes**: `npm run build` antes; `node --test` por workspace; conexões
+  (Redis, pool) fechadas no `after()`.
+- Ao fechar um item de "Aberto", mover a entrada pra "Concluído" com a data
+  real, e atualizar o README se o item mudar uma feature já documentada lá.
+- **Branches (desde 2026-09-06)**: `dev` é o branch de integração — todo PR
+  mira `dev`; `main` só recebe promoções via PR `dev`→`main`. Detalhe em
+  `CONTRIBUTING.md`/`AGENTS.md`.
