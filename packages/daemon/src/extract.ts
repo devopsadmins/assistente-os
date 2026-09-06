@@ -34,7 +34,6 @@ function decodeXml(s: string): string {
 
 type PdfParse = (b: Buffer) => Promise<{ text?: string }>;
 let pdfParsePromise: Promise<PdfParse> | null = null;
-let pdfWarmup: Promise<void> | null = null;
 
 function loadPdfParse(): Promise<PdfParse> {
   // Importa o módulo interno de propósito: o index.js do pdf-parse roda um
@@ -49,15 +48,8 @@ function loadPdfParse(): Promise<PdfParse> {
 async function extractPdf(buf: Buffer): Promise<ExtractResult> {
   const pdfParse = await loadPdfParse();
 
-  // O pdf.js (v1.10) empacotado no pdf-parse lança "bad XRef entry" na PRIMEIRA
-  // invocação do processo e só funciona depois de um parse concluído. Aquecemos
-  // uma vez (resultado ignorado) para não desperdiçar o primeiro documento real.
-  pdfWarmup ??= pdfParse(buf).then(
-    () => undefined,
-    () => undefined,
-  );
-  await pdfWarmup;
-
+  // Uma retentativa cobre falhas transitórias do pdf.js antigo do pdf-parse;
+  // um PDF de fato corrompido falha as duas vezes.
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
