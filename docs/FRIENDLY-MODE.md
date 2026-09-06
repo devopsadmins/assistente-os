@@ -95,6 +95,19 @@ Upload self-service com teto **em KB por conta** (não em nº de chunks) —
 `knowledge: { usedKb, limitKb }` com 1 casa decimal (um upload de poucas
 dezenas de bytes não vira "0 KB").
 
+### Ingestão de PDF/DOCX/XLSX (FM1, 2026-09-06)
+
+`.md`/`.markdown`/`.txt` entram direto na indexação; `.pdf`/`.docx`/`.xlsx`
+passam por `extractDocumentText()` (`packages/daemon/src/extract.ts`) e viram
+um **sidecar `<arquivo>.md`** ao lado do original em `sources/uploads/`, que é
+o que a indexação RAG consome (`.md`/`.txt`/CLI seguem intactos). A resposta
+do `POST /souls/:id/upload` ganha `documents: { indexed, skipped }`; um
+documento sem texto extraível (escaneado, protegido, corrompido) é **salvo
+para proveniência**, listado em `skipped` com o motivo, e **não** derruba o
+upload. PDF usa `pdf-parse`; DOCX/XLSX usam o `adm-zip` já presente (parse
+manual do XML). Sem OCR. O binário original e o sidecar contam os dois no teto
+de KB.
+
 ## Allowlist de admin (capabilities + skills)
 
 `6590ad7`. Tabela `friendly_allowlist (pattern, kind)`, `kind ∈
@@ -131,7 +144,9 @@ skill, co-concessão das tools que a skill declara).
 
 `packages/daemon/src/test/`: `account-isolation.test.ts`,
 `account-soul-wizard.test.ts`, `account-soul-settings.test.ts`,
-`account-knowledge-upload.test.ts`, `friendly-allowlist.test.ts`;
+`account-knowledge-upload.test.ts`, `friendly-allowlist.test.ts`,
+`friendly-doc-upload.test.ts` (FM1, rota ponta a ponta),
+`extract.test.ts` (FM1, extração PDF/DOCX/XLSX pura);
 `packages/core/src/test/accounts.test.ts`.
 
 ## Pendente

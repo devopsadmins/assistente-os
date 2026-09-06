@@ -1,0 +1,130 @@
+---
+interface Props {
+  class?: string;
+  open?: boolean;
+  title?: string;
+  description?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  closeOnOverlayClick?: boolean;
+  closeOnEscape?: boolean;
+  children?: any;
+}
+const { class: className = '', open = false, title, description, size = 'md', closeOnOverlayClick = true, closeOnEscape = true, children, ...attrs } = Astro.props;
+
+const sizeClasses = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-xl',
+  full: 'max-w-4xl',
+};
+
+const modalId = `modal-${Math.random().toString(36).slice(2)}`;
+const overlayId = `${modalId}-overlay`;
+---
+
+{open && (
+  <>
+    <div
+      id={overlayId}
+      class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity"
+      aria-hidden="true"
+      data-close-on-click={closeOnOverlayClick}
+    />
+    <div
+      id={modalId}
+      class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? `${modalId}-title` : undefined}
+      aria-describedby={description ? `${modalId}-description` : undefined}
+    >
+      <div
+        class={`w-full ${sizeClasses[size]} bg-white rounded-xl shadow-2xl transform transition-all`}
+        data-close-on-escape={closeOnEscape}
+      >
+        {(title || description) && (
+          <div class="flex items-start justify-between p-6 border-b border-gray-200">
+            <div>
+              {title && (
+                <h2 id={`${modalId}-title`} class="text-lg font-semibold text-gray-900">{title}</h2>
+              )}
+              {description && (
+                <p id={`${modalId}-description`} class="mt-1 text-sm text-gray-500">{description}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              class="text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-lg p-1"
+              aria-label="Fechar modal"
+              data-close-modal
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        <div class="p-6">
+          <slot>{children}</slot>
+        </div>
+      </div>
+    </div>
+  </>
+)}
+
+<script>
+  // Modal keyboard and overlay handlers
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modals = document.querySelectorAll('[data-close-on-escape="true"]');
+      modals.forEach(modal => {
+        const overlay = modal.parentElement?.querySelector('[data-close-on-click="true"]');
+        if (overlay) overlay.click();
+      });
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const overlay = e.target.closest('[data-close-on-click="true"]');
+    if (overlay) {
+      const modalId = overlay.id.replace('-overlay', '');
+      const modal = document.getElementById(modalId);
+      if (modal) {
+        modal.remove();
+        overlay.remove();
+      }
+    }
+
+    const closeBtn = e.target.closest('[data-close-modal]');
+    if (closeBtn) {
+      const modal = closeBtn.closest('[data-close-on-escape="true"]');
+      const overlay = modal?.parentElement?.querySelector('[data-close-on-click="true"]');
+      if (modal && overlay) {
+        modal.remove();
+        overlay.remove();
+      }
+    }
+  });
+</script>
+
+<style>
+  /* Modal animations */
+  @keyframes modal-enter {
+    from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  
+  @keyframes overlay-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  [id^="modal-"] > div {
+    animation: modal-enter 0.2s ease-out;
+  }
+  
+  [id$="-overlay"] {
+    animation: overlay-enter 0.2s ease-out;
+  }
+</style>

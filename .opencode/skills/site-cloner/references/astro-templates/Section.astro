@@ -1,0 +1,37 @@
+---
+interface Props {
+  class?: string;
+  variant?: 'default' | 'alternate' | 'dark' | 'hero';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  container?: boolean;
+  children?: any;
+}
+const { class: className = '', variant = 'default', size = 'lg', container = true, children, ...attrs } = Astro.props;
+
+const variantClasses = {
+  default: 'bg-white',
+  alternate: 'bg-gray-50',
+  dark: 'bg-gray-900 text-white',
+  hero: 'bg-gradient-to-b from-primary-50 to-white',
+};
+
+const sizeClasses = {
+  sm: 'py-8 sm:py-12',
+  md: 'py-12 sm:py-16 lg:py-20',
+  lg: 'py-16 sm:py-24 lg:py-32',
+  xl: 'py-24 sm:py-32 lg:py-40',
+  full: 'min-h-screen flex items-center justify-center',
+};
+
+const classes = `${variantClasses[variant]} ${sizeClasses[size]} ${className}`;
+---
+
+<section class={classes} {...attrs}>
+  {container ? (
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <slot>{children}</slot>
+    </div>
+  ) : (
+    <slot>{children}</slot>
+  )}
+</section>

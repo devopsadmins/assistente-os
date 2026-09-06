@@ -1,0 +1,108 @@
+{
+  "skill_name": "site-cloner",
+  "evals": [
+    {
+      "id": "event-go",
+      "name": "Event Go Template (Bootstrap + jQuery)",
+      "referenceUrl": "https://like-themes.com/goevent/go/",
+      "description": "Template de evento com hero, countdown, carrossel de palestrantes, tabs de agenda, cards de pricing, carrossel de sponsors, grid de news",
+      "expectedComponents": [
+        "hero",
+        "countdown",
+        "speakers-carousel",
+        "schedule-tabs",
+        "pricing-cards",
+        "sponsors-carousel",
+        "news-grid",
+        "footer"
+      ],
+      "expectedInteractions": [
+        "countdown-timer",
+        "smooth-scroll",
+        "carousel-nav",
+        "tab-switch"
+      ],
+      "visualThreshold": 0.90,
+      "viewportTests": ["mobile", "tablet", "desktop"],
+      "functionalTests": [
+        "page-load",
+        "anchor-navigation",
+        "smooth-scroll",
+        "cta-buttons",
+        "carousel-navigation",
+        "mobile-responsive",
+        "tablet-responsive",
+        "desktop-responsive",
+        "images-load",
+        "console-errors",
+        "basic-accessibility"
+      ]
+    },
+    {
+      "id": "stripe-home",
+      "name": "Stripe.com (Custom CSS, Dark Mode)",
+      "referenceUrl": "https://stripe.com",
+      "description": "Homepage da Stripe com hero, feature grid, pricing table, footer, navegação com dropdown, dark mode toggle",
+      "expectedComponents": [
+        "hero",
+        "feature-grid",
+        "pricing-table",
+        "footer",
+        "nav"
+      ],
+      "expectedInteractions": [
+        "dark-mode-toggle",
+        "dropdown-nav",
+        "smooth-scroll"
+      ],
+      "visualThreshold": 0.88,
+      "viewportTests": ["desktop"],
+      "functionalTests": [
+        "page-load",
+        "anchor-navigation",
+        "smooth-scroll",
+        "cta-buttons",
+        "dropdown-nav",
+        "dark-mode-toggle",
+        "desktop-responsive",
+        "images-load",
+        "console-errors",
+        "basic-accessibility"
+      ]
+    },
+    {
+      "id": "vercel-home",
+      "name": "Vercel.com (Next.js + Tailwind)",
+      "referenceUrl": "https://vercel.com",
+      "description": "Homepage da Vercel com hero, logotype animado, feature cards, docs nav, changelog, command palette",
+      "expectedComponents": [
+        "hero",
+        "logotype",
+        "feature-cards",
+        "docs-nav",
+        "changelog"
+      ],
+      "expectedInteractions": [
+        "command-palette",
+        "dropdown",
+        "carousel"
+      ],
+      "visualThreshold": 0.85,
+      "viewportTests": ["desktop", "mobile"],
+      "functionalTests": [
+        "page-load",
+        "anchor-navigation",
+        "smooth-scroll",
+        "cta-buttons",
+        "command-palette",
+        "dropdown-nav",
+        "carousel-navigation",
+        "mobile-responsive",
+        "desktop-responsive",
+        "images-load",
+        "console-errors",
+        "basic-accessibility"
+      ]
+    }
+  ]
+}

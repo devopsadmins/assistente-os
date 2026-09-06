@@ -1,0 +1,63 @@
+# {{#if projectName}}{{projectName}}{{else}}Site Clonado{{/if}}
+
+Gerado automaticamente pelo **site-cloner** em {{date}}.
+
+## 📋 Informações
+
+- **Fonte original:** [{{sourceUrl}}]({{sourceUrl}})
+- **Componentes detectados:** {{componentsCount}}
+- **Cores extraídas:** {{colorsCount}}
+
+## 🚀 Como usar
+
+```bash
+# Instalar dependências
+npm install
+
+# Desenvolvimento
+npm run dev
+
+# Build para produção
+npm run build
+
+# Preview do build
+npm run preview
+```
+
+## 🎨 Personalização
+
+### Design Tokens
+Os tokens de design estão em `tailwind.config.ts`:
+- **Cores:** `theme.extend.colors`
+- **Espaçamento:** `theme.extend.spacing`
+- **Tipografia:** `theme.extend.fontSize`, `fontFamily`
+- **Border Radius:** `theme.extend.borderRadius`
+- **Sombras:** `theme.extend.boxShadow`
+
+### Componentes
+Componentes em `src/components/`:
+- `ui/` - Componentes base (Button, Card, Section, etc.)
+- Componentes mapeados da referência original
+
+### Conteúdo
+Edite `src/pages/index.astro` para alterar o conteúdo.
+Use o mapeamento de conteúdo via CLI:
+```bash
+site-cloner clone <url> --content-mapping '{"h1": "Meu Título"}'
+```
+
+## 📊 Validação
+
+Para re-validar o projeto:
+```bash
+site-cloner validate ./output-dir
+```
+
+Relatórios de validação ficam em `validation-report.html`.
+
+## ⚠️ Notas
+
+- Este é um clone visual - funcionalidades complexas (backend, auth, etc.) não são replicadas
+- Fontes licenciadas podem precisar de substituição manual
+- Animações JS complexas são convertidas para CSS quando possível
+- Verifique acessibilidade antes de colocar em produção

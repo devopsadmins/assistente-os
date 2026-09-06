@@ -30,6 +30,9 @@ export const BACKEND_ALLOW = [
       "pg", "playwright-core", "@types/node", "@types/pg", "typescript",
       "azure-devops-node-api", "ioredis", "pino", "pino-pretty", "say", "telegraf",
       "@xenova/transformers", "busboy", "@types/busboy",
+      // FM1 (2026-09-06): extração de texto de PDF no upload self-service.
+      // DOCX/XLSX reaproveitam o adm-zip já presente; só o PDF pede um parser.
+      "pdf-parse", "@types/pdf-parse",
       // grandfathered 2026-09-01 (present in the tree when the guard landed):
       "@sentry/node", "adm-zip", "@types/adm-zip", "baileys", "prom-client",
       "qrcode-terminal", "archiver", "@types/archiver",

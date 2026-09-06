@@ -1,0 +1,52 @@
+---
+interface Props {
+  class?: string;
+  variant?: 'default' | 'dark' | 'minimal';
+  children?: any;
+}
+const { class: className = '', variant = 'default', children, ...attrs } = Astro.props;
+
+const variantClasses = {
+  default: 'bg-gray-50 border-t border-gray-200',
+  dark: 'bg-gray-900 text-white border-t border-gray-800',
+  minimal: 'bg-white border-t border-gray-200 py-8',
+};
+
+const classes = `${variantClasses[variant]} ${className}`;
+---
+
+<footer class={classes} {...attrs}>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
+    {children ? (
+      <slot>{children}</slot>
+    ) : (
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div class="md:col-span-2">
+          <h3 class="text-lg font-semibold mb-4">Cloned Site</h3>
+          <p class="text-gray-600 dark:text-gray-400 max-w-xs">
+            Este site foi gerado automaticamente pelo site-cloner a partir de uma referência visual.
+          </p>
+        </div>
+        <div>
+          <h4 class="font-medium mb-3">Links</h4>
+          <ul class="space-y-2 text-gray-600 dark:text-gray-400">
+            <li><a href="#" class="hover:text-primary-600 dark:hover:text-primary-400">Início</a></li>
+            <li><a href="#" class="hover:text-primary-600 dark:hover:text-primary-400">Sobre</a></li>
+            <li><a href="#" class="hover:text-primary-600 dark:hover:text-primary-400">Contato</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-medium mb-3">Legal</h4>
+          <ul class="space-y-2 text-gray-600 dark:text-gray-400">
+            <li><a href="#" class="hover:text-primary-600 dark:hover:text-primary-400">Privacidade</a></li>
+            <li><a href="#" class="hover:text-primary-600 dark:hover:text-primary-400">Termos</a></li>
+            <li><a href="#" class="hover:text-primary-600 dark:hover:text-primary-400">Cookies</a></li>
+          </ul>
+        </div>
+      </div>
+    )}
+    <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-800 text-center text-sm text-gray-500 dark:text-gray-400">
+      <p>&copy; {new Date().getFullYear()} Cloned Site. Gerado com site-cloner.</p>
+    </div>
+  </div>
+</footer>
