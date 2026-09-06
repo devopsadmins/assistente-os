@@ -125,9 +125,16 @@ export async function validateVisual(
       ),
     };
 
-    // Save detailed report
+    // Save detailed report — strip the raw diff buffers (megabytes of pixel
+    // data) so the JSON stays small; the PNGs live in visual-diffs/.
     const reportPath = join(projectDir, 'visual-validation-report.json');
-    writeFileSync(reportPath, JSON.stringify(result, null, 2));
+    const slimComparisons = Object.fromEntries(
+      Object.entries(comparisons).map(([k, v]) => {
+        const { diffBuffer, ...rest } = v;
+        return [k, rest];
+      })
+    );
+    writeFileSync(reportPath, JSON.stringify({ ...result, componentDiffs: slimComparisons }, null, 2));
 
     const pct = (v: number) => (v < 0 ? 'n/a' : `${(v * 100).toFixed(1)}%`);
     spinner.succeed(passed ? 'Validação visual PASSOU' : 'Validação visual FALHOU');
