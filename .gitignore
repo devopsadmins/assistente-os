@@ -16,6 +16,8 @@ logs/
 docs/graphify-out/
 docs/archify/
 docs/assets/
+# bundle concatenando todos os docs/*.md num arquivo só
+docs/KNOWLEDGE-BASE.md
 
 # Claude Code local settings
 .claude/
