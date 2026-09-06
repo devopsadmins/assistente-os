@@ -68,11 +68,12 @@ export async function validateVisual(
   const spinner = ora('Iniciando validação visual...').start();
 
   // Start Astro preview server
-  const previewUrl = await startAstroPreview(projectDir);
-  
+  const preview = await startAstroPreview(projectDir);
+  const previewUrl = preview.url;
+
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext();
-  
+
   try {
     const page = await context.newPage();
     
@@ -86,22 +87,26 @@ export async function validateVisual(
     spinner.text = 'Comparando screenshots...';
     const comparisons = await compareAllViewports(generatedScreenshots, referenceScreenshots, projectDir);
     
-    // Calculate scores
-    const overallSimilarity = comparisons.desktop?.similarity || 0;
-    const heroSimilarity = comparisons.hero?.similarity || 0;
-    const headerSimilarity = comparisons.header?.similarity || 0;
-    const ctaSimilarity = comparisons.cta?.similarity || 0;
-    const mobileSimilarity = comparisons.mobile?.similarity || 0;
-    const tabletSimilarity = comparisons.tablet?.similarity || 0;
-    const desktopSimilarity = comparisons.desktop?.similarity || 0;
-    
-    const passed = 
+    // Calculate scores. A region with no crop on one/both sides was NOT
+    // measured (many templates expose no semantic hero/CTA landmark) — that is
+    // "n/a", not "0% / failed", so it must not sink the gate.
+    const score = (k: string): number => comparisons[k]?.similarity ?? -1;
+    const overallSimilarity = score('desktop') < 0 ? 0 : score('desktop');
+    const heroSimilarity = score('hero');
+    const headerSimilarity = score('header');
+    const ctaSimilarity = score('cta');
+    const mobileSimilarity = score('mobile');
+    const tabletSimilarity = score('tablet');
+    const desktopSimilarity = overallSimilarity;
+
+    const regionOk = (v: number, min: number) => v < 0 || v >= min; // <0 = n/a
+    const passed =
       overallSimilarity >= threshold &&
-      heroSimilarity >= 0.95 &&
-      headerSimilarity >= 0.95 &&
-      ctaSimilarity >= 0.93 &&
-      mobileSimilarity >= 0.88 &&
-      tabletSimilarity >= 0.88;
+      regionOk(mobileSimilarity, 0.88) &&
+      regionOk(tabletSimilarity, 0.88) &&
+      regionOk(heroSimilarity, 0.95) &&
+      regionOk(headerSimilarity, 0.95) &&
+      regionOk(ctaSimilarity, 0.93);
 
     const result: VisualValidationResult = {
       passed,
@@ -124,62 +129,86 @@ export async function validateVisual(
     const reportPath = join(projectDir, 'visual-validation-report.json');
     writeFileSync(reportPath, JSON.stringify(result, null, 2));
 
+    const pct = (v: number) => (v < 0 ? 'n/a' : `${(v * 100).toFixed(1)}%`);
     spinner.succeed(passed ? 'Validação visual PASSOU' : 'Validação visual FALHOU');
-    console.log(chalk.gray(`  Overall: ${(overallSimilarity * 100).toFixed(1)}% (threshold: ${(threshold * 100).toFixed(0)}%)`));
-    console.log(chalk.gray(`  Hero: ${(heroSimilarity * 100).toFixed(1)}%`));
-    console.log(chalk.gray(`  Header: ${(headerSimilarity * 100).toFixed(1)}%`));
-    console.log(chalk.gray(`  CTAs: ${(ctaSimilarity * 100).toFixed(1)}%`));
-    console.log(chalk.gray(`  Mobile: ${(mobileSimilarity * 100).toFixed(1)}%`));
-    console.log(chalk.gray(`  Tablet: ${(tabletSimilarity * 100).toFixed(1)}%`));
+    console.log(chalk.gray(`  Overall: ${pct(overallSimilarity)} (threshold: ${(threshold * 100).toFixed(0)}%)`));
+    console.log(chalk.gray(`  Hero: ${pct(heroSimilarity)}`));
+    console.log(chalk.gray(`  Header: ${pct(headerSimilarity)}`));
+    console.log(chalk.gray(`  CTAs: ${pct(ctaSimilarity)}`));
+    console.log(chalk.gray(`  Mobile: ${pct(mobileSimilarity)}`));
+    console.log(chalk.gray(`  Tablet: ${pct(tabletSimilarity)}`));
 
-    await browser.close();
     return result;
-
-  } catch (error) {
+  } finally {
     await browser.close();
-    throw error;
+    preview.stop();
   }
 }
 
-async function startAstroPreview(projectDir: string): Promise<string> {
+export interface PreviewHandle {
+  url: string;
+  stop: () => void;
+}
+
+/** Spawn `astro preview` and resolve once it prints its URL. The caller MUST
+ * call `stop()` (leaked preview servers pile up and exhaust ports). */
+export async function startAstroPreview(projectDir: string): Promise<PreviewHandle> {
   const { spawn } = await import('child_process');
-  const port = 43210 + Math.floor(Math.random() * 1000);
-  
-  return new Promise((resolve, reject) => {
-    const child = spawn('npm', ['run', 'preview', '--', '--port', port.toString()], {
+  const port = 43210 + Math.floor(Math.random() * 4000);
+
+  return new Promise<PreviewHandle>((resolve, reject) => {
+    const child = spawn('npm', ['run', 'preview', '--', '--port', String(port), '--host', '127.0.0.1'], {
       cwd: projectDir,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true, // own process group, so stop() can take down astro's grandchild too
     });
 
-    let resolved = false;
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        child.kill();
+    const stop = () => {
+      try {
+        if (child.pid) process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        /* group already gone */
+      }
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* already gone */
+      }
+    };
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        stop();
         reject(new Error('Timeout starting preview server'));
       }
-    }, 30000);
+    }, 45000);
 
-    child.stdout?.on('data', (data) => {
-      const output = data.toString();
-      if (output.includes(`http://localhost:${port}`) || output.includes(`http://127.0.0.1:${port}`)) {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          setTimeout(() => resolve(`http://localhost:${port}`), 2000);
-        }
+    const onData = (data: Buffer) => {
+      const m = data.toString().match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):(\d+)\/?/);
+      if (m && !settled) {
+        settled = true;
+        clearTimeout(timer);
+        setTimeout(() => resolve({ url: `http://127.0.0.1:${m[1]}`, stop }), 1500);
       }
-    });
-
-    child.stderr?.on('data', (data) => {
-      console.error('Preview stderr:', data.toString());
-    });
+    };
+    child.stdout?.on('data', onData);
+    child.stderr?.on('data', onData);
 
     child.on('error', (err) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        stop();
         reject(err);
+      }
+    });
+    child.on('exit', (code) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error(`preview server exited early (code ${code})`));
       }
     });
   });

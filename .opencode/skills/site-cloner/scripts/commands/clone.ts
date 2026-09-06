@@ -160,6 +160,9 @@ export async function generateFinalReport(
   reportPath: string,
   sourceUrl: string
 ) {
+  // region scores may be -1 ("n/a": no comparable crop on this template)
+  const rpct = (v: number) => (v < 0 ? 'n/a' : `${(v * 100).toFixed(1)}%`);
+  const rcls = (v: number, min: number) => (v < 0 ? 'warn' : v >= min ? 'pass' : 'fail');
   const html = `
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -223,23 +226,23 @@ export async function generateFinalReport(
           <div class="score-label">Similaridade Geral (Desktop)</div>
         </div>
         <div class="score-item">
-          <div class="score-value ${visualResult.heroSimilarity >= 0.95 ? 'pass' : 'fail'}">${(visualResult.heroSimilarity * 100).toFixed(1)}%</div>
+          <div class="score-value ${rcls(visualResult.heroSimilarity, 0.95)}">${rpct(visualResult.heroSimilarity)}</div>
           <div class="score-label">Hero Section (≥95%)</div>
         </div>
         <div class="score-item">
-          <div class="score-value ${visualResult.headerSimilarity >= 0.95 ? 'pass' : 'fail'}">${(visualResult.headerSimilarity * 100).toFixed(1)}%</div>
+          <div class="score-value ${rcls(visualResult.headerSimilarity, 0.95)}">${rpct(visualResult.headerSimilarity)}</div>
           <div class="score-label">Header/Nav (≥95%)</div>
         </div>
         <div class="score-item">
-          <div class="score-value ${visualResult.ctaSimilarity >= 0.93 ? 'pass' : 'fail'}">${(visualResult.ctaSimilarity * 100).toFixed(1)}%</div>
+          <div class="score-value ${rcls(visualResult.ctaSimilarity, 0.93)}">${rpct(visualResult.ctaSimilarity)}</div>
           <div class="score-label">CTAs Primários (≥93%)</div>
         </div>
         <div class="score-item">
-          <div class="score-value ${visualResult.mobileSimilarity >= 0.88 ? 'pass' : 'fail'}">${(visualResult.mobileSimilarity * 100).toFixed(1)}%</div>
+          <div class="score-value ${rcls(visualResult.mobileSimilarity, 0.88)}">${rpct(visualResult.mobileSimilarity)}</div>
           <div class="score-label">Mobile (≥88%)</div>
         </div>
         <div class="score-item">
-          <div class="score-value ${visualResult.tabletSimilarity >= 0.88 ? 'pass' : 'fail'}">${(visualResult.tabletSimilarity * 100).toFixed(1)}%</div>
+          <div class="score-value ${rcls(visualResult.tabletSimilarity, 0.88)}">${rpct(visualResult.tabletSimilarity)}</div>
           <div class="score-label">Tablet (≥88%)</div>
         </div>
         <div class="score-item">

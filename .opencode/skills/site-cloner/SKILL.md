@@ -1,7 +1,7 @@
 ---
 name: site-cloner
-description: Extrai design tokens e inventario de componentes de uma URL com Playwright, gera um projeto Astro 4 + Tailwind semeado com os tokens e valida por diff de screenshots + testes funcionais. Use ao pedir clonar um site, replicar um layout ou extrair o design system de uma URL.
-keywords: [site-cloner, clone visual, design system, design tokens, astro, tailwind, playwright, screenshot diff, pixelmatch, ssim, scaffold]
+description: Captura DOM + CSS + assets de uma URL com Playwright e gera um projeto Astro 4 que reproduz a pagina, mais design tokens para Tailwind, e valida por diff de screenshots + testes funcionais. Use ao pedir clonar um site, replicar um layout ou extrair o design system de uma URL.
+keywords: [site-cloner, clone visual, snapshot, design system, design tokens, astro, tailwind, playwright, screenshot diff, pixelmatch, ssim]
 ---
 
 # Skill: site-cloner
@@ -13,31 +13,37 @@ Pipeline em CLI que recebe uma URL de referência e:
 1. **Analisa** a página com Playwright — extrai design tokens (cores, tipografia,
    spacing, radius, sombras, transições, z-index), um inventário hierárquico de
    componentes, as interações presentes (carousel, modal, countdown, accordion,
-   tabs, dropdown, form, smooth-scroll) e screenshots baseline em 3 viewports.
-2. **Gera** um projeto **Astro 4 + Tailwind CSS** semeado com esses tokens
-   (`tailwind.config.ts` com `theme.extend`), componentes base e um layout
-   scaffold, já com `npm install` + `astro build` rodados.
-3. **Valida** o projeto gerado — comparação de screenshots (pixelmatch + SSIM,
-   50/50) contra a referência e uma suíte funcional Playwright — e roda um
-   **loop de correção** (até 5 iterações) que ajusta tokens/estilos para fechar
-   os gaps.
+   tabs, dropdown, form, smooth-scroll), screenshots baseline em 3 viewports e
+   um **snapshot autossuficiente**: DOM renderizado + todo o CSS (inclusive
+   folhas de CDN, re-buscadas server-side) + imagens/fontes baixadas para
+   `public/assets/`, com URLs reescritas.
+2. **Gera** um projeto **Astro 4**. Com snapshot, `index.astro` reproduz o
+   `<body>` real da referência com o CSS capturado (`set:html`); sem snapshot,
+   cai num scaffold semeado pelos tokens. Sempre emite `tailwind.config.ts`
+   (`theme.extend` com os tokens), roda `npm install` + `astro build`.
+3. **Valida** o projeto gerado — screenshots nos 3 viewports vs. referência
+   (pixelmatch + SSIM 50/50), recortes hero/header/cta quando ambos os lados
+   expõem o landmark, e uma suíte funcional Playwright — com **loop de correção**
+   (até 5 iterações).
 4. Emite `validation-report.html` + JSONs com os scores.
 
 ## Expectativas realistas (leia antes de usar)
 
-Esta skill **não reproduz o DOM/o conteúdo da referência verbatim**. O passo de
-geração produz um **scaffold Astro+Tailwind alimentado pelos tokens e pelo
-inventário extraído** — hero/seções/rodapé com estrutura genérica e texto
-placeholder. Por isso:
-
-- O gate visual de **≥90%** é uma **meta**, não uma garantia. Para landing pages
-  simples e muito baseadas em tokens ele é alcançável; para sites densos em
-  conteúdo, o loop de 5 iterações converge abaixo disso e o relatório lista os
-  gaps para ajuste manual.
-- O valor imediato e confiável está em: **design tokens prontos para Tailwind**,
-  **mapa de componentes/interações**, **screenshots baseline** e o **harness de
-  validação visual + funcional** reaproveitável.
-- Trate o projeto gerado como ponto de partida a refinar, não como entrega final.
+- **Com snapshot** (caso normal) a reprodução é fiel: mesmo DOM, mesmo CSS,
+  mesmos assets. É um **clone visual estático — sem JavaScript**: carrosséis,
+  modais, contadores e menus não *funcionam*, só aparecem no estado capturado.
+- **Similaridade visual típica: ~80–90%** para um template real denso. O que
+  segura abaixo de 100%: SSIM de janela única (aproximação), diferenças de
+  timing/animação entre as duas renderizações, e sub-pixel de scrollbar/altura.
+  O gate `≥90%` é meta, não garantia — o relatório lista os gaps.
+- Recortes **hero/cta** ficam `n/a` quando o template não expõe um landmark
+  semântico correspondente nos dois lados; isso **não** reprova o gate (só conta
+  o que foi medido de fato).
+- Sem snapshot (falha de captura), o fallback é o scaffold por tokens — aí a
+  similaridade cai bastante e o projeto é só um ponto de partida.
+- Entregáveis sempre confiáveis: **tokens prontos para Tailwind**, **mapa de
+  componentes/interações**, **screenshots baseline**, **assets locais** e o
+  **harness de validação** reaproveitável.
 
 ## Quando usar
 
@@ -89,9 +95,10 @@ Variáveis de ambiente:
 ## Fluxo de execução
 
 ```
-analyze-reference.ts   Playwright → design-tokens, component-map, interactions, screenshots/ (cache 24h por hash(url+viewports))
-generate-project.ts    tokens → tailwind.config.ts; scaffold de componentes/layout/página; npm install + astro build
-validate-visual.ts     sobe `astro preview`; screenshots nos 3 viewports; pixelmatch+SSIM full-page + recortes hero/header/cta
+analyze-reference.ts   Playwright → design-tokens, component-map, interactions, screenshots/, snapshot/ (cache 24h por hash(url+viewports))
+utils/snapshot.ts      coleta DOM + CSS (folhas de CDN re-buscadas server-side) + baixa assets → public/assets, reescreve URLs
+generate-project.ts    snapshot → index.astro fiel (set:html) | fallback scaffold; tailwind.config.ts; npm install + astro build
+validate-visual.ts     sobe `astro preview` (mata o processo no fim); screenshots nos 3 viewports; pixelmatch+SSIM full-page + recortes
 validate-functional.ts suíte Playwright (nav, forms, modais, carrosséis, responsivo, console, a11y básica)
 iterate-fix.ts         prioriza os maiores gaps; ajusta tokens/estilos; re-valida; para em 5 iterações ou na convergência
 ```
@@ -100,6 +107,8 @@ iterate-fix.ts         prioriza os maiores gaps; ajusta tokens/estilos; re-valid
 
 ```
 src/ public/                        projeto Astro 4 (+ node_modules/ e dist/ após o build)
+src/snapshot/                       body.html + captured.css (a página reproduzida)
+public/assets/                      imagens/fontes baixadas da referência
 tailwind.config.ts                  design tokens extraídos
 validation-report.html              relatório visual + funcional
 visual-validation-report.json       scores por viewport/recorte
@@ -113,11 +122,14 @@ README.md                           guia de personalização
 | Categoria | Métrica | Threshold |
 |-----------|---------|-----------|
 | Visual overall (desktop full-page) | pixelmatch + SSIM | ≥ 0.90 |
-| Visual hero / header | SSIM do recorte | ≥ 0.95 |
-| Visual CTAs | SSIM do recorte | ≥ 0.93 |
+| Visual hero / header | SSIM do recorte | ≥ 0.95 quando medido (senão `n/a`) |
+| Visual CTAs | SSIM do recorte | ≥ 0.93 quando medido (senão `n/a`) |
 | Visual mobile / tablet | SSIM full-page | ≥ 0.88 |
 | Funcional (todos os testes) | pass/fail Playwright | 100% |
 | Console | erros JS críticos | 0 |
+
+Um recorte sem landmark correspondente nos dois lados entra como `n/a` e **não**
+reprova o gate — só conta o que foi de fato comparado.
 
 Detalhe e metodologia em [references/validation-criteria.md](references/validation-criteria.md).
 Guia de extração por tipo de site em [references/extraction-guide.md](references/extraction-guide.md).
@@ -127,12 +139,13 @@ Mapeamento CSS→Tailwind em [references/tailwind-mapping.md](references/tailwin
 
 | Limitação | Mitigação |
 |-----------|-----------|
-| Geração é scaffold, não cópia de DOM | refino manual; use os tokens + o mapa de componentes |
-| SPAs / JS pesado | `waitUntil: networkidle` + `document.fonts.ready` + buffer |
-| Fontes licenciadas | extrai `font-family`; fallback Google Fonts + aviso |
-| Animações JS (GSAP/ScrollTrigger) | `@keyframes` CSS → Tailwind; JS → stubs |
-| Iframes cross-origin | screenshot separado, não comparado |
-| SSIM é janela única (global) | aproximação — superavalia imagens estruturalmente distintas |
+| Clone estático — sem JS | carrosséis/modais/contadores só no estado capturado; re-anime à mão |
+| SPAs / JS pesado | captura o DOM já hidratado (`networkidle` + `fonts.ready` + scroll-nudge) |
+| `@import` aninhado em CSS | não seguido — só folhas de 1º nível e `<style>` |
+| CSS/asset com CORS estrito no servidor de origem | re-busca server-side (`context.request`); se o host bloquear IP, o asset é pulado |
+| Iframes cross-origin | não capturados |
+| SSIM é janela única (global) | aproximação — teto realista ~90–95% mesmo em render idêntico |
+| Fallback scaffold (sem snapshot) | similaridade baixa; tratar como ponto de partida |
 
 ## Estrutura da skill
 
@@ -142,14 +155,15 @@ site-cloner/
 ├── package.json  tsconfig.json
 ├── scripts/
 │   ├── cli.ts                     entry point (commander)
-│   ├── analyze-reference.ts       extração Playwright
-│   ├── generate-project.ts        scaffold Astro + Tailwind + install/build
-│   ├── validate-visual.ts         pixelmatch + SSIM
+│   ├── analyze-reference.ts       extração Playwright + snapshot
+│   ├── generate-project.ts        página fiel (snapshot) ou scaffold + install/build
+│   ├── validate-visual.ts         pixelmatch + SSIM; dono do `astro preview`
 │   ├── validate-functional.ts     suíte funcional Playwright
 │   ├── iterate-fix.ts             loop de correção (máx 5)
 │   ├── commands/                  clone.ts  analyze.ts  validate.ts
 │   └── utils/
 │       ├── cache-manager.ts       cache 24h por hash(url+viewports)
+│       ├── snapshot.ts            DOM + CSS + assets → bundle autossuficiente
 │       ├── token-extractor.ts     CSS computado → design tokens
 │       ├── component-mapper.ts    DOM → árvore de componentes
 │       └── pixel-diff.ts          pixelmatch + SSIM + PNG de diff

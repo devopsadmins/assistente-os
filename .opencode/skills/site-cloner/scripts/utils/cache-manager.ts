@@ -19,6 +19,18 @@ export interface ViewportConfig {
   desktop: { width: number; height: number };
 }
 
+export interface SnapshotRef {
+  /** absolute path to the sanitized <body> inner HTML */
+  bodyHtmlPath: string;
+  /** absolute path to the concatenated + url-rewritten CSS */
+  cssPath: string;
+  /** absolute path to the directory of downloaded assets */
+  assetsDir: string;
+  title: string;
+  lang: string;
+  assetCount: number;
+}
+
 export interface AnalysisCache {
   meta: CacheMeta;
   designTokens: DesignTokens;
@@ -29,6 +41,8 @@ export interface AnalysisCache {
     components: Record<string, string>;
   };
   interactions: InteractionMap[];
+  /** Self-contained DOM+CSS+assets snapshot for faithful reproduction. */
+  snapshot?: SnapshotRef;
 }
 
 export interface DesignTokens {

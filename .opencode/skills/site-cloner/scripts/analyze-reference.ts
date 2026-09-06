@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { CacheManager, AnalysisCache, ViewportConfig } from './utils/cache-manager.js';
 import { extractDesignTokens } from './utils/token-extractor.js';
 import { mapComponents } from './utils/component-mapper.js';
+import { capturePageSnapshot } from './utils/snapshot.js';
 import { mkdirSync, writeFileSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import sharp from 'sharp';
@@ -28,10 +29,12 @@ export async function analyzeReference(url: string, options: AnalyzeOptions): Pr
   try {
     const page = await context.newPage();
     
-    // Block unnecessary resources for speed
+    // Block only heavy media/sockets. Fonts are kept: the baseline screenshot
+    // must render with the same fonts the clone will use, or the visual diff is
+    // permanently penalised.
     await page.route('**/*', (route) => {
       const resourceType = route.request().resourceType();
-      if (['font', 'media', 'websocket'].includes(resourceType)) {
+      if (['media', 'websocket'].includes(resourceType)) {
         route.abort();
       } else {
         route.continue();
@@ -41,10 +44,16 @@ export async function analyzeReference(url: string, options: AnalyzeOptions): Pr
     spinner.text = `Navegando para ${url}...`;
     await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
 
-    // Wait for fonts and lazy content
+    // Settle: fonts ready, lazy content in, layout stable.
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(2000);
+    await page.evaluate(async () => {
+      // nudge lazy images/sections into view, then return to top
+      window.scrollTo(0, document.body.scrollHeight);
+      await new Promise((r) => setTimeout(r, 800));
+      window.scrollTo(0, 0);
+    });
+    await page.waitForTimeout(2500);
 
     // Extract design tokens
     spinner.text = 'Extraindo design tokens...';
@@ -62,10 +71,37 @@ export async function analyzeReference(url: string, options: AnalyzeOptions): Pr
     spinner.text = 'Capturando screenshots baseline...';
     const screenshots = await captureScreenshots(page, viewports, cacheKey);
 
-    // Save screenshots to cache
     const cachePath = cacheManager.getCachePath(cacheKey);
     const screenshotsDir = join(cachePath, 'screenshots');
     if (!existsSync(screenshotsDir)) mkdirSync(screenshotsDir, { recursive: true });
+
+    // Capture a self-contained DOM + CSS + assets snapshot for faithful
+    // reproduction (done last — it mutates a clone of the DOM and re-fetches
+    // stylesheets/assets Node-side).
+    spinner.text = 'Capturando snapshot (DOM + CSS + assets)...';
+    const snapDir = join(cachePath, 'snapshot');
+    const assetsDir = join(snapDir, 'assets');
+    mkdirSync(snapDir, { recursive: true });
+    let snapshotRef: AnalysisCache['snapshot'];
+    try {
+      await page.setViewportSize(viewports.desktop);
+      const snap = await capturePageSnapshot(page, context, url, assetsDir);
+      const bodyHtmlPath = join(snapDir, 'body.html');
+      const cssPath = join(snapDir, 'styles.css');
+      writeFileSync(bodyHtmlPath, snap.bodyHtml);
+      writeFileSync(cssPath, snap.css);
+      snapshotRef = {
+        bodyHtmlPath,
+        cssPath,
+        assetsDir,
+        title: snap.title,
+        lang: snap.lang,
+        assetCount: snap.assetCount,
+      };
+      if (verbose) spinner.info(`Snapshot: ${snap.bodyHtml.length} B HTML, ${snap.css.length} B CSS, ${snap.assetCount} assets`);
+    } catch (e) {
+      if (verbose) spinner.warn(`Snapshot falhou (${(e as Error).message}); seguindo só com scaffold`);
+    }
 
     for (const [name, buffer] of Object.entries(screenshots.fullPage)) {
       writeFileSync(join(screenshotsDir, `fullpage-${name}.png`), buffer);
@@ -99,6 +135,7 @@ export async function analyzeReference(url: string, options: AnalyzeOptions): Pr
         ),
       },
       interactions,
+      snapshot: snapshotRef,
     };
 
     await cacheManager.save(cacheKey, analysis);

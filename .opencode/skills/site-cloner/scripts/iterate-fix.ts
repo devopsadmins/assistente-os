@@ -73,7 +73,7 @@ function identifyVisualGaps(result: VisualValidationResult): Array<{ type: strin
     });
   }
 
-  if (result.heroSimilarity < 0.95) {
+  if (result.heroSimilarity >= 0 && result.heroSimilarity < 0.95) {
     gaps.push({
       type: 'visual',
       component: 'hero',
@@ -82,7 +82,7 @@ function identifyVisualGaps(result: VisualValidationResult): Array<{ type: strin
     });
   }
 
-  if (result.headerSimilarity < 0.95) {
+  if (result.headerSimilarity >= 0 && result.headerSimilarity < 0.95) {
     gaps.push({
       type: 'visual',
       component: 'header',
@@ -91,7 +91,7 @@ function identifyVisualGaps(result: VisualValidationResult): Array<{ type: strin
     });
   }
 
-  if (result.ctaSimilarity < 0.93) {
+  if (result.ctaSimilarity >= 0 && result.ctaSimilarity < 0.93) {
     gaps.push({
       type: 'visual',
       component: 'cta',
@@ -100,7 +100,7 @@ function identifyVisualGaps(result: VisualValidationResult): Array<{ type: strin
     });
   }
 
-  if (result.mobileSimilarity < 0.88) {
+  if (result.mobileSimilarity >= 0 && result.mobileSimilarity < 0.88) {
     gaps.push({
       type: 'visual',
       component: 'mobile',
@@ -109,7 +109,7 @@ function identifyVisualGaps(result: VisualValidationResult): Array<{ type: strin
     });
   }
 
-  if (result.tabletSimilarity < 0.88) {
+  if (result.tabletSimilarity >= 0 && result.tabletSimilarity < 0.88) {
     gaps.push({
       type: 'visual',
       component: 'tablet',

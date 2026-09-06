@@ -46,13 +46,20 @@ export async function generateProject(analysis: AnalysisCache, options: Generate
     await generateLayouts(outputDir, analysis);
     spinner.text = 'Layouts gerados';
 
-    // Generate pages
-    await generatePages(outputDir, analysis, contentMapping);
-    spinner.text = 'Páginas geradas';
-
     // Generate styles
     await generateStyles(outputDir, analysis);
     spinner.text = 'Estilos globais gerados';
+
+    // Generate the index page. With a snapshot we reproduce the reference's
+    // real DOM + CSS + assets; without one we fall back to the token-seeded
+    // scaffold.
+    if (analysis.snapshot) {
+      await generateSnapshotPage(outputDir, analysis);
+      spinner.text = 'Página reproduzida do snapshot';
+    } else {
+      await generatePages(outputDir, analysis, contentMapping);
+      spinner.text = 'Página scaffold gerada';
+    }
 
     // Copy assets
     await copyAssets(outputDir, analysis);
@@ -451,6 +458,32 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       </div>
     </footer>
   </main>
+</BaseLayout>
+`;
+  writeFileSync(join(outputDir, 'src/pages/index.astro'), page);
+}
+
+async function generateSnapshotPage(outputDir: string, analysis: AnalysisCache): Promise<void> {
+  const snap = analysis.snapshot!;
+  const snapDir = join(outputDir, 'src/snapshot');
+  mkdirSync(snapDir, { recursive: true });
+  copyFileSync(snap.bodyHtmlPath, join(snapDir, 'body.html'));
+  copyFileSync(snap.cssPath, join(snapDir, 'captured.css'));
+
+  if (existsSync(snap.assetsDir)) {
+    cpSync(snap.assetsDir, join(outputDir, 'public/assets'), { recursive: true });
+  }
+
+  const title = (snap.title || analysis.meta.url).replace(/"/g, '&quot;');
+  const page = `---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import '../styles/global.css';
+import capturedCss from '../snapshot/captured.css?raw';
+import bodyHtml from '../snapshot/body.html?raw';
+---
+<BaseLayout title="${title}" description="Clone visual de ${analysis.meta.url}">
+  <style is:global set:html={capturedCss}></style>
+  <Fragment set:html={bodyHtml} />
 </BaseLayout>
 `;
   writeFileSync(join(outputDir, 'src/pages/index.astro'), page);
