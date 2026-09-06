@@ -87,6 +87,11 @@
   --destructive-foreground: 0.99 0 0;
   --border: 0.92 0 0;
   --input: 0.92 0 0;
+  /* DS8: scrim do Dialog. Hoje igual a --foreground (quase-preto no tema
+     claro), mas token independente de propósito — quando um tema escuro
+     existir, --foreground vira quase-branco e escureceria o scrim errado
+     se ainda dependesse dele. */
+  --overlay: 0.2 0 0;
   --radius: 0.5rem;
 
   /* ── semantic: product roles ── */
