@@ -121,7 +121,7 @@ OLLAMA_EMBED_MODEL=nomic-embed-text
 | `AOS_PORT` | `4310` | Porta do daemon |
 | `ZEN_API_KEYS` | — | Chaves OpenCode Zen em rodízio (round-robin por chamada); vírgula-separadas. Alternativas: `ZEN_API_KEY_1..7` ou `ZEN_API_KEY` (uma só) |
 | `ZEN_CHAT_MODEL` | `nemotron-3-ultra-free` | Modelo usado no tier `zen` |
-| `RAG_RERANK` | `off` | Reranker do RAG: `off` \| `cross-encoder` (local) \| `llm`. **Modelo default só-inglês piora PT-BR** — ver [ADR-RAG-001 §6](docs/adr/ADR-RAG-001.md). Latência em `aos_rag_rerank_seconds` |
+| `RAG_RERANK` | `off` | Reranker do RAG: `off` \| `cross-encoder` (local) \| `llm`. **Modelo default só-inglês piora PT-BR** — ver ADR-RAG-001 §6 (arquivado). Latência em `aos_rag_rerank_seconds` |
 | `RAG_RERANK_CE_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` | Modelo do cross-encoder. Para PT-BR: `Xenova/bge-reranker-base` (multilíngue, verificado). Lido em runtime |
 | `RAG_RERANK_BUDGET_MS` | `30000` | Orçamento p/ reordenar 1 consulta; estourou → volta à ordem por score original. `0` desliga o teto |
 | `RAG_INJECTION_MODO` | `aviso` | Screening de prompt injection em chunks de RAG: `aviso` \| `recusar` |

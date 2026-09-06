@@ -1,6 +1,6 @@
 # Assistente OS
 
-Copiloto residente em Node/TS, API-first, local-first. Monorepo npm workspaces com 6 pacotes, soul-based knowledge management, RAG + knowledge graph, agente LangGraph com tool-calling, orquestração ORCA (modos de execução fast/pro + isolamento de tarefas em git worktree), interface web responsiva (PWA), canais WhatsApp/Telegram, pipeline de voz, e deploy em produção via PM2 + Cloudflare Tunnel + CI no GitHub Actions.
+Copiloto residente em Node/TS, API-first, local-first. Monorepo npm workspaces com 8 pacotes, soul-based knowledge management, RAG + knowledge graph, agente LangGraph com tool-calling, orquestração ORCA (modos de execução fast/pro + isolamento de tarefas em git worktree), design system próprio, governança com autoaprendizado, interface web responsiva (PWA + uma nova app React em construção), canais WhatsApp/Telegram, pipeline de voz, e deploy em produção via PM2 + Cloudflare Tunnel + CI no GitHub Actions.
 
 ## Quick Start
 
@@ -72,6 +72,8 @@ O daemon escuta em `127.0.0.1` por padrão. Para acesso remoto, defina `AOS_HOST
 | `tools` | MCP server | 59 tools MCP (stdio) expostas ao opencode: memory, graph, soul, agenda, costs, ADO, browser, worktree, router, monitores, guardian (golden rules + aprovação por código), AIIA, sales intelligence, spec grill, editorial |
 | `cli` | Comando `os` | status, souls, soul, chat, migrate, import-sc, memory, graph, costs, agenda, worktree, guardian, skill, daemon, voice, backup, help |
 | `voice` | Pipeline de voz | VAD (hysteresis), AudioRecorder (sox), STT (Whisper local via @xenova/transformers), TTS (say.js) |
+| `ui` | Design System (`@assistente-os/ui`) | Primitivos Radix estilizados (Dialog, Popover, Select, Tabs, DropdownMenu, Toast, ScrollArea, Field, Card, etc.), tokens de tema em OKLCH (`tokens.css` + `deriveTheme`/`ThemeProvider` — gera uma rampa de cor a partir de uma cor-semente, com cap de chroma pra tints), componentes de conteúdo (`Markdown` com citações interativas, `CodeBlock` com highlight via shiki, `MessageList`/`StreamingText` com `aria-live`), catálogo de componentes navegável via Ladle, suíte própria de testes (Vitest + `expectNoA11yViolations`), zona de dependências própria (ADR-UI-001, arquivado — ver docs/ROADMAP.md) |
+| `web` | Nova interface (`packages/web`) | App React 19 + Vite, em construção — redesign de app baseado em threads com streaming, consumindo `@assistente-os/ui`; proxy `/souls` pro daemon em dev. Ainda não é o entrypoint padrão de produção (ver "Interface Web" abaixo) |
 
 Serviço auxiliar fora dos workspaces npm: `services/soul-rag-watcher` — observa `souls/*/` e pede `memory_index` via MCP quando `.md`/`.txt` mudam (zero dependência do monorepo, só stdio JSON-RPC), rodando como app separado no PM2.
 
@@ -110,7 +112,7 @@ Camada de acesso self-service sobre o daemon — detalhes em **[docs/FRIENDLY-MO
 - **Grafo de conhecimento**: entidades, relações, observações em Postgres
 - **Gate de relevância**: threshold configurável com modos (recusar/aviso/livre)
 - **Busca**: vetorial (pgvector 768, HNSW) → fallback literal ILIKE, com scores
-- **Reranking** (opcional, `RAG_RERANK=cross-encoder|llm`, default `off`): busca um top-N amplo e reordena por relevância par (query, trecho) antes de cortar no top-K. Cross-encoder local ou juiz LLM via Ollama; auto-skip para ordem por score se o modelo não carregar. **O modelo default (`Xenova/ms-marco-MiniLM-L-6-v2`) é só-inglês e degrada corpora PT-BR** (medido em [ADR-RAG-001 §6](docs/adr/ADR-RAG-001.md)): aponte `RAG_RERANK_CE_MODEL` para um cross-encoder multilíngue antes de ativar
+- **Reranking** (opcional, `RAG_RERANK=cross-encoder|llm`, default `off`): busca um top-N amplo e reordena por relevância par (query, trecho) antes de cortar no top-K. Cross-encoder local ou juiz LLM via Ollama; auto-skip para ordem por score se o modelo não carregar. **O modelo default (`Xenova/ms-marco-MiniLM-L-6-v2`) é só-inglês e degrada corpora PT-BR** (medido em ADR-RAG-001 §6, arquivado): aponte `RAG_RERANK_CE_MODEL` para um cross-encoder multilíngue antes de ativar
 - **Cache do RAG**: exato (chave sha1, TTL 60s) + semântico opcional por cosseno de embedding (`RAG_SEMANTIC_CACHE=on`, default off) — ver [docs/RAG-CACHE.md](docs/RAG-CACHE.md)
 - **Qualidade de recuperação medível**: `os rag eval` (hit@k / MRR / recall@5) contra golden set — ver [docs/RAG-EVAL.md](docs/RAG-EVAL.md)
 - **Debug controlado de retrieval**: cada fonte recuperada carrega `method` (`semantic`/`literal`/`hybrid`) e `score`; o daemon grava isso no audit trail existente a cada chat com RAG — dá visibilidade sobre degradação silenciosa pra busca literal (ex.: embedder de indexação incompatível com o de consulta) sem precisar de infraestrutura de observabilidade nova
@@ -154,6 +156,17 @@ Camada de orquestração no daemon (`packages/daemon/src/orchestrator/`) que dec
 - **`GET /api/capabilities`**: JSON estruturado com souls, tools MCP (com namespace), endpoints REST e missões operacionais — companheiro do `/llms.txt` para ingestão por agentes externos
 - **Base do ORCA** (scaffolding, ainda não ligado ao fluxo de chat): Mission Runner (`orchestrator/mission-runner.ts`, missões compostas headless/guarded/full), Terminal Sanitizer (`tools/terminal-sanitizer.ts`, trunca saída de `npm test`/`git status`/`ls` para poupar tokens) e cache em camadas (`core/cache.ts`, Redis → memória)
 
+### Governança e Autoaprendizado
+
+- **4º loop de autoaprendizado (golden rules)**: erro/correção registrado em `licoes.md`; 3 reincidências no mesmo tópico sintetizam uma proposta de Regra de Ouro, que só é ativada com aprovação humana (código de 6 dígitos via Telegram — o próprio agente não consegue autoaprovar). Uma vez aprovada, `buildPrompt` lê `listActiveGoldenRules(home)` **ao vivo, a cada prompt**, e injeta a seção "## Regras de Ouro" pra qualquer soul daquele home — cobre souls existentes e futuras automaticamente, sem depender de editar `soul.md` por soul.
+- **Telemetria de sessão**: toda sessão de chat concluída anexa um rodapé `usage_metadata` (tokens, latência, modelo, modo de execução) ao Markdown do dia, idempotente por `session_id` — complementa os registros em Postgres com um rastro auditável em arquivo.
+- **Browser automation semântica**: `browser_execute_fix` roda scripts de correção num realm JS isolado (`Page.createIsolatedWorld` via CDP) — DOM compartilhado, mas sem acesso a globals/funções que a própria página tenha definido ou adulterado; bloqueio por substring mantido como defesa em profundidade.
+- **Gate Discriminator no CI**: todo PR passa por um job que roda o supervisor (Guardian) sobre o diff e bloqueia merge com nota abaixo de 95/100 — chaves Zen em rodízio (`ZEN_API_KEYS`) evitam esgotar uma única chave gratuita.
+- **Planejamento obrigatório em PR**: o gate `compliance` do CI exige uma seção "Plano (arquivos + ordem)" no corpo do PR, além de Rollback e Rastreabilidade — não é decorativo, falha o CI se ausente.
+- **Tipagem estrita nos limites**: `@typescript-eslint/no-explicit-any` é erro de lint em todo o monorepo; toda rota HTTP do daemon, toda tool MCP e os argumentos da CLI validam contra schema Zod (derivado do próprio `inputSchema` no caso das tools MCP, sem duplicar declaração). Efeito real: entrada malformada é **rejeitada** (400 / erro MCP / exit code ≠ 0), não mais coagida a um default em silêncio.
+- **`npm run dod`**: um único comando encadeia build → typecheck → lint → test → manifest → discriminator, sem parar na primeira falha, como verificação de fim de turno.
+- **Prompt injection endurecido**: default de `PROMPT_INJECTION_MODO` é `recusar` (bloqueia severidade média e alta) — antes era `aviso` (nunca bloqueava). Resolução da env var centralizada, compartilhada entre entrada direta do usuário e chunks recuperados do RAG.
+
 ### Segurança
 
 - **Zero Trust permissions**: allowlist por soul para tools, skills, diretórios externos
@@ -172,7 +185,12 @@ Camada de orquestração no daemon (`packages/daemon/src/orchestrator/`) que dec
 - **Audit trail**: compliance ISO/IEC 42001 (`logFullAuditEntry`), incluindo alertas de prompt injection (entrada e conteúdo recuperado) e debug de retrieval RAG
 - **Credenciais por instalação**: tokens/segredos só em `~/.assistant-os/.env` (nunca no repo) — inclusive o token do Cloudflare Tunnel, lido via symlink `.env` na raiz
 
-### Interface Web (11 abas, PWA responsiva)
+### Interface Web
+
+Duas interfaces web coexistem hoje — a legada (padrão de produção) e a nova
+(em construção, ainda não é o entrypoint padrão).
+
+#### Interface legada (PWA embutida no daemon, 11 abas)
 
 | Aba | Descrição |
 |-----|-----------|
@@ -189,6 +207,17 @@ Camada de orquestração no daemon (`packages/daemon/src/orchestrator/`) que dec
 | **Telemetria** | Infraestrutura (daemon, Ollama, CPU, RAM, disco, Postgres), eventos, execuções, custos por soul, monitores de site |
 
 Instalável como PWA (manifest + service worker); responsiva abaixo de 900px (sidebar vira drawer, WhatsApp/Telegram viram mestre-detalhe).
+
+#### `packages/web` (nova, em construção)
+
+App React 19 + Vite consumindo o Design System (`@assistente-os/ui`) — redesign
+baseado em threads nomeadas (migração `0020_threads`) com streaming de
+resposta, substituindo gradualmente a interface legada acima. Em dev, faz
+proxy de `/souls` pro daemon. **Status**: in-flight, ainda não é o
+entrypoint padrão (falta `AuthScreen` real — hoje usa um `VITE_DEV_TOKEN`
+fixo — e o roteamento em `server.ts` que decidiria quando servir cada
+interface; ambos pausados junto com o Modo Amigável, ver
+[docs/ROADMAP.md](docs/ROADMAP.md)).
 
 ### Pipeline de Voz
 
@@ -348,82 +377,29 @@ docker compose up -d tunnel
 
 ```bash
 npm run build         # build completo antes de testar (os testes rodam sobre dist/)
-npm test              # node --test em todos os workspaces (ordem: cli → core → daemon → memory → tools → voice)
+npm test              # node --test (cli/core/daemon/memory/tools/voice) + vitest (ui/web) em todos os workspaces
 npm run typecheck     # tsc em todos os workspaces (0 erros)
 ```
 
 | Pacote | Testes | Status |
 |--------|--------|--------|
-| core | 211 | ✅ todos passando |
-| daemon | 101 | ✅ todos passando |
-| memory | 44 | ✅ todos passando |
-| tools | 19 | ✅ todos passando |
-| cli | 2 | ✅ todos passando |
+| core | 333 | ✅ todos passando |
+| daemon | 229 | ✅ todos passando |
+| memory | 100 | ✅ 99 passando, 1 pulado (exige `RAG_RERANK_TEST_MODEL` pra rodar contra o modelo cross-encoder real) |
+| tools | 47 | ✅ todos passando |
+| cli | 18 | ✅ todos passando |
 | voice | 0 | — sem testes ainda |
+| ui | 224 | ✅ todos passando (Vitest, 36 arquivos, inclui `expectNoA11yViolations`) |
+| web | 21 | ⚠️ 20 passando, 1 falha **local-only** — `App.test.tsx` espera o aviso "configure VITE_DEV_TOKEN" mas o teste não isola `import.meta.env`, então falha em qualquer máquina com `packages/web/.env.local` preenchido (como esta). Passa limpo no CI, que não tem esse arquivo |
 
-**Total**: 377 testes, zero erros de build/typecheck (`npm test` completo em ~4-5 min). Um teste de fidelidade RAG usa um juiz LLM via Ollama e demora ~30-50s quando Ollama está disponível (auto-skip, quase instantâneo, quando não está — mesmo padrão já usado nos testes que dependem de Ollama real). Testes de integração manual contra um daemon real (`*.live.ts`, não entram no `npm test`) rodam via `npm run test:live --workspace=@assistente-os/daemon`.
+**Total**: 972 testes, zero erros de build/typecheck. Um teste de fidelidade RAG usa um juiz LLM via Ollama e demora ~30-50s quando Ollama está disponível (auto-skip, quase instantâneo, quando não está — mesmo padrão já usado nos testes que dependem de Ollama real). Testes de integração manual contra um daemon real (`*.live.ts`, não entram no `npm test`) rodam via `npm run test:live --workspace=@assistente-os/daemon`.
 
 `CacheService` (`core/test/cache.test.ts`) fecha a conexão Redis no `after()` (via `cache.close()`); sem isso o socket com reconnect do ioredis segura o event loop e, com `--test-timeout=0`, trava a run do pacote quando há Redis acessível.
 
-## Status
+## Estado atual e histórico
 
-| Fase | Escopo | Status |
-|------|--------|--------|
-| **F1** | Núcleo, memória, migração, daemon, CLI, MCP | ✅ Concluída |
-| **F2** | Agendador (tabela `agenda` + dispatch) | ✅ Concluída |
-| **F3** | Ferramentas do agente (busca/memória/ação) | ✅ Concluída |
-| **F4** | Hosting em produção (PM2 + Cloudflare Tunnel + CI) | ✅ Concluída (service token do Cloudflare Access: procedimento em `docs/CLOUDFLARE-ACCESS.md`, ação no dashboard fora do escopo do repo) |
-| **F5** | Plataforma de agentes: tool-calling no chat + canais WhatsApp/Telegram + skills por soul | ✅ Concluída — tool-calling e canais em produção; multi-turno endurecido (E2); skills por soul (`SKILL.md`, matcher híbrido, `skill_list`/`skill_create`, `os skill`) |
-| **F6** | Segurança (auth de WebSocket/boot-guard), CI, responsividade/PWA, roteador com fallback real, FinOps + Spec Grill + `/llms.txt` | ✅ Concluída |
-| **F7** | Governança: aprovação humana imposta no Guardian (código via Telegram), detecção de prompt injection, AIIA.md por soul, debug de retrieval RAG no audit trail, criação atômica de souls (`SoulSpec` + catálogo L1/L2/L3) | ✅ Concluída |
-| **F8** | ORCA: modo fast/pro dinâmico, worktree manager via REST/CLI/MCP, cost/usage tracking, `/api/capabilities`, catálogo MCP com namespace | Concluída — E1–E10 (2026-08-27) fecharam o restante: Mission Runner ligado (REST `/api/missions` + MCP), Terminal Sanitizer + cache em produção, FinOps de tokens no chat |
-| **F9** | Governança AI-3 + LGPD + observabilidade (roadmap E6/E8/E9) | ✅ Concluída (2026-08-27): `/metrics`, `/api/manifest`, manifest anexado no CI, suíte cross-tenant, kill-switch, `AI-INVENTORY.md`, gate de consentimento LGPD, anti-vazamento de telemetria; RACIs aceitas pelo owner |
-
-### Pendências
-
-Roadmap com spec por item e status: [docs/ROADMAP.md](docs/ROADMAP.md).
-
-**E1–E10 implementados (2026-08-27)** — FinOps de tokens, endurecimento de multi-turno,
-Mission Runner ligado (REST + MCP), Terminal Sanitizer + cache em produção,
-`soul_create`/`worktree_list` no MCP, observabilidade (`/metrics` + Sentry),
-gates AI-3 (cross-tenant, execution manifest, kill-switch, inventário de IA,
-anti-vazamento de telemetria), LGPD (gate de consentimento + política de backup),
-reranking de RAG opcional.
-
-Feito (2026-08-27):
-
-- **CI**: passo `Execution manifest` no workflow gera e anexa `manifest-<sha>.json`
-  como artefato do build (`.github/workflows/ci.yml`).
-- **Assinatura humana**: RACIs aceitas pelo owner (ADR-AI-003 §8, owners do
-  `docs/AI-INVENTORY.md`, aceitação do ADR-PRIV-001, prazo P1/CFP, ADR dedicado
-  do perfil AI-4 de famílias) — registrado como owner-accepted em 2026-08-27.
-
-- **Chaves Zen**: rodízio round-robin (`ZEN_API_KEYS` / `ZEN_API_KEY_1..7`) por
-  chamada em chat/RAG/LangGraph (`nextZenApiKey()`) — substituiu o mapa soul→chave,
-  que era decisão de posse e ficou adiado.
-- **RAG audit-readiness** (7 epics): higiene do índice (remove órfãos + `content_hash`),
-  telemetria de LLM em todas as rotas (`recordLlmCall`), golden eval
-  ([`os rag eval`](docs/RAG-EVAL.md)), latência do reranker instrumentada
-  ([ADR-RAG-001](docs/adr/ADR-RAG-001.md)), embedder/rerank no hash do manifesto,
-  screening de injection antes do rerank `llm`, proveniência `doc_key` no audit
-  trail + aviso de índice defasado + `hnsw.ef_search` fixo.
-
-Backlog do roadmap: **zerado** (E7 é ação no dashboard Cloudflare, fora do repo).
-
-**Revisão de arquitetura (2026-08-28)** — [docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md),
-backlog concluído: gate de compliance no CI, golden set de RAG + baseline,
-conserto do reranker cross-encoder, Prompt Garden, cache semântico, canvas por
-soul, escalonamento por confiança, reordenação do montador de prompt.
-`RAG_RERANK` / `RAG_SEMANTIC_CACHE` / `ROUTER_ESCALATION` shipam **desligados**,
-aguardando medição.
-
-**Análise crítica + RAG enterprise (2026-08-29/30)** — remediação em ondas
-(contenção de segurança, Zero Trust aplicado, rate limit, trace unificado,
-higiene de docs/migrations/jobs) + trilha RAG (citações auditáveis, confidence
-multi-sinal, fidelidade medida, `os rag eval --history`). Runbook de deploy do
-zero + protocolo de teste: **[docs/TESTES-DEPLOY-COMPLETO.md](docs/TESTES-DEPLOY-COMPLETO.md)**.
-Aberto: Onda 3d/3e (refactors), decisão multi-tenant, E13 Fase 2 (volume real).
-Ver [docs/ROADMAP.md](docs/ROADMAP.md) § "Estado 2026-08-30".
+Este README descreve o que existe hoje. Para o que foi entregue e o que
+ainda está em aberto, ver [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Docs
 
@@ -438,4 +414,7 @@ Ver [docs/ROADMAP.md](docs/ROADMAP.md) § "Estado 2026-08-30".
 - [Roadmap de implementação](docs/ROADMAP.md)
 - [Inventário de sistemas de IA](docs/AI-INVENTORY.md) · [Cloudflare Access](docs/CLOUDFLARE-ACCESS.md)
 - [Quick Start](QUICKSTART.md)
-- [ADRs](docs/adr/)
+
+ADRs, specs/plans de implementação e análises históricas foram arquivados
+fora do repositório (soul `consultoria_ia`, cliente SousaLima) — o essencial
+de cada decisão está refletido no ROADMAP acima.

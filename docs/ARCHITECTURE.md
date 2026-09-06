@@ -8,7 +8,7 @@ Postgres é a camada derivada (reindexável).
 > **Nota de sincronia (2026-08-29):** este doc foi reescrito para bater com o
 > código atual. Referências históricas a SQLite (`memory.db`/`kernel.db`),
 > Windows como plataforma primária e "Stitch MCP" estão obsoletas — ver
-> `docs/ARCHITECTURE-REVIEW.md` e `docs/ARCHITECTURE-REFINEMENT-REVIEW.md` para o
+> `docs/ARCHITECTURE-REVIEW.md` e `docs/ARCHITECTURE-REFINEMENT-REVIEW.md` (arquivados) para o
 > histórico das mudanças.
 
 ## Visão geral

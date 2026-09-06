@@ -1,8 +1,8 @@
 # Prompt Garden
 
 Biblioteca versionada dos prompts de **pipeline/tool** do Assistente OS
-(`packages/core/src/prompts/garden/`). T2.1 de `docs/ARCHITECTURE-REVIEW.md`;
-buracos fechados na Etapa 5 do refino (`docs/ARCHITECTURE-REFINEMENT-REVIEW.md`).
+(`packages/core/src/prompts/garden/`). T2.1 de `docs/ARCHITECTURE-REVIEW.md` (arquivado);
+buracos fechados na Etapa 5 do refino (`docs/ARCHITECTURE-REFINEMENT-REVIEW.md`, arquivado).
 
 ## Por quê
 
