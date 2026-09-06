@@ -61,9 +61,34 @@ Monorepo using **npm workspaces** (`packages/*`). TypeScript with ESM (`"type": 
 
 Code, comments, commit messages, and documentation are in **Brazilian Portuguese**. Maintain this convention.
 
+## Branches
+
+Since 2026-09-06 (`main` a virar produto vendável): `dev` is the integration
+branch — every feature/fix branch opens its PR against `dev`, not `main`.
+`main` only receives promotions from `dev` (a `dev`→`main` PR) after CI is
+green and a manual homologação pass. **This repo is on GitHub Free (private,
+org `devopsadmins`)** — classic branch protection and rulesets return 403
+("Upgrade to GitHub Pro") on this plan, so there is **no technical block**
+against pushing straight to `main`; the two-branch model is enforced by
+convention only. Follow it anyway: open every PR against `dev`.
+`.github/workflows/ci.yml` runs on push to both `main` and `dev`, plus every
+PR.
+
 ## Pull requests
 
-`.github/pull_request_template.md` has 4 required sections, all enforced by the `compliance` CI job (`.github/scripts/compliance-rules.mjs`): Descrição (min length), **Plano — arquivos + ordem** (SPEC-EP1, 2026-09-05: architectural reasoning before code — which files change, in what order, and why that order; "N/A" or a placeholder is rejected), Rastreabilidade (ADR-XXX, roadmap Exx, Tn.n, or #issue), Rollback (real plan, "N/A" rejected). Changes to sensitive paths (`packages/core/src/{config,policy,migrations,manifest}.ts`, `packages/core/src/{prompts,governance}/`, `.github/`, `docs/adr/`) also require a `CHANGELOG.md` or `docs/adr/` entry in the same PR.
+`.github/pull_request_template.md` has 4 required sections, all enforced by the `compliance` CI job (`.github/scripts/compliance-rules.mjs`): Descrição (min length), **Plano — arquivos + ordem** (SPEC-EP1, 2026-09-05: architectural reasoning before code — which files change, in what order, and why that order; "N/A" or a placeholder is rejected), Rastreabilidade (ADR-XXX, roadmap Exx, Tn.n, or #issue), Rollback (real plan, "N/A" rejected). Changes to sensitive paths (`packages/core/src/{config,policy,migrations,manifest}.ts`, `packages/core/src/{prompts,governance}/`, `.github/`, `docs/adr/`) also require a `CHANGELOG.md` or `docs/adr/` entry in the same PR — `docs/adr/` no longer exists in the repo (ADRs were archived out, see below), so in practice this means a `CHANGELOG.md` entry, or recreating `docs/adr/` with a fresh ADR if the change genuinely warrants one.
+
+## Documentação arquivada (2026-09-06)
+
+ADRs, specs/plans de `docs/superpowers/`, análises pontuais (ARCHITECTURE-REVIEW,
+ARCHITECTURE-REFINEMENT-REVIEW, system_overview), dumps do NotebookLM, e
+backlogs já fechados (design system, spec-compliance, friendly-mode, ideias
+não comprometidas) saíram do repo — o produto não carrega mais o histórico
+de processo interno. Tudo isso foi copiado antes de apagar para a soul
+`consultoria_ia`, cliente **SousaLima**
+(`~/.assistant-os/souls/consultoria_ia/conhecimento/clientes/sousalima/arquivo-historico/`),
+reindexado ali. `docs/ROADMAP.md` absorveu o essencial de cada decisão antes
+do arquivamento — comece por ele antes de ir procurar na soul.
 
 ## What NOT to do
 

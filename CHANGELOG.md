@@ -10,6 +10,55 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Nota de coordenação em `docs/AI-INVENTORY.md`**: o domínio de famílias
+  (perfil AI-4) foi excluído do escopo deste projeto em 2026-09-05 (vira
+  produto separado) — o arquivo ainda apontava pra um ADR dedicado
+  (`ADR-PRIV-002`/`ADR-AI-005`) pendente. Adicionada nota deixando claro que
+  essa redação não avança aqui, sem invalidar a aceitação do ADR-PRIV-001 nem
+  a classificação AI-4 provisória já registrada (o ADR-PRIV-001 em si foi
+  arquivado fora do repo no mesmo dia — ver "Arquivamento de documentação de
+  processo" abaixo — mas sua aceitação continua valendo).
+
+### Alterado
+
+- **Consolidação de backlog**: `docs/ROADMAP.md` passa a ser o único documento
+  de backlog/histórico vivo do projeto, absorvendo `docs/BACKLOG-DESIGN-SYSTEM.md`,
+  `docs/BACKLOG-SPEC-COMPLIANCE.md`, `NewFeatures/backlog-atual.md` e
+  `NewFeatures/revisao-critica-backlog.md` (todos apagados após a absorção —
+  o último já era crítica externa 100% absorvida em `backlog-atual.md`).
+  `README.md` perdeu a seção "Status"/"Pendências" (era um changelog narrativo
+  que ficava dessincronizado do ROADMAP) e ganhou cobertura completa dos
+  pacotes `ui`/`web` e da governança fechada em 2026-09-05 (GR1-4, EP1-3, M3),
+  que estava totalmente ausente do documento.
+
+- **Arquivamento de documentação de processo (2026-09-06)**: com o projeto se
+  preparando pra virar produto, ~180 arquivos de processo/histórico saíram do
+  repositório principal — todos os ADRs (`docs/adr/`), os 17 specs/plans de
+  `docs/superpowers/` (todos referentes a epics já concluídos), análises
+  pontuais (`ARCHITECTURE-REVIEW.md`, `ARCHITECTURE-REFINEMENT-REVIEW.md`,
+  `system_overview_2026-08-22.md`, `ANALISE EXTERNA.MD`), specs de features já
+  implementadas (`PLANO-CRIACAO-SOULS.md`, `plan_finops_grillme_llmstxt.md`,
+  `plan-departamentos-skills-mcp.md`), os 123 dumps do NotebookLM, e os dois
+  backlogs que ainda existiam como arquivo à parte (`BACKLOG-FRIENDLY-MODE.md`,
+  `ideias-priorizadas.md`). Cópia integral feita antes da remoção pra soul
+  `consultoria_ia` (cliente SousaLima,
+  `conhecimento/clientes/sousalima/arquivo-historico/`), reindexada. Toda
+  referência cruzada nos docs que ficaram no repo (README, ROADMAP,
+  AI-INVENTORY, ARCHITECTURE, MCPS, PROMPT-GARDEN, RAG-EVAL, QUICKSTART) foi
+  atualizada — links viraram menções em texto com o resultado/decisão já
+  incorporado, não apontam mais pra caminho nenhum dentro do repo.
+
+- **Modelo de branch `dev`→`main`**: `dev` criado a partir do `main` atual e
+  vira o branch de integração (todo PR mira `dev`, não `main`); `main` só
+  recebe promoções via PR `dev`→`main` depois de CI verde + homologação
+  manual. `.github/workflows/ci.yml` passou a rodar em push tanto pra `dev`
+  quanto pra `main`. **Achado no caminho**: este repositório é privado no
+  plano GitHub Free — branch protection clássica e rulesets retornam 403
+  ("Upgrade to GitHub Pro") tanto na API quanto na UI, então o fluxo
+  `dev`→`main` não tem bloqueio técnico nenhum hoje, só convenção — decisão
+  do usuário: não fazer upgrade de plano agora. Documentado em `AGENTS.md` e
+  `CONTRIBUTING.md`.
+
 - **`ZEN_API_KEYS` como secret de CI no job `discriminator`** (`.github/workflows/ci.yml`):
   o rodízio round-robin de chaves Zen já existia em `packages/core/src/zen-keys.ts`
   (`ZEN_API_KEYS` separado por vírgula, ou `ZEN_API_KEY_1`..`ZEN_API_KEY_7`),
