@@ -10,6 +10,15 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **`ZEN_API_KEYS` como secret de CI no job `discriminator`** (`.github/workflows/ci.yml`):
+  o rodízio round-robin de chaves Zen já existia em `packages/core/src/zen-keys.ts`
+  (`ZEN_API_KEYS` separado por vírgula, ou `ZEN_API_KEY_1`..`ZEN_API_KEY_7`),
+  mas o workflow de CI só passava `ZEN_API_KEY` (chave única) — cadastrar
+  várias chaves no repositório não tinha efeito nenhum no gate. `ZEN_API_KEYS`
+  agora é lido também, com precedência sobre `ZEN_API_KEY`, espalhando o
+  consumo de chamadas do Discriminator entre as chaves cadastradas em vez de
+  bater rate-limit numa única.
+
 - **`docs/adr/ADR-HR5-001.md`** — veredito keep/replace para as 22 dependências
   da zona backend fora do conjunto original STDLIB_FIRST (`node:*`,
   `playwright-core`, `@langchain/*`, `pg`, `zod`). Todas mantidas — cada uma
