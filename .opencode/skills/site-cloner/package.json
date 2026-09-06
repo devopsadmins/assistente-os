@@ -1,0 +1,62 @@
+{
+  "name": "site-cloner",
+  "version": "1.0.0",
+  "description": "Clone visual de sites de referência → projeto Astro 4 + Tailwind com validação ≥90%",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "site-cloner": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx scripts/cli.ts",
+    "clone": "tsx scripts/cli.ts clone",
+    "analyze": "tsx scripts/analyze-reference.ts",
+    "generate": "tsx scripts/generate-project.ts",
+    "validate:visual": "tsx scripts/validate-visual.ts",
+    "validate:functional": "tsx scripts/validate-functional.ts",
+    "iterate": "tsx scripts/iterate-fix.ts",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "astro",
+    "tailwind",
+    "playwright",
+    "visual-regression",
+    "site-clone",
+    "design-system"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "astro": "^4.16.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0",
+    "css-tree": "^2.3.1",
+    "fs-extra": "^11.2.0",
+    "glob": "^10.3.10",
+    "handlebars": "^4.7.8",
+    "ora": "^8.0.1",
+    "pixelmatch": "^5.2.0",
+    "playwright": "^1.44.0",
+    "pngjs": "^7.0.0",
+    "postcss": "^8.4.38",
+    "postcss-value-parser": "^4.2.0",
+    "sharp": "^0.33.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/handlebars": "^4.1.0",
+    "@types/node": "^20.12.0",
+    "@types/pixelmatch": "^5.2.0",
+    "@types/pngjs": "^6.0.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.5.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

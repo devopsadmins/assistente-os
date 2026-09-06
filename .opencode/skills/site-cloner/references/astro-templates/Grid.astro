@@ -1,0 +1,36 @@
+---
+interface Props {
+  class?: string;
+  cols?: 1 | 2 | 3 | 4 | 5 | 6 | 12;
+  gap?: 'none' | 'sm' | 'md' | 'lg' | 'xl';
+  responsive?: boolean;
+  children?: any;
+}
+const { class: className = '', cols = 3, gap = 'md', responsive = true, children, ...attrs } = Astro.props;
+
+const colsClasses = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-1 sm:grid-cols-2',
+  3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+  4: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
+  5: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5',
+  6: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6',
+  12: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-12',
+};
+
+const gapClasses = {
+  none: 'gap-0',
+  sm: 'gap-3',
+  md: 'gap-6',
+  lg: 'gap-8',
+  xl: 'gap-12',
+};
+
+const responsiveClass = responsive ? '' : 'grid-cols-[repeat(var(--cols,1),minmax(0,1fr))]';
+
+const classes = `grid ${responsive ? colsClasses[cols] : ''} ${gapClasses[gap]} ${className}`;
+---
+
+<div class={classes} style={{ '--cols': cols }} {...attrs}>
+  <slot>{children}</slot>
+</div>
