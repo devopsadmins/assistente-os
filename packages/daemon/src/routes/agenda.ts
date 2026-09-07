@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
-import { loadConfig, getPool, addAgendaItem, getAgendaItems, isDbHealthy, type AgendaItem } from "@assistente-os/core";
+import { loadConfig, getPool, addAgendaItem, getAgendaItems, updateAgendaItem, cancelAgendaItem, isDbHealthy, type AgendaItem } from "@assistente-os/core";
 import { processDueAgenda } from "../agenda.js";
 import { sendJson, parseBody, requiredTrimmedString, optionalTrimmedString, type RequestContext } from "./shared.js";
 
@@ -9,6 +9,19 @@ const PostAgendaSchema = z.object({
   soul: optionalTrimmedString(),
   body: optionalTrimmedString(),
   due_at: optionalTrimmedString(),
+});
+
+// Schema dedicado pro PATCH: diferente de optionalTrimmedString() (que
+// colapsa ausente/vazio pro mesmo null — certo pro POST, que sempre grava os
+// três campos), aqui `undefined` precisa continuar significando "campo não
+// enviado, não mexer" pra updateAgendaItem() só tocar o que foi de fato
+// mandado. Vazio (string em branco) é tratado como "limpar o campo" no
+// handler abaixo, não aqui no schema.
+const trimmedIfString = z.preprocess((v) => (typeof v === "string" ? v.trim() : v), z.string());
+const PatchAgendaSchema = z.object({
+  title: trimmedIfString.pipe(z.string().min(1, "title não pode ficar vazio")).optional(),
+  body: trimmedIfString.optional(),
+  due_at: trimmedIfString.optional(),
 });
 
 /** Agendador (F2): fila de tarefas com due_at, despachada via opencode run. GET/POST /agenda */
@@ -77,6 +90,59 @@ export async function handleAgenda(
       /* ws opcional */
     }
     sendJson(res, 201, item);
+    return true;
+  }
+
+  const idMatch = path.match(/^\/agenda\/(\d+)$/);
+  if (idMatch && req.method === "PATCH") {
+    const id = Number(idMatch[1]);
+    const parsed = await parseBody(req, PatchAgendaSchema);
+    if (!parsed.ok) {
+      sendJson(res, parsed.status, { error: parsed.error });
+      return true;
+    }
+    const { title, body: itemBody, due_at: dueAt } = parsed.data;
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    if (!(await isDbHealthy(pool))) {
+      sendJson(res, 503, { error: "Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes" });
+      return true;
+    }
+    // vazio explícito ("") vira null (limpa o campo); ausente (undefined)
+    // continua undefined, pra updateAgendaItem() não tocar nesse campo.
+    const item = await updateAgendaItem(pool, id, {
+      title,
+      body: itemBody === undefined ? undefined : itemBody || null,
+      dueAt: dueAt === undefined ? undefined : dueAt || null,
+    });
+    if (!item) {
+      sendJson(res, 404, { error: "item não encontrado ou não está mais pendente (só dá pra editar enquanto pending)" });
+      return true;
+    }
+    sendJson(res, 200, item);
+    return true;
+  }
+
+  const cancelMatch = path.match(/^\/agenda\/(\d+)\/cancel$/);
+  if (cancelMatch && req.method === "POST") {
+    const id = Number(cancelMatch[1]);
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    if (!(await isDbHealthy(pool))) {
+      sendJson(res, 503, { error: "Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes" });
+      return true;
+    }
+    const item = await cancelAgendaItem(pool, id);
+    if (!item) {
+      sendJson(res, 404, { error: "item não encontrado ou não está mais pendente (só dá pra cancelar enquanto pending)" });
+      return true;
+    }
+    try {
+      hub.broadcast({ type: "agenda.cancelled", item });
+    } catch {
+      /* ws opcional */
+    }
+    sendJson(res, 200, item);
     return true;
   }
 

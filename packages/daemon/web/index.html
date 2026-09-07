@@ -105,6 +105,7 @@
   <main class="main">
     <nav class="tabs" id="tabs">
       <button class="tab active" data-tab="dashboard"><svg class="ic"><use href="#i-dashboard"/></svg>C&C Node</button>
+      <button class="tab" data-tab="central"><svg class="ic"><use href="#i-pulse"/></svg>Central</button>
       <button class="tab" data-tab="chat"><svg class="ic"><use href="#i-chat"/></svg>Chat</button>
       <button class="tab" data-tab="memory"><svg class="ic"><use href="#i-memory"/></svg>Memória</button>
       <button class="tab" data-tab="graph"><svg class="ic"><use href="#i-graph"/></svg>Grafo</button>
@@ -147,6 +148,34 @@
            <canvas id="network-canvas"></canvas>
         </div>
       </div>
+    </section>
+
+    <section id="tab-central" class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Central — agenda, missões, worktrees, router e custos</h2>
+        <button id="central-refresh" type="button">Atualizar</button>
+      </div>
+      <div class="muted" style="margin-bottom:10px">Atualiza sozinha a cada 20s enquanto esta aba está aberta.</div>
+      <h2>Pedir tarefa</h2>
+      <form id="agenda-form" class="chat-form" autocomplete="off" style="flex-wrap:wrap;gap:6px">
+        <input id="agenda-title" type="text" placeholder="título da tarefa" style="flex:2 1 220px" />
+        <select id="agenda-soul" style="flex:1 1 140px"><option value="">(nenhuma soul)</option></select>
+        <input id="agenda-due" type="datetime-local" style="flex:1 1 170px" />
+        <button type="submit"><svg class="ic"><use href="#i-send"/></svg><span id="agenda-form-submit-label">Pedir</span></button>
+        <button id="agenda-form-cancel-edit" type="button" style="display:none">Cancelar edição</button>
+      </form>
+      <textarea id="agenda-body" placeholder="corpo (opcional)" rows="2" style="width:100%;margin:6px 0 10px;box-sizing:border-box"></textarea>
+      <div id="agenda-form-status" class="muted" style="margin-bottom:10px"></div>
+      <h2>Agenda pendente</h2>
+      <div id="central-agenda-box" class="box"></div>
+      <h2>Missões disponíveis</h2>
+      <div id="central-missions-box" class="box"></div>
+      <h2>Worktrees ativas</h2>
+      <div id="central-worktrees-box" class="box"></div>
+      <h2>Router — tiers configurados</h2>
+      <div id="central-router-box" class="box"></div>
+      <h2>Custos por soul</h2>
+      <div id="central-costs-box" class="box"></div>
     </section>
 
     <section id="tab-chat" class="panel">
@@ -478,7 +507,7 @@
   </main>
 </div>
 <script src="/assets/citations.js?v=20260831b"></script>
-<script src="/assets/app.js?v=20260831j"></script>
+<script src="/assets/app.js?v=20260907d"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js')

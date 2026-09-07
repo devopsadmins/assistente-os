@@ -100,6 +100,13 @@ $("#tabs").addEventListener("click", (e) => {
   if (!btn) return;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${btn.dataset.tab}`));
+  if (btn.dataset.tab === "central") {
+    ensureAgendaSoulOptions();
+    loadCentral();
+    startCentralAutoRefresh();
+  } else {
+    stopCentralAutoRefresh();
+  }
   if (btn.dataset.tab === "dashboard") loadDashboard();
   if (btn.dataset.tab === "memory" && state.active) loadMemoryStatus();
   if (btn.dataset.tab === "graph" && state.active) loadGraph();
@@ -878,6 +885,224 @@ function renderLangGraphStep(msg) {
 }
 
 /* ---------- observabilidade ---------- */
+/* ---------- central (agenda/missões/worktrees/router/custos) ---------- */
+let _centralInterval = null;
+function stopCentralAutoRefresh() {
+  if (_centralInterval) {
+    clearInterval(_centralInterval);
+    _centralInterval = null;
+  }
+}
+function startCentralAutoRefresh() {
+  stopCentralAutoRefresh();
+  _centralInterval = setInterval(() => loadCentral().catch(() => {}), 20000);
+}
+$("#central-refresh")?.addEventListener("click", () => loadCentral());
+
+let _centralAgendaItems = [];
+let _editingAgendaId = null;
+
+// Populado só ao entrar na aba (não a cada refresh de 20s), pra não resetar
+// uma seleção em andamento no meio de alguém preenchendo o formulário.
+async function ensureAgendaSoulOptions() {
+  const select = $("#agenda-soul");
+  if (!select) return;
+  const souls = state.souls?.length ? state.souls : await api("/souls").catch(() => []);
+  const current = select.value;
+  select.innerHTML =
+    `<option value="">(nenhuma soul)</option>` +
+    souls.map((s) => `<option value="${esc(s.id)}">${esc(s.id)}</option>`).join("");
+  select.value = current;
+}
+
+function resetAgendaForm() {
+  _editingAgendaId = null;
+  $("#agenda-title").value = "";
+  $("#agenda-due").value = "";
+  $("#agenda-body").value = "";
+  const soulSelect = $("#agenda-soul");
+  if (soulSelect) soulSelect.disabled = false;
+  $("#agenda-form-submit-label").textContent = "Pedir";
+  $("#agenda-form-cancel-edit").style.display = "none";
+  $("#agenda-form-status").textContent = "";
+}
+
+// `due_at` vem em ISO/UTC do backend; <input type="datetime-local"> espera
+// hora local sem timezone — sem isso, reabrir pra editar mostrava a hora
+// UTC (ex.: 10:00 local virava 13:00 na tela).
+function isoToDatetimeLocal(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function startEditingAgenda(id) {
+  // `agenda.id` é BIGINT no Postgres → o driver `pg` devolve como string no
+  // JSON (sem type parser pra OID 20), então compara sempre por String().
+  const item = _centralAgendaItems.find((a) => String(a.id) === String(id));
+  if (!item) return;
+  _editingAgendaId = id;
+  $("#agenda-title").value = item.title;
+  $("#agenda-due").value = item.due_at ? isoToDatetimeLocal(item.due_at) : "";
+  $("#agenda-body").value = item.body ?? "";
+  const soulSelect = $("#agenda-soul");
+  if (soulSelect) {
+    soulSelect.value = item.soul ?? "";
+    soulSelect.disabled = true; // soul não é editável (ver design) — só mostrada
+  }
+  $("#agenda-form-submit-label").textContent = `Salvar edição #${id}`;
+  $("#agenda-form-cancel-edit").style.display = "";
+  $("#agenda-form-status").textContent = "";
+}
+
+$("#agenda-form-cancel-edit")?.addEventListener("click", () => resetAgendaForm());
+
+$("#agenda-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const title = $("#agenda-title").value.trim();
+  const dueRaw = $("#agenda-due").value;
+  const body = $("#agenda-body").value.trim();
+  const statusEl = $("#agenda-form-status");
+  if (!title) {
+    statusEl.textContent = "preencha o título";
+    return;
+  }
+  const dueIso = dueRaw ? new Date(dueRaw).toISOString() : "";
+  try {
+    if (_editingAgendaId) {
+      await api(`/agenda/${_editingAgendaId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title, body, due_at: dueIso }),
+      });
+    } else {
+      const soul = $("#agenda-soul").value;
+      await api("/agenda", {
+        method: "POST",
+        body: JSON.stringify({ title, soul: soul || undefined, body: body || undefined, due_at: dueIso || undefined }),
+      });
+    }
+    resetAgendaForm();
+    await loadCentral();
+  } catch (err) {
+    statusEl.textContent = err.message;
+  }
+});
+
+$("#central-agenda-box")?.addEventListener("click", async (e) => {
+  const editBtn = e.target.closest("[data-agenda-edit]");
+  if (editBtn) {
+    startEditingAgenda(editBtn.dataset.agendaEdit);
+    return;
+  }
+  const cancelBtn = e.target.closest("[data-agenda-cancel]");
+  if (cancelBtn) {
+    if (!confirm("Cancelar esta tarefa?")) return;
+    try {
+      await api(`/agenda/${cancelBtn.dataset.agendaCancel}/cancel`, { method: "POST" });
+      if (String(_editingAgendaId) === String(cancelBtn.dataset.agendaCancel)) resetAgendaForm();
+      await loadCentral();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+});
+
+async function loadCentral() {
+  const [agenda, missionsRes, worktreesRes, router, costs] = await Promise.all([
+    api("/agenda").catch(() => null),
+    api("/api/missions").catch(() => null),
+    api("/api/worktree").catch(() => null),
+    api("/router/status").catch(() => null),
+    api("/costs").catch(() => null),
+  ]);
+
+  /* --- agenda pendente --- */
+  const agendaBox = $("#central-agenda-box");
+  if (agendaBox) {
+    _centralAgendaItems = agenda ?? [];
+    agendaBox.innerHTML = agenda
+      ? agenda.length
+        ? agenda
+          .map(
+            (a) => `
+              <div class="cost-row">
+                <span class="soul" style="flex:0 0 100px">${esc(a.soul ?? "—")}</span>
+                <span class="mono" style="flex:1">${esc(a.title)}</span>
+                <span class="chip">${esc(a.status)}</span>
+                <span class="cost-val">${a.due_at ? fmtTs(a.due_at) : "sem prazo"}</span>
+                <button type="button" class="icon-btn" data-agenda-edit="${a.id}" title="Editar">✏️</button>
+                <button type="button" class="icon-btn" data-agenda-cancel="${a.id}" title="Cancelar">✕</button>
+              </div>`,
+          )
+          .join("")
+        : `<span class="muted">nenhum item pendente</span>`
+      : `<span class="muted">agenda indisponível</span>`;
+  }
+
+  /* --- missões disponíveis (catálogo — não é execução ao vivo) --- */
+  const missionsBox = $("#central-missions-box");
+  if (missionsBox) {
+    const missions = missionsRes?.missions ?? null;
+    missionsBox.innerHTML = missions
+      ? missions.length
+        ? missions
+          .map(
+            (m) => `
+              <div class="cost-row">
+                <span class="mono" style="flex:0 0 160px">${esc(m.id)}</span>
+                <span style="flex:1">${esc(m.name)} — ${esc(m.description)}</span>
+                <span class="chip">${esc(m.mode)}</span>
+                <span class="cost-val">${m.steps} passo(s)</span>
+              </div>`,
+          )
+          .join("")
+        : `<span class="muted">nenhuma missão declarada</span>`
+      : `<span class="muted">missões indisponíveis</span>`;
+  }
+
+  /* --- worktrees ativas --- */
+  const worktreesBox = $("#central-worktrees-box");
+  if (worktreesBox) {
+    const worktrees = worktreesRes?.worktrees ?? null;
+    worktreesBox.innerHTML = worktrees
+      ? worktrees.length
+        ? worktrees
+          .map(
+            (w) => `
+              <div class="cost-row">
+                <span class="mono" style="flex:0 0 140px">${esc(w.taskId)}</span>
+                <span style="flex:1">${esc(w.branch ?? "—")}</span>
+                <span class="cost-val">${esc((w.head ?? "").slice(0, 10))}</span>
+              </div>`,
+          )
+          .join("")
+        : `<span class="muted">nenhuma worktree ativa</span>`
+      : `<span class="muted">worktrees indisponíveis</span>`;
+  }
+
+  /* --- router: tiers configurados (config estática, não saúde ao vivo) --- */
+  const routerBox = $("#central-router-box");
+  if (routerBox) {
+    routerBox.innerHTML = router
+      ? `<div class="cost-row"><span class="mono" style="flex:1">${esc((router.tiers ?? []).join(" → ") || "—")}</span><span class="cost-val">Ollama: ${esc(router.ollamaUrl ?? "—")}</span></div>`
+      : `<span class="muted">router indisponível</span>`;
+  }
+
+  /* --- custos por soul --- */
+  const costsBox = $("#central-costs-box");
+  if (costsBox) {
+    const bySoul = costs?.bySoul ?? {};
+    const soulEntries = Object.entries(bySoul).sort((a, b) => b[1] - a[1]);
+    costsBox.innerHTML = soulEntries.length
+      ? `<table class="costs-table">
+          <thead><tr><th>Soul</th><th>Gasto</th></tr></thead>
+          <tbody>${soulEntries.map(([s, v]) => `<tr><td>${esc(s)}</td><td>$${v.toFixed(4)}</td></tr>`).join("")}</tbody>
+        </table>`
+      : `<span class="muted">${costs ? "nenhum custo registrado" : "custos indisponíveis"}</span>`;
+  }
+}
+
 async function loadObservability() {
   const [infra, events, costs] = await Promise.all([
     api("/infra/status").catch(() => null),

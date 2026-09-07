@@ -1,4 +1,18 @@
-import { getPool, sumCostBySoul, recentCalls, listSouls, getSoul, addAgendaItem, getAgendaItems, isDbHealthy } from "@assistente-os/core";
+import {
+  getPool,
+  sumCostBySoul,
+  recentCalls,
+  listSouls,
+  getSoul,
+  addAgendaItem,
+  getAgendaItems,
+  getAgendaItemById,
+  updateAgendaItem,
+  cancelAgendaItem,
+  isDbHealthy,
+  type AgendaItem,
+  type Pool,
+} from "@assistente-os/core";
 import type { Tool, ToolContext, ToolHandler } from "../index.js";
 
 export const MISC_TOOLS: Tool[] = [
@@ -37,7 +51,68 @@ export const MISC_TOOLS: Tool[] = [
       },
     },
   },
+  {
+    name: "agenda_update",
+    description: "Edita título/corpo/prazo de um item da agenda ainda pending (falha se já saiu de pending).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "id do item da agenda" },
+        title: { type: "string" },
+        body: { type: "string", description: "string vazia limpa o campo" },
+        due_at: { type: "string", description: "ISO 8601; string vazia limpa o prazo" },
+        soul: { type: "string", description: "escopo do chamador (default: AGENT_SOUL_ID do processo)" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "agenda_cancel",
+    description: "Cancela um item da agenda ainda pending (soft: status='cancelled', done=true — nunca apaga a linha).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "id do item da agenda" },
+        soul: { type: "string", description: "escopo do chamador (default: AGENT_SOUL_ID do processo)" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "agenda_force",
+    description: "Força um item pending a ficar imediatamente devido (zera due_at) — o próximo ciclo do daemon (até 30s) já despacha, sem esperar o prazo original.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "id do item da agenda" },
+        soul: { type: "string", description: "escopo do chamador (default: AGENT_SOUL_ID do processo)" },
+      },
+      required: ["id"],
+    },
+  },
 ];
+
+/**
+ * Carrega o item e confere que ele pertence ao escopo do chamador (mesma
+ * soul, ou item global) antes de deixar cancelar/editar/forçar — evita que
+ * uma soul mexa na agenda de outra. `scopeSoul` ausente (modo administrativo,
+ * sem AGENT_SOUL_ID nem `soul` explícito) libera qualquer item.
+ */
+async function resolveScopedAgendaItem(pool: Pool, id: number, scopeSoul: string | undefined): Promise<AgendaItem> {
+  const item = await getAgendaItemById(pool, id);
+  if (!item) throw new Error(`item de agenda não encontrado: ${id}`);
+  if (scopeSoul && item.soul !== null && item.soul !== scopeSoul) {
+    throw new Error(`item de agenda ${id} não pertence à soul ${scopeSoul}`);
+  }
+  return item;
+}
+
+function callerScopeSoul(args: Record<string, unknown>): string | undefined {
+  return (
+    (typeof args.soul === "string" && args.soul.trim() ? args.soul.trim() : undefined) ??
+    (process.env.AGENT_SOUL_ID || undefined)
+  );
+}
 
 export const MISC_HANDLERS: Record<string, ToolHandler> = {
   costs_summary: async (ctx) => {
@@ -82,5 +157,48 @@ export const MISC_HANDLERS: Record<string, ToolHandler> = {
       (typeof args.soul === "string" && args.soul.trim() ? args.soul.trim() : undefined) ??
       (process.env.AGENT_SOUL_ID || undefined);
     return { items: await getAgendaItems(pool, status, scopeSoul) };
+  },
+
+  agenda_update: async (ctx, args) => {
+    const id = Number(args.id);
+    if (!Number.isInteger(id)) throw new Error("parâmetro id é obrigatório (número)");
+    const pool = getPool(ctx.config.databaseUrl);
+    if (!(await isDbHealthy(pool))) {
+      throw new Error("Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes");
+    }
+    await resolveScopedAgendaItem(pool, id, callerScopeSoul(args));
+    const updates: { title?: string; body?: string | null; dueAt?: string | null } = {};
+    if (typeof args.title === "string" && args.title.trim()) updates.title = args.title.trim();
+    if (typeof args.body === "string") updates.body = args.body.trim() || null;
+    if (typeof args.due_at === "string") updates.dueAt = args.due_at.trim() || null;
+    const item = await updateAgendaItem(pool, id, updates);
+    if (!item) throw new Error(`item ${id} não está mais pending — não dá pra editar`);
+    return { ok: true, item };
+  },
+
+  agenda_cancel: async (ctx, args) => {
+    const id = Number(args.id);
+    if (!Number.isInteger(id)) throw new Error("parâmetro id é obrigatório (número)");
+    const pool = getPool(ctx.config.databaseUrl);
+    if (!(await isDbHealthy(pool))) {
+      throw new Error("Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes");
+    }
+    await resolveScopedAgendaItem(pool, id, callerScopeSoul(args));
+    const item = await cancelAgendaItem(pool, id);
+    if (!item) throw new Error(`item ${id} não está mais pending — não dá pra cancelar`);
+    return { ok: true, item };
+  },
+
+  agenda_force: async (ctx, args) => {
+    const id = Number(args.id);
+    if (!Number.isInteger(id)) throw new Error("parâmetro id é obrigatório (número)");
+    const pool = getPool(ctx.config.databaseUrl);
+    if (!(await isDbHealthy(pool))) {
+      throw new Error("Postgres indisponível no momento — a agenda depende do banco (sem fallback em disco); tente novamente em instantes");
+    }
+    await resolveScopedAgendaItem(pool, id, callerScopeSoul(args));
+    const item = await updateAgendaItem(pool, id, { dueAt: null });
+    if (!item) throw new Error(`item ${id} não está mais pending — não dá pra forçar`);
+    return { ok: true, item, note: "due_at zerado — o próximo ciclo do daemon (até 30s) despacha" };
   },
 };

@@ -60,8 +60,63 @@ export async function getAgendaItems(
   return rows;
 }
 
+export async function getAgendaItemById(pool: Pool, id: number): Promise<AgendaItem | null> {
+  const { rows } = await pool.query<AgendaItem>("SELECT * FROM agenda WHERE id = $1", [id]);
+  return rows[0] ?? null;
+}
+
 export async function markAgendaDone(pool: Pool, id: number): Promise<void> {
   await pool.query("UPDATE agenda SET done = true, done_at = now(), status = 'completed' WHERE id = $1", [id]);
+}
+
+/**
+ * Edita título/corpo/due_at de um item ainda `pending`. Só os campos passados
+ * são alterados. `null` devolvido quando o id não existe ou o item já saiu
+ * de pending (reivindicado por `claimDueAgenda` ou já finalizado) — editar
+ * nesse caso seria corrida com o despacho real.
+ */
+export async function updateAgendaItem(
+  pool: Pool,
+  id: number,
+  updates: { title?: string; body?: string | null; dueAt?: string | null },
+): Promise<AgendaItem | null> {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (updates.title !== undefined) {
+    params.push(updates.title);
+    sets.push(`title = $${params.length}`);
+  }
+  if (updates.body !== undefined) {
+    params.push(updates.body);
+    sets.push(`body = $${params.length}`);
+  }
+  if (updates.dueAt !== undefined) {
+    params.push(updates.dueAt);
+    sets.push(`due_at = $${params.length}`);
+  }
+  if (sets.length === 0) {
+    const { rows } = await pool.query<AgendaItem>("SELECT * FROM agenda WHERE id = $1 AND status = 'pending'", [id]);
+    return rows[0] ?? null;
+  }
+  params.push(id);
+  const { rows } = await pool.query<AgendaItem>(
+    `UPDATE agenda SET ${sets.join(", ")} WHERE id = $${params.length} AND status = 'pending' RETURNING *`,
+    params,
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Cancela um item `pending` (soft: status='cancelled', done=true — nunca
+ * apaga a linha, mesma filosofia auditável de `finishAgendaItem`/`reapStaleAgenda`).
+ * `null` quando o id não existe ou já saiu de pending (inclui já cancelado).
+ */
+export async function cancelAgendaItem(pool: Pool, id: number): Promise<AgendaItem | null> {
+  const { rows } = await pool.query<AgendaItem>(
+    "UPDATE agenda SET status = 'cancelled', done = true, done_at = now() WHERE id = $1 AND status = 'pending' RETURNING *",
+    [id],
+  );
+  return rows[0] ?? null;
 }
 
 /**

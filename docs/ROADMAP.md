@@ -133,6 +133,55 @@ aqui só o resumo:
   (sem acesso a essa máquina) continua uma motivação distinta e válida.
   Diretório preparado em `/home/support/bitnet-spike/`. Esforço: S–M.
 
+### Fine-tuning para clientes — avaliação (2026-09-07)
+
+- **Enquadramento**: RAG já resolve conhecimento; fine-tuning só entra para
+  comportamento/formato/tom em tarefa estreita, repetida, estável e com dado
+  real — e como último degrau da escada (prompt → context engineering → RAG →
+  agent skills → fine-tuning). Material de referência: curso em
+  `docs/knowledge/Processamento_dados_fine_tuning_de_modelos.pdf`.
+- **Ativo reutilizável**: o Decision Framework do material (gate de
+  governança + quatro perguntas + AHP/NPV/Real Options) é candidato a virar
+  `os finetune-assess <soul> <tarefa>`, gravando um decision record auditável
+  (perguntas, sinais verde/vermelho, justificativa, recomendação). Esforço S–M.
+- **Dimastec — rodado 2026-09-07, veredito "não agora" nos 3 candidatos**:
+  - código do Hub nas convenções — falha Q2 (RAG/skill sobre a
+    hub-knowledge-base ainda não construída), Q3 (sem dataset) e Q4 (stack
+    Java 25/Spring Boot 4.0.0 ainda se formando);
+  - documentos normativos do SGSI — volume finito/único, prompt+RAG não
+    esgotado;
+  - extração estruturada — sem tarefa de volume hoje (fluxo de GMUD/tickets
+    nem formalizado ainda).
+  - **Gate de governança**: código/política classificados "Restrito"
+    (INV-CLASS-001) + review do DPO pra qualquer fluxo externo — exige
+    aprovação da Dimastec + DPA, ou LoRA/QLoRA local air-gapped (coerente com
+    ADR-INTEGRACAO-001).
+  - **Condições de reativação**: (1) baseline de RAG medido; (2) dataset de
+    dezenas a baixas centenas de pares reais representativos; (3) stack
+    hub-api congelada; (4) governança resolvida. Candidato mais provável de
+    sobreviver: conformidade de convenção de código do hub-api, como adaptador
+    LoRA local.
+- **Valor imediato do material, independente de fine-tuning**: a disciplina
+  de preparação de dados (gate de relevância, esquema canônico, PII
+  scrubbing, deduplicação MinHash/LSH, hash/proveniência, Model Card) já se
+  aplica hoje à construção/higiene do corpus de RAG.
+- **Custo recorrente a considerar**: cada modelo fine-tunado vira artefato
+  versionado — reavaliação obrigatória a cada troca de modelo base.
+- **Cross-ref**: "SLMs especializados + hardware próprio" (Posicionamento);
+  Spike BitNet; E13 (também depende de corpus real de cliente).
+
+### ~~HUD: central de agenda/missões/worktrees~~ **FEITO 2026-09-07**
+
+Nova aba "Central" no HUD (`daemon/web/index.html` + `assets/app.js`),
+agregando em modo leitura os 5 tools/endpoints que antes só existiam
+isolados: `GET /agenda`, `GET /api/missions`, `GET /api/worktree`,
+`GET /router/status`, `GET /costs`. Zero backend novo — só UI. Auto-refresh
+de 20s enquanto a aba está ativa (para ao trocar de aba, pra não bater nos 5
+endpoints à toa em background); botão "Atualizar" manual também. Validado
+ao vivo via Playwright (5 seções carregando dado real, sem erro de console).
+Fase 2 (iniciar/agendar trabalho pela UI — `agenda_add`/`mission_run`) fica
+em aberto, porque aí vira ação de escrita e entra questão de permissão/auth.
+
 ### Dívida técnica conhecida
 
 - **CI flakiness**: `kill-switch.test.ts` falhou 1x no CI (PR #36) com
@@ -144,16 +193,20 @@ aqui só o resumo:
 
 ### Ações operacionais pendentes (não são item de planejamento)
 
-- **OPS-01** — limpar threads de teste (#1–#4) na soul `main`. Tentativa de
-  execução direta bloqueada pelo classificador de permissão (ação de
-  DELETE); precisa rodar manualmente ou com aprovação explícita.
+- ~~**OPS-01** — limpar threads de teste (#1–#4) na soul `main`.~~ **FEITO
+  2026-09-07** (aprovação explícita do usuário). #1–#4 já não existiam (banco
+  e API concordavam); a #5 remanescente também era vazia (0 mensagens, sem
+  título) e foi removida junto via `DELETE /souls/main/threads/5`. Soul
+  `main` sem threads de teste agora.
 - **OPS-02** — rodar `os memory backfill-entities` sobre o conteúdo já
-  indexado (2026-09-06: 1.097 documentos pendentes em 14 souls, ~2.281
-  segmentos estimados via `--dry-run`). Bloqueado por confiabilidade, não
-  código: o Ollama LAN configurado (`gemma4:26b-a4b-it-qat`) estourou o
-  timeout de 180s num teste real de 1 documento. Antes de rodar em volume,
-  decidir modelo/tier (ver spike BitNet acima, ou finalmente rotear pra Zen)
-  com base num `--limit` pequeno de verdade.
+  indexado. Decidido 2026-09-06: `qwen2.5-coder:3b` (não o modelo de chat,
+  26B, que estourava timeout) via `ENTITY_EXTRACTION_MODEL`. **Em andamento
+  desde 2026-09-06** pra soul `consultoria_ia` (738 documentos) — rodando em
+  background, ~92% de taxa de sucesso na amostra real (vs. 28% histórico).
+  Progresso 2026-09-07: 348/740 processados (319 ok, 29 falharam — falhas
+  reprocessam sozinhas na próxima run). Ainda falta: as outras 13 souls
+  (~359 documentos restantes do `--dry-run` original de 1.097) — não
+  iniciado, decisão de quando rodar em aberto.
 
 ### Exclusões de escopo registradas
 
