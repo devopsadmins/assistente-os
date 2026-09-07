@@ -120,9 +120,11 @@ aqui só o resumo:
   pronta. Fase 2 (volume) e o relatório de prontidão dependem de corpus real
   de cliente — não têm como avançar sem isso.
 - **Toggles OFF a medir em staging**: `RAG_RERANK` (cross-encoder/llm),
-  `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, prefill da Etapa 9 — todos
-  shipam desligados por padrão, aguardando medição real de ganho/custo.
-  `os rag eval --history` é a ferramenta pra isso.
+  `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, `RAG_DOC_ENTITY_EXTRACTION`
+  (extração de entidades/relações também sobre documentos indexados, não só
+  chat — ver CHANGELOG 2026-09-06), prefill da Etapa 9 — todos shipam
+  desligados por padrão, aguardando medição real de ganho/custo. `os rag
+  eval --history` é a ferramenta pra isso.
 - **Spike BitNet (`bitnet.cpp`)**: inferência 1.58-bit CPU-first pro tier mais
   barato do router, rodando em paralelo ao Ollama. Motivação original ("Ollama
   CPU lento" na máquina de deploy) foi parcialmente atenuada por um setup de
@@ -145,6 +147,13 @@ aqui só o resumo:
 - **OPS-01** — limpar threads de teste (#1–#4) na soul `main`. Tentativa de
   execução direta bloqueada pelo classificador de permissão (ação de
   DELETE); precisa rodar manualmente ou com aprovação explícita.
+- **OPS-02** — rodar `os memory backfill-entities` sobre o conteúdo já
+  indexado (2026-09-06: 1.097 documentos pendentes em 14 souls, ~2.281
+  segmentos estimados via `--dry-run`). Bloqueado por confiabilidade, não
+  código: o Ollama LAN configurado (`gemma4:26b-a4b-it-qat`) estourou o
+  timeout de 180s num teste real de 1 documento. Antes de rodar em volume,
+  decidir modelo/tier (ver spike BitNet acima, ou finalmente rotear pra Zen)
+  com base num `--limit` pequeno de verdade.
 
 ### Exclusões de escopo registradas
 

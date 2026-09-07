@@ -14,6 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Assistente OS" />
 <link rel="stylesheet" href="/assets/app.css?v=20260831b" />
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js" defer></script>
 </head>
 <body>
 <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -253,6 +254,13 @@
 
     <section id="tab-graph" class="panel">
       <h2>Grafo da soul</h2>
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px; font-size:11px;">
+        <span class="chip" style="background:var(--neon-cyan); color:#0a0a0e; border-color:var(--neon-cyan);">organization</span>
+        <span class="chip" style="background:var(--neon-orange); color:#0a0a0e; border-color:var(--neon-orange);">project</span>
+        <span class="chip" style="background:var(--neon-magenta); color:#0a0a0e; border-color:var(--neon-magenta);">person</span>
+        <span class="chip">outro</span>
+      </div>
+      <div id="graph-network" style="height:320px;border:1px solid var(--border);border-radius:var(--r-md);margin-bottom:12px;"></div>
       <div class="graph-cols">
         <div class="box">
           <h3>Entidades</h3>

@@ -8,6 +8,7 @@ big-picture architecture and corrects a few stale points in AGENTS.md.
 ## Commands
 
 ```bash
+npm run setup                     # guided installer on a clean machine (prereqs, .env, Postgres, migrations)
 npm install && npm run build      # ALWAYS build first — tests/typecheck/CLI run from dist/, not src/
 npm run typecheck                 # tsc --pretty false, all workspaces
 npm run lint                      # eslint . — single rule: @typescript-eslint/no-explicit-any (tests exempt)
@@ -46,6 +47,8 @@ or `DATABASE_URL_TEST` points at the instance. Without Postgres only the non-DB 
 
 Package dep graph: `memory`/`voice` → `core`; `daemon` → `core`/`memory`/`voice`;
 `tools` → `core`/`memory`/`daemon`; `cli` → `core`/`memory`/`daemon`; `web` → `ui`.
+The reverse never happens: `core` must not import from `memory` — this is an enforced
+convention (`CONTRIBUTING.md`), not just an emergent pattern.
 
 ### Runtime model
 

@@ -466,4 +466,31 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_session_messages_thread ON session_messages (thread_id, id);
     `,
   },
+  {
+    // Rastreia extração de entidades/relações por documento RAG (path em `chunks`),
+    // separado da fila `entity_extraction_queue` (que é por job/segmento). Permite
+    // ao hook de indexação e ao backfill saberem "esse documento já foi processado
+    // com o conteúdo atual?" sem reprocessar tudo a cada indexFile/re-run.
+    id: "0021_document_extraction_state",
+    sql: `
+      CREATE TABLE IF NOT EXISTS document_extraction_state (
+        soul TEXT NOT NULL,
+        path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        last_run_at TIMESTAMPTZ,
+        error TEXT,
+        PRIMARY KEY (soul, path)
+      );
+    `,
+  },
+  {
+    // `ts` é o momento de criação do job (enfileiramento), não de quando ele
+    // entrou em `processing` — usar `ts` pra detectar job "preso" reclamaria
+    // jobs recém-claimed de uma fila com backlog grande (ex.: backfill RAG).
+    // `claimed_at` marca especificamente a transição pending->processing.
+    id: "0022_entity_extraction_claimed_at",
+    sql: `
+      ALTER TABLE entity_extraction_queue ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
+    `,
+  },
 ];

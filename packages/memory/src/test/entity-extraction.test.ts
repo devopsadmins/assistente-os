@@ -34,6 +34,23 @@ test("extractEntitiesWithOllama: lança erro em JSON inválido no conteúdo da r
   }
 });
 
+test("extractEntitiesWithOllama: aceita JSON envolto em cerca de código markdown (```json ... ```)", async () => {
+  try {
+    mockFetchOnce({
+      ok: true,
+      body: {
+        message: {
+          content: '```json\n{"entities": [{"name": "Acme", "kind": "organization"}], "relations": []}\n```',
+        },
+      },
+    });
+    const result = await extractEntitiesWithOllama("texto qualquer bem longo o suficiente", "http://x", "modelo");
+    assert.deepEqual(result.entities, [{ name: "Acme", kind: "organization" }]);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("extractEntitiesWithOllama: retorna vazio de verdade quando o LLM genuinamente não encontra nada", async () => {
   try {
     mockFetchOnce({ ok: true, body: { message: { content: JSON.stringify({ entities: [], relations: [] }) } } });

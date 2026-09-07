@@ -1,4 +1,11 @@
-import { loadConfig, getPool, claimEntityExtractionJobs, finishEntityExtractionJob } from "@assistente-os/core";
+import {
+  loadConfig,
+  getPool,
+  claimEntityExtractionJobs,
+  finishEntityExtractionJob,
+  reclaimStuckEntityExtractionJobs,
+  MAX_EXTRACTION_ATTEMPTS,
+} from "@assistente-os/core";
 import { processExtractionJob } from "@assistente-os/memory";
 import { recordLlmCall } from "./observability/record-llm-call.js";
 
@@ -17,13 +24,14 @@ export async function processEntityExtractionJobs(options: EntityExtractionConsu
   const { home, onDone } = options;
   const config = loadConfig({ home });
   const pool = getPool(config.databaseUrl);
+  await reclaimStuckEntityExtractionJobs(pool);
   const jobs = await claimEntityExtractionJobs(pool, 5);
   let processed = 0;
   for (const job of jobs) {
     try {
       const { usage } = await processExtractionJob(pool, { soul: job.soul, body: job.body }, {
         ollamaUrl: config.ollamaUrl,
-        chatModel: config.ollamaChatModel,
+        chatModel: config.entityExtractionModel,
       });
       await finishEntityExtractionJob(pool, job.id, "completed");
       if (usage) {
@@ -33,7 +41,7 @@ export async function processEntityExtractionJobs(options: EntityExtractionConsu
             soul: { id: job.soul },
             route: "entity-extraction",
             provider: "ollama",
-            model: config.ollamaChatModel,
+            model: config.entityExtractionModel,
             promptTokens: usage.promptTokens,
             completionTokens: usage.completionTokens,
             latencyMs: usage.latencyMs,
@@ -45,8 +53,10 @@ export async function processEntityExtractionJobs(options: EntityExtractionConsu
       }
       onDone?.({ id: job.id, soul: job.soul, status: "completed" });
     } catch (err) {
-      await finishEntityExtractionJob(pool, job.id, "failed", err instanceof Error ? err.message : String(err));
-      onDone?.({ id: job.id, soul: job.soul, status: "failed" });
+      const message = err instanceof Error ? err.message : String(err);
+      const retry = job.attempt < MAX_EXTRACTION_ATTEMPTS;
+      await finishEntityExtractionJob(pool, job.id, retry ? "pending" : "failed", message);
+      onDone?.({ id: job.id, soul: job.soul, status: retry ? "pending" : "failed" });
     }
     processed += 1;
   }

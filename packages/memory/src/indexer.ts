@@ -1,8 +1,9 @@
-import { isDbHealthy, type Pool } from "@assistente-os/core";
+import { isDbHealthy, enqueueEntityExtraction, type Pool } from "@assistente-os/core";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { Embedder } from "./embedders.js";
+import { MAX_EXTRACTION_INPUT_CHARS } from "./entity-extraction.js";
 
 export interface Chunk {
   docKey: string;
@@ -58,6 +59,34 @@ export function scanTextFiles(dir: string): string[] {
   walk(dir);
   files.sort();
   return files;
+}
+
+/**
+ * Divide um documento inteiro em segmentos de até `maxChars`, agrupando os
+ * mesmos blocos de ~512 chars usados acima pro RAG — reaproveita a mesma
+ * quebra por parágrafo em vez de cortar no meio de uma frase. Usado pelo hook
+ * de extração de entidades (abaixo) e pelo backfill (`os memory
+ * backfill-entities`): `extractEntitiesWithOllama` trunca em
+ * MAX_EXTRACTION_INPUT_CHARS, então mandar um documento grande direto
+ * perderia a maior parte do conteúdo em silêncio. Cada segmento vira um job
+ * de extração independente — upsertEntity/upsertRelation são idempotentes,
+ * então múltiplos segmentos do mesmo documento não duplicam entidades.
+ */
+export function segmentDocumentText(text: string, maxChars: number = MAX_EXTRACTION_INPUT_CHARS): string[] {
+  const blocks = chunkText(text, 512);
+  const segments: string[] = [];
+  let current = "";
+  for (const block of blocks) {
+    const candidate = current ? `${current}\n\n${block}` : block;
+    if (candidate.length > maxChars && current) {
+      segments.push(current);
+      current = block;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) segments.push(current);
+  return segments;
 }
 
 /** Formato texto que o pgvector aceita como entrada para a coluna `vector`. */
@@ -223,6 +252,60 @@ export async function indexStats(
   };
 }
 
+export type DocumentExtractionStatus = "pending" | "queued" | "completed" | "failed";
+
+/** Estado de extração de entidades por documento (`document_extraction_state`) —
+ * usado tanto pelo hook em `indexFile` quanto pelo backfill (`os memory
+ * backfill-entities`) pra saber se um documento já foi processado com o
+ * conteúdo atual, sem reprocessar do zero a cada re-indexação/re-run. */
+export async function setDocumentExtractionState(
+  pool: Pool,
+  soul: string,
+  path: string,
+  status: DocumentExtractionStatus,
+  error?: string | null,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO document_extraction_state (soul, path, status, last_run_at, error)
+     VALUES ($1, $2, $3, now(), $4)
+     ON CONFLICT (soul, path) DO UPDATE SET status = excluded.status, last_run_at = excluded.last_run_at, error = excluded.error`,
+    [soul, path, status, error ?? null],
+  );
+}
+
+export async function getDocumentExtractionStatus(pool: Pool, soul: string, path: string): Promise<DocumentExtractionStatus | null> {
+  const { rows } = await pool.query<{ status: string }>(
+    "SELECT status FROM document_extraction_state WHERE soul = $1 AND path = $2",
+    [soul, path],
+  );
+  return (rows[0]?.status as DocumentExtractionStatus) ?? null;
+}
+
+/** Documentos distintos indexados pra uma soul (agrupamento pelo `path` de `chunks` —
+ * não existe tabela de documentos própria, `path` já é a identidade de facto). */
+export async function listDocumentPaths(pool: Pool, soul: string): Promise<string[]> {
+  const { rows } = await pool.query<{ path: string }>(
+    "SELECT DISTINCT path FROM chunks WHERE soul = $1 ORDER BY path",
+    [soul],
+  );
+  return rows.map((r) => r.path);
+}
+
+/**
+ * Reconstrói o texto de um documento juntando seus chunks na ordem original.
+ * Ordena por `id` (não `doc_key`): `doc_key` é `<path>::<índice>` e um sort
+ * textual colocaria "::10" antes de "::2" — `id` cresce na ordem de inserção
+ * do loop de chunking (0..N) e não muda em updates (ON CONFLICT DO UPDATE
+ * preserva o id original), então reflete a ordem certa mesmo após re-index.
+ */
+export async function getDocumentText(pool: Pool, soul: string, path: string): Promise<string> {
+  const { rows } = await pool.query<{ body: string }>(
+    "SELECT body FROM chunks WHERE soul = $1 AND path = $2 ORDER BY id",
+    [soul, path],
+  );
+  return rows.map((r) => r.body).join("\n\n");
+}
+
 export interface IndexFileResult {
   /** chunks do arquivo agora no índice */
   chunks: number;
@@ -290,6 +373,19 @@ export async function indexFile(
     "DELETE FROM chunks WHERE soul = $1 AND path = $2 AND doc_key <> ALL($3::text[])",
     [soul, file, keys],
   );
+
+  // Extração de entidades/relações também sobre conteúdo indexado no RAG, não só
+  // conversas (addObservation). OFF por padrão (mede antes de virar comportamento
+  // sempre-ligado, como RAG_RERANK/RAG_SEMANTIC_CACHE) — ligar via
+  // RAG_DOC_ENTITY_EXTRACTION=true. Só enfileira quando algo de fato mudou no
+  // arquivo (embedded > 0); documento inalterado não gera trabalho novo.
+  if (embedded > 0 && process.env.RAG_DOC_ENTITY_EXTRACTION === "true") {
+    const segments = segmentDocumentText(text);
+    for (const segment of segments) {
+      await enqueueEntityExtraction(pool, soul, title ?? rel, segment, file, null);
+    }
+    await setDocumentExtractionState(pool, soul, file, "queued");
+  }
 
   return { chunks: chunks.length, embedded };
 }

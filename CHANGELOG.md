@@ -18,6 +18,49 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
   `nemotron-3-ultra-free` (free tier real). Tabela vazia pra provider pago
   cai em 0 sem lançar — preencher com preço real só quando um provider pago
   entrar em produção, não inventar número comercial antes disso.
+- **Extração de entidades/relações também sobre o conteúdo indexado no RAG,
+  não só conversas** (2026-09-06). Achado ao investigar a visualização de
+  grafo (aba GRAFO): `entity_extraction_queue` só era alimentada por
+  `addObservation()` (chat) — `indexFile`/`indexDirectory` nunca disparavam
+  extração, então o grafo nunca refletia o conteúdo de documentos já
+  indexados (ex.: 28k chunks/738 documentos na soul `consultoria_ia` contra
+  só 7 entidades). Granularidade por documento (`path`), não por chunk — 37x
+  menos chamadas de LLM. Migração `0021_document_extraction_state` (novo,
+  rastreia progresso por `soul`+`path`) e `0022_entity_extraction_claimed_at`
+  (nova coluna em `entity_extraction_queue`, necessária pro reclaim de jobs
+  presos — ver abaixo, não dá pra usar `ts` porque é o momento de
+  enfileiramento, não de início do processamento). Novo hook em
+  `packages/memory/src/indexer.ts::indexFile`, atrás da env
+  `RAG_DOC_ENTITY_EXTRACTION` (**off por padrão**, mede antes de ligar —
+  mesma convenção de `RAG_RERANK`/`RAG_SEMANTIC_CACHE`). Novo comando
+  `os memory backfill-entities [--soul <id>] [--dry-run] [--limit N]` pra
+  processar o que já está indexado, idempotente/retomável via
+  `document_extraction_state`.
+- **Confiabilidade da fila de extração de entidades** (2026-09-06, achado ao
+  planejar o item acima: histórico real de 28% de sucesso — 9 completos, 21
+  falhos, 2 presos em `processing` desde 22/08). `EXTRACTION_TIMEOUT_MS`
+  (`packages/memory/src/entity-extraction.ts`) sobe de 60s pra 180s
+  (configurável via `ENTITY_EXTRACTION_TIMEOUT_MS` — 18 das 21 falhas eram
+  timeout, não erro de prompt/parsing). Novo
+  `reclaimStuckEntityExtractionJobs` (`packages/core/src/entityQueue.ts`),
+  chamado a cada tick do poller (`packages/daemon/src/entityExtraction.ts`)
+  antes de reivindicar jobs novos. Retry automático (até
+  `MAX_EXTRACTION_ATTEMPTS = 3`) antes de marcar `failed` terminal — antes
+  qualquer falha (mesmo transitória, ex.: timeout de rede) era definitiva.
+  Também corrigido: `extractEntitiesWithOllama` rejeitava JSON válido
+  envolto em cerca de código markdown (` ```json ... ``` `) — comum em
+  modelos pequenos mesmo quando instruídos a responder só em JSON; era uma
+  fração real das falhas "JSON inválido" já registradas na fila.
+- **`entityExtractionModel` (config) / `ENTITY_EXTRACTION_MODEL` (env)**
+  (2026-09-06, achado ao validar o backfill contra dados reais): extração
+  de entidades usava sempre `OLLAMA_CHAT_MODEL` — o mesmo modelo do chat ao
+  vivo. Nesta instalação isso é `gemma4:26b-a4b-it-qat` (escolhido pra
+  qualidade de chat), que estourava o timeout de extração mesmo a 180s;
+  `qwen2.5-coder:3b` (mesmo Ollama LAN) concluiu rápido e correto. Novo
+  campo/env separa os dois — default mantém `ollamaChatModel` (sem mudança
+  de comportamento pra quem não configurar), usado pelo poller do daemon
+  (`packages/daemon/src/entityExtraction.ts`) e como default do
+  `--model` do `backfill-entities`.
 
 ### Removido
 

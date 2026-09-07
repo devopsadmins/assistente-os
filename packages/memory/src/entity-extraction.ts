@@ -4,8 +4,9 @@
  *
  * Espelha o padrão já usado em packages/daemon/src/pipelines/meeting-ingest.ts
  * (extractMeetingWithOllama), com duas diferenças deliberadas:
- * - Timeout maior (60s, não 30s): ninguém espera a resposta HTTP aqui, e
- *   Ollama em CPU pode ser lento — vale mais esperar do que falhar cedo.
+ * - Timeout maior (180s por padrão, configurável via ENTITY_EXTRACTION_TIMEOUT_MS):
+ *   ninguém espera a resposta HTTP aqui, e Ollama em CPU/LAN pode ser lento —
+ *   vale mais esperar do que falhar cedo.
  * - Lança erro em falha de rede/JSON inválido em vez de degradar em silêncio:
  *   o job precisa aparecer como "failed" na fila (visibilidade operacional),
  *   não como "completed, 0 entidades" — que pareceria só "nada encontrado"
@@ -33,9 +34,14 @@ export type EntityKind = (typeof ENTITY_KINDS)[number];
 export const MIN_BODY_LENGTH_FOR_EXTRACTION = 20;
 
 /** Trunca corpo grande (ex.: conteúdo inteiro de um upload) antes de mandar pro LLM. */
-const MAX_EXTRACTION_INPUT_CHARS = 8000;
+export const MAX_EXTRACTION_INPUT_CHARS = 8000;
 
-const EXTRACTION_TIMEOUT_MS = 60_000;
+/**
+ * Default subiu de 60s pra 180s (2026-09): 18 de 21 falhas históricas da fila
+ * eram timeout contra o modelo local/LAN configurado, não erro de prompt/parsing.
+ * Override via env pra ambientes com Ollama mais lento ou mais rápido.
+ */
+const EXTRACTION_TIMEOUT_MS = Number(process.env.ENTITY_EXTRACTION_TIMEOUT_MS) || 180_000;
 
 export interface ExtractedEntity {
   name: string;
@@ -59,6 +65,20 @@ export interface ExtractionResult {
   entities: ExtractedEntity[];
   relations: ExtractedRelation[];
   usage?: LlmUsageLite;
+}
+
+/**
+ * Modelos pequenos (ex.: qwen2.5-coder:3b) costumam envolver o JSON pedido em
+ * cerca de código markdown (```json ... ```) mesmo quando instruídos a
+ * responder "apenas em JSON" — achado ao validar o backfill contra dados
+ * reais (2026-09-06): o conteúdo extraído estava correto, só `JSON.parse`
+ * rejeitava a cerca. Remove a cerca se presente; texto sem cerca passa
+ * intacto.
+ */
+function stripJsonFence(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1]! : trimmed;
 }
 
 function normalizeEntityName(name: string): string {
@@ -156,7 +176,7 @@ export async function extractEntitiesWithOllama(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(content);
+    parsed = JSON.parse(stripJsonFence(content));
   } catch {
     throw new Error("Ollama retornou JSON inválido na extração de entidades");
   }

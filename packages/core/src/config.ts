@@ -17,6 +17,13 @@ export interface AssistenteOsConfig {
   ollamaUrl: string;
   ollamaChatModel: string;
   ollamaEmbedModel: string;
+  /** Modelo Ollama usado só pra extração de entidades/relações (fila +
+   * backfill). Default = ollamaChatModel, mas pode divergir de propósito: o
+   * modelo escolhido pro chat ao vivo (maior/melhor) pode ser lento demais
+   * pra um job em lote — achado real (2026-09-06): gemma4:26b estourava
+   * mesmo timeout de 180s, qwen2.5-coder:3b concluía rápido. Override via
+   * ENTITY_EXTRACTION_MODEL. */
+  entityExtractionModel: string;
   /** OpenCode Zen (https://opencode.ai/zen) — provider cloud OpenAI-compatible,
    * usado como alternativa ao Ollama local quando tool-calling nativo real é
    * necessário (Ollama+modelos pequenos locais não suportam de forma
@@ -149,6 +156,12 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
       "postgres://assistente_os:assistente_os@localhost:5432/assistente_os",
     ollamaUrl: overrides.ollamaUrl || process.env.OLLAMA_URL || "http://localhost:11434",
     ollamaChatModel: overrides.ollamaChatModel || process.env.OLLAMA_CHAT_MODEL || "qwen2.5-coder:3b",
+    entityExtractionModel:
+      overrides.entityExtractionModel ||
+      process.env.ENTITY_EXTRACTION_MODEL ||
+      overrides.ollamaChatModel ||
+      process.env.OLLAMA_CHAT_MODEL ||
+      "qwen2.5-coder:3b",
     ollamaEmbedModel: overrides.ollamaEmbedModel || process.env.OLLAMA_EMBED_MODEL || "nomic-embed-text",
     zenApiKeys,
     zenApiKey: overrides.zenApiKey ?? zenApiKeys[0],

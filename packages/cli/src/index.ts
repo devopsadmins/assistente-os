@@ -42,6 +42,12 @@ import {
   listObservations,
   graphStats,
   getEmbedder,
+  listDocumentPaths,
+  getDocumentText,
+  getDocumentExtractionStatus,
+  setDocumentExtractionState,
+  segmentDocumentText,
+  processExtractionJob,
 } from "@assistente-os/memory";
 import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
@@ -81,6 +87,11 @@ Uso:
   os memory <soul> index             indexa a pasta da soul (md/txt) no memory.db
   os memory <soul> search <q>        busca RAG (literal se Ollama ausente)
   os memory <soul> status            contagem de chunks e grafo
+  os memory backfill-entities [--soul <id>] [--dry-run] [--limit N] [--model <nome>]
+                                     extrai entidades/relações do que já está indexado no RAG
+                                     (por documento, não por chunk); --model sobrescreve só
+                                     pra esta run (não mexe no OLLAMA_CHAT_MODEL do chat ao
+                                     vivo) — ver docs/ROADMAP.md (OPS-02)
   os rag eval [<soul>] [--rerank …] [--min-hit1 0.7] [--min-refusal 0.8] [--faithfulness] [--record]
   os rag eval [<soul>] --history     evolução dos runs de eval (hit@k / refusal / faithfulness)
                                      avalia recuperação: hit@k / MRR / recall@5
@@ -114,6 +125,148 @@ ASSISTENTE_OS_DAEMON_TOKEN, VOICE_ENABLED,
 GUARDIAN_APPROVAL_CHAT_ID (chat id do Telegram que recebe códigos de aprovação do Guardian),
 GUARDIAN_APPROVAL_TTL_HOURS (validade do código, padrão 24h).
 `;
+
+/** Tentativas por segmento dentro de uma única run síncrona do backfill —
+ * conceito separado de MAX_EXTRACTION_ATTEMPTS da fila (esta rotina não usa
+ * entity_extraction_queue, chama processExtractionJob direto). */
+const BACKFILL_MAX_ATTEMPTS = 2;
+
+interface BackfillFlags {
+  soul?: string;
+  dryRun: boolean;
+  limit?: number;
+  model?: string;
+}
+
+function parseBackfillFlags(args: string[]): BackfillFlags {
+  const flags: BackfillFlags = { dryRun: false };
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--soul" && args[i + 1]) {
+      flags.soul = args[++i];
+    } else if (args[i] === "--dry-run") {
+      flags.dryRun = true;
+    } else if (args[i] === "--limit" && args[i + 1]) {
+      flags.limit = Number(args[++i]);
+    } else if (args[i] === "--model" && args[i + 1]) {
+      flags.model = args[++i];
+    }
+  }
+  return flags;
+}
+
+/**
+ * Extrai entidades/relações do que já está indexado no RAG (`chunks`), não só
+ * de conversas (addObservation). Granularidade por documento (`path`), não
+ * por chunk — 49.728 chunks viram ~1.355 documentos, 37x menos chamadas de
+ * LLM. Sequencial de propósito: é a mesma instância Ollama local/LAN que o
+ * poller do daemon (packages/daemon/src/entityExtraction.ts) já usa —
+ * paralelizar agravaria os timeouts que motivaram o retry/timeout maior ali.
+ * Bypassa `entity_extraction_queue` (chama processExtractionJob direto) pra
+ * não competir com tráfego de chat ao vivo e ter progresso síncrono no
+ * terminal. Idempotente via `document_extraction_state`: documentos já
+ * `completed` são pulados, então a run pode ser interrompida (Ctrl-C) e
+ * retomada depois sem reprocessar.
+ */
+async function runBackfillEntities(config: AssistenteOsConfig, args: string[]): Promise<void> {
+  const flags = parseBackfillFlags(args);
+  if (flags.soul && !getSoul(config.home, flags.soul)) {
+    console.error(`soul não encontrada: ${flags.soul}`);
+    process.exitCode = 1;
+    return;
+  }
+  const pool = getPool(config.databaseUrl);
+  const soulIds = flags.soul ? [flags.soul] : listSouls(config.home).map((s) => s.id);
+
+  let candidateDocs = 0;
+  let candidateSegments = 0;
+  let processed = 0;
+  let ok = 0;
+  let failed = 0;
+
+  outer: for (const soulId of soulIds) {
+    let paths: string[];
+    try {
+      paths = await listDocumentPaths(pool, soulId);
+    } catch (err) {
+      console.error(`${soulId}: falha ao listar documentos — ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+    for (const path of paths) {
+      let status: string | null;
+      try {
+        status = await getDocumentExtractionStatus(pool, soulId, path);
+      } catch (err) {
+        console.error(`${soulId}/${path}: falha ao consultar estado — ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+      if (status === "completed") continue;
+
+      if (flags.dryRun) {
+        try {
+          const text = await getDocumentText(pool, soulId, path);
+          candidateDocs++;
+          candidateSegments += segmentDocumentText(text).length;
+        } catch (err) {
+          console.error(`${soulId}/${path}: falha ao ler texto — ${err instanceof Error ? err.message : String(err)}`);
+        }
+        continue;
+      }
+
+      if (flags.limit !== undefined && processed >= flags.limit) break outer;
+
+      // Um documento inteiro não deve derrubar a run inteira (horas de trabalho já
+      // feito) por causa de um erro pontual — LLM ou conexão de banco instável no
+      // meio de uma run longa. Falha aqui vira "failed" nesse documento só; a run
+      // continua pro próximo (retomável depois via document_extraction_state).
+      let docFailed = false;
+      let lastError = "";
+      let segmentCount = 0;
+      try {
+        const text = await getDocumentText(pool, soulId, path);
+        const segments = segmentDocumentText(text);
+        segmentCount = segments.length;
+        for (const segment of segments) {
+          let succeeded = false;
+          for (let attempt = 0; attempt < BACKFILL_MAX_ATTEMPTS && !succeeded; attempt++) {
+            try {
+              await processExtractionJob(pool, { soul: soulId, body: segment }, {
+                ollamaUrl: config.ollamaUrl,
+                chatModel: flags.model ?? config.entityExtractionModel,
+              });
+              succeeded = true;
+            } catch (err) {
+              lastError = err instanceof Error ? err.message : String(err);
+            }
+          }
+          if (!succeeded) {
+            docFailed = true;
+            break;
+          }
+        }
+      } catch (err) {
+        docFailed = true;
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+
+      try {
+        await setDocumentExtractionState(pool, soulId, path, docFailed ? "failed" : "completed", docFailed ? lastError : null);
+      } catch {
+        /* melhor esforço — não deixa um erro de estado derrubar a run */
+      }
+      docFailed ? failed++ : ok++;
+      processed++;
+      console.log(`[${processed}] ${soulId}/${path} — ${docFailed ? `falhou: ${lastError}` : `ok (${segmentCount} segmento(s))`}`);
+    }
+  }
+
+  if (flags.dryRun) {
+    console.log(
+      `dry-run: ${candidateDocs} documento(s) pendente(s) em ${soulIds.length} soul(s), ~${candidateSegments} segmento(s) de extração estimado(s) — nenhuma chamada de LLM feita`,
+    );
+    return;
+  }
+  console.log(`concluído: ${processed} documento(s) processado(s) — ${ok} ok, ${failed} falhou(aram)`);
+}
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -271,6 +424,10 @@ async function main(): Promise<void> {
     }
 
     case "memory": {
+      if (args[0] === "backfill-entities") {
+        await runBackfillEntities(config, args.slice(1));
+        return;
+      }
       const usage = "uso: os memory <soul> <index|search|status>";
       const id = requireArg(args[0], usage);
       if (id === null) return;

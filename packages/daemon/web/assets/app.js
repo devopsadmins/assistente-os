@@ -598,6 +598,53 @@ $("#upload-form").addEventListener("submit", async (e) => {
 });
 
 /* ---------- grafo ---------- */
+let kgNetwork; // singleton vis.Network, reaproveitado entre chamadas de loadGraph()
+
+function buildGraphDatasets(g) {
+  const nodes = g.entities.map((en) => ({
+    id: en.name,
+    label: en.name.length > 24 ? `${en.name.slice(0, 22)}…` : en.name,
+    group: en.kind.toLowerCase(),
+  }));
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const edges = g.relations
+    .filter((r) => nodeIds.has(r.from) && nodeIds.has(r.to))
+    .map((r) => ({ from: r.from, to: r.to, label: r.rel, arrows: "to" }));
+  return { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+}
+
+function renderKnowledgeGraphNetwork(nodes, edges) {
+  const container = $("#graph-network");
+  if (!container || typeof vis === "undefined") return;
+  if (kgNetwork) {
+    kgNetwork.setData({ nodes, edges });
+    return;
+  }
+  const cs = getComputedStyle(document.documentElement);
+  const secondary = cs.getPropertyValue("--text-secondary").trim();
+  const options = {
+    groups: {
+      organization: { color: { background: cs.getPropertyValue("--neon-cyan").trim() } },
+      project: { color: { background: cs.getPropertyValue("--neon-orange").trim() } },
+      person: { color: { background: cs.getPropertyValue("--neon-magenta").trim() } },
+    },
+    nodes: { shape: "dot", size: 16, color: { background: secondary }, font: { color: "#0a0a0e", face: "monospace", size: 12 } },
+    edges: {
+      color: { color: secondary, opacity: 0.5 },
+      font: { size: 10, color: secondary, strokeWidth: 0 },
+      smooth: { type: "dynamic" },
+    },
+    physics: { barnesHut: { gravitationalConstant: -4000, springLength: 110 } },
+    interaction: { hover: true, dragNodes: true, zoomView: true },
+  };
+  kgNetwork = new vis.Network(container, { nodes, edges }, options);
+  kgNetwork.on("click", (params) => {
+    if (!params.nodes.length) return;
+    $("#graph-entities-q").value = params.nodes[0];
+    loadGraph();
+  });
+}
+
 async function loadGraph() {
   if (!state.active) {
     ["#graph-entities", "#graph-relations", "#graph-observations"].forEach((sel) => ($(sel).innerHTML = `<li class="muted">selecione uma soul</li>`));
@@ -637,6 +684,8 @@ async function loadGraph() {
       )
       .join("")
     : `<li class="muted">${q || entity ? "nenhuma observação bate com o filtro" : "sem observações"}</li>`;
+  const { nodes, edges } = buildGraphDatasets(g);
+  renderKnowledgeGraphNetwork(nodes, edges);
 }
 
 $("#graph-obs-filter")?.addEventListener("submit", (e) => {

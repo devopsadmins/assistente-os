@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { enqueueEntityExtraction, claimEntityExtractionJobs, finishEntityExtractionJob } from "../entityQueue.js";
+import {
+  enqueueEntityExtraction,
+  claimEntityExtractionJobs,
+  finishEntityExtractionJob,
+  reclaimStuckEntityExtractionJobs,
+} from "../entityQueue.js";
 import { createTestSchema } from "./pgTestHelper.js";
 
 test("entityQueue: enqueue -> claim (atômico, incrementa attempt) -> finish", async () => {
@@ -50,6 +55,63 @@ test("entityQueue: claim ignora jobs de outra soul só se filtrado — aqui conf
     const claimed = await claimEntityExtractionJobs(testDb.pool, 10);
     const souls = claimed.map((j) => j.soul).sort();
     assert.deepEqual(souls, ["soul-a", "soul-b"]);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("entityQueue: finish com status pending (retry) mantém processed_at null e o job pode ser reclamado de novo", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const job = await enqueueEntityExtraction(testDb.pool, "s1", "e", "corpo de teste com tamanho suficiente para o teste");
+    await claimEntityExtractionJobs(testDb.pool, 5);
+    await finishEntityExtractionJob(testDb.pool, job.id, "pending", "timeout transitório");
+
+    const { rows } = await testDb.pool.query(
+      "SELECT status, last_error, processed_at FROM entity_extraction_queue WHERE id = $1",
+      [job.id],
+    );
+    assert.equal(rows[0].status, "pending");
+    assert.equal(rows[0].last_error, "timeout transitório");
+    assert.equal(rows[0].processed_at, null);
+
+    const reclaimed = await claimEntityExtractionJobs(testDb.pool, 5);
+    assert.equal(reclaimed.length, 1);
+    assert.equal(reclaimed[0]!.attempt, 2);
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("entityQueue: reclaimStuckEntityExtractionJobs devolve pra pending um job preso em processing além do prazo", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const job = await enqueueEntityExtraction(testDb.pool, "s1", "e", "corpo de teste com tamanho suficiente para o teste");
+    await claimEntityExtractionJobs(testDb.pool, 5);
+    // Simula um claim antigo (ex.: daemon reiniciado no meio de uma extração).
+    await testDb.pool.query("UPDATE entity_extraction_queue SET claimed_at = now() - interval '30 minutes' WHERE id = $1", [job.id]);
+
+    const reclaimed = await reclaimStuckEntityExtractionJobs(testDb.pool, 10);
+    assert.equal(reclaimed, 1);
+
+    const { rows } = await testDb.pool.query("SELECT status FROM entity_extraction_queue WHERE id = $1", [job.id]);
+    assert.equal(rows[0].status, "pending");
+  } finally {
+    await testDb.cleanup();
+  }
+});
+
+test("entityQueue: reclaimStuckEntityExtractionJobs não mexe em job recém-claimed (ainda dentro do prazo)", async () => {
+  const testDb = await createTestSchema();
+  try {
+    const job = await enqueueEntityExtraction(testDb.pool, "s1", "e", "corpo de teste com tamanho suficiente para o teste");
+    await claimEntityExtractionJobs(testDb.pool, 5);
+
+    const reclaimed = await reclaimStuckEntityExtractionJobs(testDb.pool, 10);
+    assert.equal(reclaimed, 0);
+
+    const { rows } = await testDb.pool.query("SELECT status FROM entity_extraction_queue WHERE id = $1", [job.id]);
+    assert.equal(rows[0].status, "processing");
   } finally {
     await testDb.cleanup();
   }

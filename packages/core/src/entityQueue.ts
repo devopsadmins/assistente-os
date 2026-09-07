@@ -1,6 +1,9 @@
 import type { Pool } from "pg";
 import { nowIso } from "./costs.js";
 
+/** Tentativas antes de marcar um job como `failed` terminal (ver finishEntityExtractionJob). */
+export const MAX_EXTRACTION_ATTEMPTS = 3;
+
 export interface EntityExtractionJob {
   id: number;
   ts: string;
@@ -13,6 +16,7 @@ export interface EntityExtractionJob {
   attempt: number;
   lastError: string | null;
   processedAt: string | null;
+  claimedAt: string | null;
 }
 
 /**
@@ -45,7 +49,7 @@ export async function enqueueEntityExtraction(
  */
 export async function claimEntityExtractionJobs(pool: Pool, limit = 5): Promise<EntityExtractionJob[]> {
   const { rows } = await pool.query(
-    `UPDATE entity_extraction_queue SET status = 'processing', attempt = attempt + 1
+    `UPDATE entity_extraction_queue SET status = 'processing', attempt = attempt + 1, claimed_at = now()
      WHERE id IN (
        SELECT id FROM entity_extraction_queue WHERE status = 'pending' ORDER BY id ASC LIMIT $1 FOR UPDATE SKIP LOCKED
      )
@@ -58,13 +62,30 @@ export async function claimEntityExtractionJobs(pool: Pool, limit = 5): Promise<
 export async function finishEntityExtractionJob(
   pool: Pool,
   id: number,
-  status: "completed" | "failed",
+  status: "completed" | "failed" | "pending",
   error?: string,
 ): Promise<void> {
+  // Retry (status "pending"): mantém processed_at NULL — o job ainda não terminou,
+  // só voltou pra fila. Só "completed"/"failed" carimbam processed_at.
+  const processedAt = status === "pending" ? null : nowIso();
   await pool.query(
     "UPDATE entity_extraction_queue SET status = $1, last_error = $2, processed_at = $3 WHERE id = $4",
-    [status, error ?? null, nowIso(), id],
+    [status, error ?? null, processedAt, id],
   );
+}
+
+/**
+ * Reclama jobs presos em `processing` (ex.: daemon reiniciado no meio de uma
+ * extração) de volta pra `pending`, depois de `staleMinutes` sem conclusão.
+ * Chamado no início de cada tick do poller, antes de claimEntityExtractionJobs.
+ */
+export async function reclaimStuckEntityExtractionJobs(pool: Pool, staleMinutes = 10): Promise<number> {
+  const { rowCount } = await pool.query(
+    `UPDATE entity_extraction_queue SET status = 'pending'
+     WHERE status = 'processing' AND claimed_at < now() - ($1 || ' minutes')::interval`,
+    [staleMinutes],
+  );
+  return rowCount ?? 0;
 }
 
 function rowToJob(row: Record<string, unknown>): EntityExtractionJob {
@@ -80,5 +101,6 @@ function rowToJob(row: Record<string, unknown>): EntityExtractionJob {
     attempt: Number(row.attempt),
     lastError: row.last_error == null ? null : String(row.last_error),
     processedAt: row.processed_at == null ? null : String(row.processed_at),
+    claimedAt: row.claimed_at == null ? null : String(row.claimed_at),
   };
 }
