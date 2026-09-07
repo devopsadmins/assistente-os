@@ -3,6 +3,7 @@ import {
   loadConfig,
   getPool,
   recordCostCall,
+  calcCost,
   selectRoute,
   getSoul,
   claimDueAgenda,
@@ -76,7 +77,7 @@ export async function processDueAgenda(options: AgendaConsumerOptions): Promise<
         model: decision.target.model,
         inputTokens: 0,
         outputTokens: 0,
-        cost: 0,
+        cost: calcCost(decision.target.provider, decision.target.model, 0, 0),
         status: result.code === 0 && !result.timedOut ? "ok" : "failed",
         note: `tier=${decision.target.tier}; origem=agenda:${item.id}; latency_ms=${Date.now() - startedAt}`,
       });

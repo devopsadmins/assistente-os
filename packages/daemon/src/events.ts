@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import {
-  loadConfig, getPool, recordCostCall, selectRoute, getSoul,
+  loadConfig, getPool, recordCostCall, calcCost, selectRoute, getSoul,
   claimPendingEvents, finishEvent, openSession, bumpSessionPrompt, recordExecution, recordSessionMessage,
   buscarFamiliaPorTelefone, criarFamilia, contarFamiliasAtivas,
 } from "@assistente-os/core";
@@ -84,7 +84,7 @@ export async function processPendingEvents(options: EventConsumerOptions): Promi
         model: decision.target.model,
         inputTokens: 0,
         outputTokens: 0,
-        cost: 0,
+        cost: calcCost(decision.target.provider, decision.target.model, 0, 0),
         status: result.code === 0 && !result.timedOut ? "ok" : "failed",
         note: `tier=${decision.target.tier}; origem=event:${ev.type}; latency_ms=${Date.now() - startedAt}`,
       });

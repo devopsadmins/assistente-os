@@ -8,6 +8,17 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Adicionado
+
+- **`calcCost` real substituindo `cost: 0` hardcoded em `cost_calls`**
+  (`packages/core/src/pricing.ts`). Todo call-site (`agenda.ts`, `events.ts`,
+  `routes/stream.ts`, `observability/record-llm-call.ts`) gravava `cost: 0`
+  — não por bug, mas por nunca ter existido uma tabela de preço. Ollama
+  local segue sempre 0 (custo de infra, não de API); Zen hoje só expõe
+  `nemotron-3-ultra-free` (free tier real). Tabela vazia pra provider pago
+  cai em 0 sem lançar — preencher com preço real só quando um provider pago
+  entrar em produção, não inventar número comercial antes disso.
+
 ### Removido
 
 - **Job `discriminator` do CI** (`.github/workflows/ci.yml`, 2026-09-06, decisão

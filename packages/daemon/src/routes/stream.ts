@@ -10,6 +10,7 @@ import {
   sanitizeLLMResponse,
   purgeCredentials,
   recordCostCall,
+  calcCost,
   recordExecution,
   recordRouterSelection,
   recordSessionMessage,
@@ -466,13 +467,15 @@ export async function handleStream(
       source: "estimate",
     };
 
+    const promptTokens = succeeded ? finalUsage.promptTokens : 0;
+    const completionTokens = succeeded ? finalUsage.completionTokens : 0;
     await recordCostCall(pool, {
       soul: soul.id,
       provider: decision.target.provider,
       model,
-      inputTokens: succeeded ? finalUsage.promptTokens : 0,
-      outputTokens: succeeded ? finalUsage.completionTokens : 0,
-      cost: 0,
+      inputTokens: promptTokens,
+      outputTokens: completionTokens,
+      cost: calcCost(decision.target.provider, model, promptTokens, completionTokens),
       status: succeeded ? "ok" : "failed",
       note: `tier=${tier}; latency_ms=${Date.now() - startedAt}; tokens=${finalUsage.source}; via=/stream`,
     });

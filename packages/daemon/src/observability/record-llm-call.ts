@@ -8,7 +8,7 @@
  * fecha essa lacuna com uma única chamada.
  */
 import type { Pool, Soul } from "@assistente-os/core";
-import { recordCostCall, recordExecution, recordRouterSelection, estimateTokens } from "@assistente-os/core";
+import { recordCostCall, recordExecution, recordRouterSelection, estimateTokens, calcCost } from "@assistente-os/core";
 import { tokensTotal, llmLatency } from "./metrics.js";
 
 export interface LlmUsage {
@@ -73,7 +73,7 @@ export async function recordLlmCall(r: LlmCallRecord): Promise<void> {
       model: r.model,
       inputTokens: promptTokens,
       outputTokens: completionTokens,
-      cost: 0,
+      cost: calcCost(r.provider, r.model, promptTokens, completionTokens),
       status: r.status ?? "ok",
       note: `route=${r.route}; latency_ms=${r.latencyMs}; tokens=${r.source}`,
     });
