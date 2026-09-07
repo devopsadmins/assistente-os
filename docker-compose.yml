@@ -87,6 +87,13 @@ services:
       # com suas próprias credenciais. Setup (uma vez por clone):
       #   ln -s ~/.assistant-os/.env .env
       - TUNNEL_TOKEN=${TUNNEL_TOKEN:?defina TUNNEL_TOKEN em ~/.assistant-os/.env (veja o symlink .env desta pasta)}
+    # No setup padrão (daemon nativo, não o serviço `daemon` deste compose), o
+    # ingress do túnel (configurado no lado do Cloudflare, Networks → Tunnels
+    # → Public Hostname) precisa apontar pra `http://host.docker.internal:4310`,
+    # não `http://daemon:4310` — achado real (2026-09-07): 502 até corrigir.
+    # `extra_hosts` é o que faz esse hostname resolver de dentro do container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - daemon
 
