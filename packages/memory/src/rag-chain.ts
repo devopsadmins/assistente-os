@@ -28,7 +28,7 @@ import {
   type RagInjectionFinding,
 } from "./rag-injection.js";
 import { createHash } from "node:crypto";
-import { loadConfig, cache, logger, nextZenApiKey, type Pool } from "@assistente-os/core";
+import { loadConfig, cache, logger, resolveCloudProvider, type Pool } from "@assistente-os/core";
 
 export interface RagChunk {
   doc: string;
@@ -71,18 +71,18 @@ export interface RagContext {
  * ("qwen2.5:latest") que não existe no Ollama local — usa a config
  * canônica (mesma do resto do sistema) em vez de reinventar env vars.
  *
- * Prefere o OpenCode Zen (cloud) quando ZEN_API_KEY estiver configurada,
- * pelo mesmo motivo de agent-workflow.ts — mantém o pipeline retrieve+
- * generate do LangGraph consistente no mesmo provider em vez de misturar
- * Ollama local (retrieve) com Zen (generate).
+ * Prefere um provider cloud (OpenRouter, senão OpenCode Zen — ver
+ * `resolveCloudProvider`) quando configurado, pelo mesmo motivo de
+ * agent-workflow.ts — mantém o pipeline retrieve+generate do LangGraph
+ * consistente no mesmo provider em vez de misturar Ollama local (retrieve)
+ * com cloud (generate).
  */
 function createLLM() {
   const config = loadConfig({});
-  const useZen = Boolean(config.zenApiKey);
-  const baseUrl = useZen ? config.zenBaseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
-  const modelName = useZen ? config.zenChatModel : config.ollamaChatModel;
-  // Rodízio entre as chaves Zen registradas (round-robin por chamada).
-  const apiKey = useZen ? nextZenApiKey(config)! : process.env.OPENAI_API_KEY || "ollama";
+  const cloud = resolveCloudProvider(config);
+  const baseUrl = cloud ? cloud.baseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
+  const modelName = cloud ? cloud.chatModel : config.ollamaChatModel;
+  const apiKey = cloud ? cloud.apiKey : process.env.OPENAI_API_KEY || "ollama";
   return new ChatOpenAI({
     modelName,
     apiKey,
@@ -99,7 +99,7 @@ function toScreenable(results: Awaited<ReturnType<typeof search>>): ScreenableCh
       doc: r.docKey,
       path: r.path,
       score: r.score,
-      method: r.method === "vector" ? "semantic" : "literal",
+      method: r.method === "vector" ? "semantic" : r.method === "hybrid" ? "hybrid" : "literal",
       snippet: r.body.slice(0, 200),
       indexedAt: r.updatedAt,
     } satisfies RagChunk,
@@ -336,11 +336,12 @@ export async function runRagChain(
 
   const answer = await chain.invoke({});
   const usedConfig = loadConfig({});
+  const usedCloud = resolveCloudProvider(usedConfig);
 
   return {
     answer,
     sources: documents,
-    model: usedConfig.zenApiKey ? usedConfig.zenChatModel : usedConfig.ollamaChatModel,
+    model: usedCloud ? usedCloud.chatModel : usedConfig.ollamaChatModel,
     query,
     injectionFindings,
   };

@@ -13,7 +13,7 @@
  *   quando na verdade o Ollama caiu.
  */
 import { sanitizeUserPrompt, sanitizeLLMResponse, entityExtraction } from "@assistente-os/core";
-import { upsertEntity, upsertRelation } from "./graph.js";
+import { upsertEntity, upsertRelation, resolveCanonicalEntityName, type EmbedderLike } from "./graph.js";
 import type { Pool } from "@assistente-os/core";
 
 export const ENTITY_KINDS = [
@@ -81,7 +81,7 @@ function stripJsonFence(text: string): string {
   return fenced ? fenced[1]! : trimmed;
 }
 
-function normalizeEntityName(name: string): string {
+export function normalizeEntityName(name: string): string {
   return name.trim().replace(/\s+/g, " ").replace(/[.,;:!?]+$/g, "");
 }
 
@@ -200,21 +200,36 @@ export async function extractEntitiesWithOllama(
 export async function processExtractionJob(
   pool: Pool,
   job: { soul: string; body: string },
-  opts: { ollamaUrl: string; chatModel: string },
+  opts: { ollamaUrl: string; chatModel: string; embedder?: EmbedderLike },
 ): Promise<{ entitiesCreated: number; relationsCreated: number; usage?: LlmUsageLite }> {
   const { entities, relations, usage } = await extractEntitiesWithOllama(job.body, opts.ollamaUrl, opts.chatModel);
+
+  // Resolve cada nome extraído pro seu canônico (exato → fold → embedding,
+  // se `opts.embedder` + GRAPH_ENTITY_DEDUP estiverem ligados) antes de
+  // upsertar — evita criar duplicata e evita relação órfã apontando pro
+  // nome bruto quando o canônico é outro.
+  const canonicalNames = new Map<string, string>();
+  const resolve = async (rawName: string): Promise<string> => {
+    const cached = canonicalNames.get(rawName);
+    if (cached) return cached;
+    const { canonical } = await resolveCanonicalEntityName(pool, job.soul, rawName, opts.embedder);
+    canonicalNames.set(rawName, canonical);
+    return canonical;
+  };
 
   for (const e of entities) {
     const safeName = sanitizeLLMResponse(e.name).sanitized;
     if (!safeName.trim()) continue;
-    await upsertEntity(pool, job.soul, safeName, e.kind);
+    const canonical = await resolve(safeName);
+    await upsertEntity(pool, job.soul, canonical, e.kind, null, "entity_extraction");
   }
   for (const r of relations) {
     const from = sanitizeLLMResponse(r.from).sanitized;
     const to = sanitizeLLMResponse(r.to).sanitized;
     const rel = sanitizeLLMResponse(r.rel).sanitized;
     if (!from.trim() || !to.trim() || !rel.trim()) continue;
-    await upsertRelation(pool, job.soul, from, rel, to);
+    const [canonicalFrom, canonicalTo] = await Promise.all([resolve(from), resolve(to)]);
+    await upsertRelation(pool, job.soul, canonicalFrom, rel, canonicalTo, null, "entity_extraction");
   }
 
   return { entitiesCreated: entities.length, relationsCreated: relations.length, usage };

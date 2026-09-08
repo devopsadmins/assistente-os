@@ -30,7 +30,7 @@ import { todayISODate, nowISO, registrarLicao } from "../alma.js";
 import { soulDir } from "../souls.js";
 import { guardianAudit } from "../prompts/garden/index.js";
 import { loadConfig } from "../config.js";
-import { nextZenApiKey } from "../zen-keys.js";
+import { resolveCloudProvider } from "../cloud-provider.js";
 
 const PROMOTION_THRESHOLD = 3;
 const AUDIT_SCORE_THRESHOLD = 95;
@@ -454,14 +454,15 @@ export function getLessons(dir: string, limit = 20): { dateISO: string; texto: s
  * Falha segura: se o Guardian estiver indisponível, não aprova por omissão.
  *
  * SPEC-GR4: usado pelo `os discriminator` no CI, onde não há Ollama local no
- * runner. Mesmo critério "useZen" de `rag-chain.ts`/`agent-workflow.ts`:
- * prefere o OpenCode Zen (cloud, OpenAI-compatible) quando `ZEN_API_KEY[S]`
- * está configurada; cai pro Ollama local (`/api/chat`, formato próprio) senão
- * — é o caso de rodar o gate localmente numa máquina de dev.
+ * runner. Mesmo critério de `rag-chain.ts`/`agent-workflow.ts`:
+ * `resolveCloudProvider` prefere OpenRouter, senão OpenCode Zen (cloud,
+ * OpenAI-compatible), quando configurados; cai pro Ollama local (`/api/chat`,
+ * formato próprio) senão — é o caso de rodar o gate localmente numa máquina
+ * de dev.
  */
 export async function auditExecution(input: AuditExecutionInput): Promise<AuditExecutionResult> {
   const config = loadConfig({});
-  const useZen = Boolean(config.zenApiKey);
+  const cloud = resolveCloudProvider(config);
 
   const prompt = guardianAudit.render({
     taskId: input.taskId,
@@ -480,17 +481,16 @@ export async function auditExecution(input: AuditExecutionInput): Promise<AuditE
 
   try {
     let content: string;
-    if (useZen) {
-      const apiKey = nextZenApiKey(config)!;
-      const resp = await fetch(`${config.zenBaseUrl}/chat/completions`, {
+    if (cloud) {
+      const resp = await fetch(`${cloud.baseUrl}/chat/completions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: config.zenChatModel, messages: [{ role: "user", content: prompt }] }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cloud.apiKey}` },
+        body: JSON.stringify({ model: cloud.chatModel, messages: [{ role: "user", content: prompt }] }),
         signal: ac.signal,
       });
       clearTimeout(timeoutId);
       if (!resp.ok) {
-        return { approved: false, score: 0, feedback: `Guardian indisponível (Zen HTTP ${resp.status}) — revisão manual necessária.` };
+        return { approved: false, score: 0, feedback: `Guardian indisponível (${cloud.name} HTTP ${resp.status}) — revisão manual necessária.` };
       }
       const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
       content = data.choices?.[0]?.message?.content || "{}";

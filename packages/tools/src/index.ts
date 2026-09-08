@@ -26,7 +26,7 @@ export const SERVER_VERSION = "0.1.0";
 /** Tools que exigem soul_id e passam pela verificação de allowlist. */
 const SOUL_SCOPED_TOOLS = new Set([
   "memory_search", "memory_index", "memory_status",
-  "graph_list", "observation_add",
+  "graph_list", "graph_walk", "observation_add",
   "soul_context", "soul_chat",
   "soul_anotar", "soul_licao", "soul_decidir",
   "soul_record_lesson", "soul_get_lessons", "soul_generate_aiia",

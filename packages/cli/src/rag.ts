@@ -93,7 +93,7 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
   const sub = args[0];
   if (sub !== "eval") {
     console.log(
-      "uso: os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--file <path>] [--min-hit1 0.7] [--min-refusal 0.8] [--faithfulness] [--record] [--history]",
+      "uso: os rag eval [<soul>] [--rerank off|cross-encoder|llm] [--hybrid] [--file <path>] [--min-hit1 0.7] [--min-refusal 0.8] [--faithfulness] [--record] [--history]",
     );
     return 1;
   }
@@ -102,6 +102,7 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
   if (args.includes("--history")) return ragHistory(config, soulFilter);
 
   const rerank = getFlag(args, "rerank");
+  const hybrid = args.includes("--hybrid");
   const fileArg = getFlag(args, "file");
   const minHit1 = Number(getFlag(args, "min-hit1") ?? "0.7");
   const minRefusal = Number(getFlag(args, "min-refusal") ?? "0.8");
@@ -109,6 +110,7 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
   const record = args.includes("--record");
 
   if (rerank) process.env.RAG_RERANK = rerank;
+  if (hybrid) process.env.RAG_HYBRID_SEARCH = "on";
 
   const file =
     fileArg ??
@@ -129,7 +131,9 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
   }
 
   console.log(`rag eval — ${file}`);
-  console.log(`casos: ${selected.length}${soulFilter ? ` (soul=${soulFilter})` : ""} · rerank=${process.env.RAG_RERANK ?? "off"}\n`);
+  console.log(
+    `casos: ${selected.length}${soulFilter ? ` (soul=${soulFilter})` : ""} · rerank=${process.env.RAG_RERANK ?? "off"} · hybrid=${process.env.RAG_HYBRID_SEARCH ?? "off"}\n`,
+  );
 
   const pool = getPool(config.databaseUrl);
   const m = await runRagEval(pool, selected, { k: 5 });
@@ -159,7 +163,7 @@ export async function runRagCommand(config: AssistenteOsConfig, args: string[]):
       recallAt5: m.recallAt5,
       adversarialRefusalRate: m.nAdversarial > 0 ? m.adversarialRefusalRate : null,
       faithfulnessSupported: faithSupported,
-      note: `rerank=${process.env.RAG_RERANK ?? "off"}; file=${file}`,
+      note: `rerank=${process.env.RAG_RERANK ?? "off"}; hybrid=${process.env.RAG_HYBRID_SEARCH ?? "off"}; file=${file}`,
     });
     console.log("\n(run registrado em rag_eval_runs — `os rag eval --history` para o histórico)");
   }

@@ -48,6 +48,7 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "memory_status", level: "L1" },
   { pattern: "soul_context", level: "L1" },
   { pattern: "graph_list", level: "L1" },
+  { pattern: "graph_walk", level: "L1" },
   { pattern: "agenda_list", level: "L1" },
   { pattern: "router_status", level: "L1" },
   { pattern: "costs_summary", level: "L1" },

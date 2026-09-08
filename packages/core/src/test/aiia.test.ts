@@ -54,7 +54,7 @@ test("generateAiiaReport: soul sem agent config usa os defaults globais", () => 
     const report = generateAiiaReport(home, "sem-agent");
     assert.equal(report.soulId, "sem-agent");
     assert.deepEqual(report.capabilities.allowedToolPatterns, [
-      "memory:*", "soul_context", "soul_chat", "graph_list", "observation_add",
+      "memory:*", "soul_context", "soul_chat", "graph_list", "graph_walk", "observation_add",
       "soul_anotar", "soul_licao", "soul_decidir", "agenda_add", "agenda_list",
       "action_execute", "costs_summary", "router_status", "spec_grill_plan",
       "worktree_create", "worktree_merge_locally", "worktree_destroy", "worktree_list", "git_commit_push",

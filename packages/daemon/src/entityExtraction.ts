@@ -6,7 +6,7 @@ import {
   reclaimStuckEntityExtractionJobs,
   MAX_EXTRACTION_ATTEMPTS,
 } from "@assistente-os/core";
-import { processExtractionJob } from "@assistente-os/memory";
+import { processExtractionJob, graphDedupConfig, getEmbedder } from "@assistente-os/memory";
 import { recordLlmCall } from "./observability/record-llm-call.js";
 
 export interface EntityExtractionConsumerOptions {
@@ -32,6 +32,9 @@ export async function processEntityExtractionJobs(options: EntityExtractionConsu
       const { usage } = await processExtractionJob(pool, { soul: job.soul, body: job.body }, {
         ollamaUrl: config.ollamaUrl,
         chatModel: config.entityExtractionModel,
+        // Só paga o custo de embed por nome extraído quando a flag está ligada
+        // (GRAPH_ENTITY_DEDUP, default off) — ver docs/ROADMAP.md.
+        embedder: graphDedupConfig().embeddingEnabled ? getEmbedder() : undefined,
       });
       await finishEntityExtractionJob(pool, job.id, "completed");
       if (usage) {

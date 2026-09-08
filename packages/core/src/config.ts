@@ -36,6 +36,16 @@ export interface AssistenteOsConfig {
   zenApiKeys: string[];
   zenBaseUrl: string;
   zenChatModel: string;
+  /** OpenRouter (https://openrouter.ai) — provider cloud OpenAI-compatible
+   * alternativo ao Zen. Precedência sobre Zen em `resolveCloudProvider()`
+   * quando ambos configurados: desde 2026-09-08 a OpenCode Zen passa a
+   * rejeitar (HTTP 400 MissingSessionID) chamadas de API diretas a modelos
+   * "-free" fora do app/CLI opencode — ver docs/ROADMAP.md. Sem
+   * OPENROUTER_API_KEY configurada, fica undefined e `resolveCloudProvider`
+   * cai pro Zen (ou pro Ollama, se nenhum dos dois estiver configurado). */
+  openRouterApiKey?: string;
+  openRouterBaseUrl: string;
+  openRouterChatModel: string;
   /** Modo do reranker de RAG (env RAG_RERANK): "off" | "cross-encoder" | "llm". */
   ragRerankMode: "off" | "cross-encoder" | "llm";
   /** Modo do screening de prompt injection (entrada do usuário e chunks de RAG;
@@ -167,6 +177,9 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
     zenApiKey: overrides.zenApiKey ?? zenApiKeys[0],
     zenBaseUrl: overrides.zenBaseUrl || process.env.ZEN_BASE_URL || "https://opencode.ai/zen/v1",
     zenChatModel: overrides.zenChatModel || process.env.ZEN_CHAT_MODEL || "nemotron-3-ultra-free",
+    openRouterApiKey: overrides.openRouterApiKey ?? process.env.OPENROUTER_API_KEY,
+    openRouterBaseUrl: overrides.openRouterBaseUrl || process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+    openRouterChatModel: overrides.openRouterChatModel || process.env.OPENROUTER_CHAT_MODEL || "nvidia/nemotron-3-ultra-550b-a55b:free",
     ragRerankMode: overrides.ragRerankMode ?? parseRagRerankMode(process.env.RAG_RERANK),
     ragInjectionMode: overrides.ragInjectionMode ?? resolvePromptInjectionMode(),
     ragHnswEfSearch: overrides.ragHnswEfSearch ?? (Number(process.env.RAG_HNSW_EF_SEARCH) || 40),

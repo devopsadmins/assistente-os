@@ -33,6 +33,7 @@ import {
   listRelations,
   listObservations,
   addObservation,
+  walkGraph,
   getEmbedder,
 } from "@assistente-os/memory";
 
@@ -118,6 +119,19 @@ export function createAgentTools(options: CreateToolsOptions) {
           }
         }
         return { entities, relations, observations };
+      },
+    }),
+
+    new DynamicStructuredTool({
+      name: "graph_walk",
+      description: "Percorre o grafo da soul a partir de uma entidade, N saltos, com filtro opcional por tipo de relação.",
+      schema: z.object({
+        start: z.string().describe("Nome exato da entidade de partida"),
+        max_hops: z.number().optional().describe("1 a 4 saltos (default 2)"),
+        rel_types: z.array(z.string()).optional().describe("Filtro opcional de tipos de relação"),
+      }),
+      func: async ({ start, max_hops, rel_types }) => {
+        return walkGraph(pool, soulId, start, { maxHops: max_hops, relTypes: rel_types });
       },
     }),
 

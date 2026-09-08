@@ -70,6 +70,7 @@ export const DEFAULT_ALLOWED_TOOLS: ToolPattern[] = [
   "soul_context",
   "soul_chat",
   "graph_list",
+  "graph_walk",
   "observation_add",
   "soul_anotar",
   "soul_licao",

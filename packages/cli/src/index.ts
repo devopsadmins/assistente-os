@@ -48,6 +48,7 @@ import {
   setDocumentExtractionState,
   segmentDocumentText,
   processExtractionJob,
+  graphDedupConfig,
 } from "@assistente-os/memory";
 import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
@@ -92,7 +93,7 @@ Uso:
                                      (por documento, não por chunk); --model sobrescreve só
                                      pra esta run (não mexe no OLLAMA_CHAT_MODEL do chat ao
                                      vivo) — ver docs/ROADMAP.md (OPS-02)
-  os rag eval [<soul>] [--rerank …] [--min-hit1 0.7] [--min-refusal 0.8] [--faithfulness] [--record]
+  os rag eval [<soul>] [--rerank …] [--hybrid] [--min-hit1 0.7] [--min-refusal 0.8] [--faithfulness] [--record]
   os rag eval [<soul>] --history     evolução dos runs de eval (hit@k / refusal / faithfulness)
                                      avalia recuperação: hit@k / MRR / recall@5
   os prompt list                     lista os prompts do Prompt Garden (id / versão / hash)
@@ -232,6 +233,7 @@ async function runBackfillEntities(config: AssistenteOsConfig, args: string[]): 
               await processExtractionJob(pool, { soul: soulId, body: segment }, {
                 ollamaUrl: config.ollamaUrl,
                 chatModel: flags.model ?? config.entityExtractionModel,
+                embedder: graphDedupConfig().embeddingEnabled ? getEmbedder() : undefined,
               });
               succeeded = true;
             } catch (err) {

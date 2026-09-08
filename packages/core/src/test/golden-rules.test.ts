@@ -299,11 +299,22 @@ test("getLessons retorna as últimas N entradas na ordem certa", () => {
 
 /**
  * `loadConfig({})` sem override de `home` lê o `.env` real da máquina — se
- * ela já tiver ZEN_API_KEY[S] configurada (normal numa máquina de dev),
- * "sem Zen" deixaria de ser verdade dentro do teste. Isola as 9 variáveis
- * possíveis (lista + numeradas 1-7 + única) e restaura no finally.
+ * ela já tiver ZEN_API_KEY[S]/OPENROUTER_API_KEY configurada (normal numa
+ * máquina de dev), "sem provider cloud" deixaria de ser verdade dentro do
+ * teste. Isola as 9 variáveis Zen possíveis (lista + numeradas 1-7 + única)
+ * + as 3 do OpenRouter (resolveCloudProvider prefere OpenRouter sobre Zen —
+ * precisa estar isolada também, senão "com ZEN_API_KEY" deixaria de bater
+ * no Zen se a máquina tiver OPENROUTER_API_KEY configurada) e restaura no
+ * finally.
  */
-const ZEN_ENV_VARS = ["ZEN_API_KEYS", "ZEN_API_KEY", ...Array.from({ length: 7 }, (_, i) => `ZEN_API_KEY_${i + 1}`)];
+const ZEN_ENV_VARS = [
+  "ZEN_API_KEYS",
+  "ZEN_API_KEY",
+  ...Array.from({ length: 7 }, (_, i) => `ZEN_API_KEY_${i + 1}`),
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+  "OPENROUTER_CHAT_MODEL",
+];
 function withZenEnv<T>(vars: Record<string, string> | null, fn: () => T): T {
   const saved = new Map(ZEN_ENV_VARS.map((k) => [k, process.env[k]]));
   // String vazia, não delete: loadConfig -> loadDotEnv só define a var se

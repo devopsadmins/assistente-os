@@ -10,6 +10,34 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Busca híbrida RAG (RRF), histórico/dedup no grafo e integração OpenRouter**
+  (2026-09-08). Inspirado numa análise comparativa do projeto `deeplethe/utopia`:
+  (1) `RAG_HYBRID_SEARCH` (off por padrão) — full-text nativo do Postgres
+  (`tsvector`/GIN, migration `0023_chunks_fulltext`) fundido com a busca
+  vetorial via Reciprocal Rank Fusion em `packages/memory/src/indexer.ts`
+  (`reciprocalRankFusion`, `fullTextSearch`), produzindo de fato o
+  `method: "hybrid"` que já existia no tipo mas nunca era gerado — ver
+  `docs/RAG-HYBRID.md`; (2) ledger de histórico do grafo de conhecimento —
+  `entity_history`/`relation_history` (migration `0024_graph_history_dedup`),
+  `upsertEntity`/`upsertRelation` (`packages/memory/src/graph.ts`) passam a
+  preservar o valor anterior só quando algo muda de fato (não em upserts
+  idempotentes); dedup de entidades por `name_fold` (sempre ativo) e,
+  opcionalmente, por similaridade de embedding (`GRAPH_ENTITY_DEDUP`, off por
+  padrão) via `resolveCanonicalEntityName`; nova tool MCP/LangGraph
+  `graph_walk` (travessia por N saltos a partir de uma entidade, filtro por
+  tipo de relação), complementando o dump plano de `graph_list`;
+  (3) **OpenRouter como provider cloud alternativo à OpenCode Zen**
+  (`packages/core/src/cloud-provider.ts`, `resolveCloudProvider` — precedência
+  OpenRouter > Zen > Ollama) — achado ao investigar uma falha real: desde
+  2026-09-08 a OpenCode Zen passou a rejeitar (HTTP 400 `MissingSessionID`)
+  chamadas de API diretas a modelos `-free` fora do app/CLI `opencode`,
+  quebrando as chamadas HTTP diretas do LangGraph
+  (`rag-chain.ts`/`agent-workflow.ts`) e do guardian/discriminator
+  (`governance/golden-rules.ts`) — não afeta o caminho `opencode run`
+  (`packages/daemon/src/runner.ts`), que já roda o binário real do opencode.
+  Fases de RBAC multi-tenant e conectores de ingestão externa (candidatos
+  também identificados na análise do Utopia) ficaram só documentadas em
+  `docs/ROADMAP.md`, adiadas por decisão do usuário.
 - **`ADR-PRIV-003` aceita (2026-09-08) — Bloco G aprovado após P1–P8 resolvidas.**
   Reavaliação do `standards_gate_blockg` (1ª rodada em 2026-09-07 tinha veredito BLOCKED,
   G3/G4/G5 reprovados) — owner do repositório (Everton Lima) decidiu as 8 pendências:

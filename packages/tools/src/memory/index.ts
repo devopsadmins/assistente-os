@@ -1,5 +1,5 @@
 import { getPool, sanitizeLLMResponse, resolveRelevanceGate } from "@assistente-os/core";
-import { indexDirectory, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, type RelevanceRule } from "@assistente-os/memory";
+import { indexDirectory, searchWithVerdict, indexStats, graphStats, listEntities, listRelations, listObservations, addObservation, getEmbedder, walkGraph, type RelevanceRule } from "@assistente-os/memory";
 import { authorizeTool, type Tool, type ToolContext, type ToolHandler } from "../index.js";
 import { join } from "node:path";
 
@@ -48,6 +48,20 @@ export const MEMORY_TOOLS: Tool[] = [
       type: "object",
       properties: { soul: { type: "string", description: "id da soul" } },
       required: ["soul"],
+    },
+  },
+  {
+    name: "graph_walk",
+    description: "Percorre o grafo da soul a partir de uma entidade, N saltos, com filtro opcional por tipo de relação.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        soul: { type: "string", description: "id da soul" },
+        start: { type: "string", description: "nome exato da entidade de partida" },
+        max_hops: { type: "number", default: 2, description: "1 a 4 saltos" },
+        rel_types: { type: "array", items: { type: "string" }, description: "filtro opcional de tipos de relação" },
+      },
+      required: ["soul", "start"],
     },
   },
   {
@@ -112,6 +126,19 @@ export const MEMORY_HANDLERS: Record<string, ToolHandler> = {
       relations: await listRelations(pool, soul.id),
       observations: await listObservations(pool, soul.id),
     };
+  },
+
+  graph_walk: async (ctx, args) => {
+    const soul = ctx.requireSoul(args.soul);
+    if ("error" in soul) throw new Error(soul.error);
+    authorizeTool(ctx.config.home, soul.id, "graph_walk");
+    const start = typeof args.start === "string" && args.start.trim() ? args.start : null;
+    if (!start) throw new Error("start é obrigatório");
+    const maxHops = typeof args.max_hops === "number" ? args.max_hops : undefined;
+    const relTypes = Array.isArray(args.rel_types) ? args.rel_types.filter((r): r is string => typeof r === "string") : undefined;
+    const pool = getPool(ctx.config.databaseUrl);
+    const result = await walkGraph(pool, soul.id, start, { maxHops, relTypes });
+    return { soul: soul.id, start, ...result };
   },
 
   observation_add: async (ctx, args) => {

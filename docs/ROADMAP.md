@@ -122,9 +122,29 @@ aqui só o resumo:
 - **Toggles OFF a medir em staging**: `RAG_RERANK` (cross-encoder/llm),
   `RAG_SEMANTIC_CACHE`, `ROUTER_ESCALATION`, `RAG_DOC_ENTITY_EXTRACTION`
   (extração de entidades/relações também sobre documentos indexados, não só
-  chat — ver CHANGELOG 2026-09-06), prefill da Etapa 9 — todos shipam
-  desligados por padrão, aguardando medição real de ganho/custo. `os rag
-  eval --history` é a ferramenta pra isso.
+  chat — ver CHANGELOG 2026-09-06), `RAG_HYBRID_SEARCH` (fusão RRF de busca
+  vetorial + full-text nativo do Postgres, ver [docs/RAG-HYBRID.md](RAG-HYBRID.md)),
+  `GRAPH_ENTITY_DEDUP` (dedup de entidades do grafo por similaridade de
+  embedding, além do fold por nome que já é sempre ativo), prefill da Etapa 9
+  — todos shipam desligados por padrão, aguardando medição real de
+  ganho/custo. `os rag eval --history` é a ferramenta pra isso.
+- **Candidatos a ADR futuro (inspirados na análise do projeto Utopia,
+  2026-09-08)**: conectores de ingestão automatizada (RSS, GitHub, Jira,
+  Notion, WebDAV, S3 — hoje só upload manual + 2 endpoints de push
+  email/reunião) e uma tool equivalente ao Ontology2SQL do Utopia (consulta a
+  banco de dados externo — Postgres/MySQL/etc. de um cliente — mapeado
+  ontologicamente e exposto ao agente via MCP). Nenhum cliente atual pediu;
+  não abrir ADR até haver necessidade concreta.
+- **Detecção de conflito no grafo de conhecimento (backlog)**: quando duas
+  `observations` da mesma entidade forem contraditórias, sinalizar para
+  revisão humana (ex.: futura tabela `entity_conflicts`). Não depende de
+  `entity_history`/`relation_history` (2026-09-08) nem bloqueia nada — é só
+  a próxima camada possível sobre o histórico que já existe.
+- **RBAC multi-tenant por soul (adiado)**: hoje o controle é ownership binário
+  (`ownerAccountId === accountId`, `packages/daemon/src/server.ts`). Um
+  modelo de papéis (owner/admin/editor/viewer) por soul, inspirado no Utopia,
+  só deve ser desenhado se/quando o Modo Amigável for reativado (está em
+  pausa total desde 2026-09-04).
 - **Spike BitNet (`bitnet.cpp`)**: inferência 1.58-bit CPU-first pro tier mais
   barato do router, rodando em paralelo ao Ollama. Motivação original ("Ollama
   CPU lento" na máquina de deploy) foi parcialmente atenuada por um setup de
@@ -209,6 +229,9 @@ em aberto, porque aí vira ação de escrita e entra questão de permissão/auth
   iniciado, decisão de quando rodar em aberto.
 
 ### Vertical Clínicas — adoção AI-4 (2026-09-07/08)
+
+> Fluxo geral de como criar a próxima soul/vertical (técnico + adoção v4-standards):
+> `docs/GUIA-CRIACAO-DE-AGENTES.md` — este caso é o exemplo guiado usado lá.
 
 Rascunho técnico (`clinic_triage_lead`/`clinic_prevent_noshow`, soul `clinica_template`)
 processa dado de saúde de paciente — `standards_classify_profile` confirmou perfil **AI-4**.

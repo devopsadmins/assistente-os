@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { segmentDocumentText } from "../indexer.js";
+import { segmentDocumentText, reciprocalRankFusion } from "../indexer.js";
+
+function row(docKey: string) {
+  return { docKey, path: `${docKey}.md`, title: null, body: "corpo", updatedAt: null };
+}
 
 test("segmentDocumentText: texto vazio devolve lista vazia", () => {
   assert.deepEqual(segmentDocumentText(""), []);
@@ -27,4 +31,28 @@ test("segmentDocumentText: com maxChars menor que um bloco, cada bloco vira seu 
   const text = blocks.join("\n\n");
   const segments = segmentDocumentText(text, 3);
   assert.deepEqual(segments, blocks);
+});
+
+test("reciprocalRankFusion: doc no topo das duas listas fica em primeiro", () => {
+  const fused = reciprocalRankFusion([row("a"), row("b")], [row("a"), row("c")], 60, 5);
+  assert.equal(fused[0]?.docKey, "a");
+  assert.ok(fused.every((r) => r.method === "hybrid"));
+});
+
+test("reciprocalRankFusion: doc só numa lista ainda aparece no resultado", () => {
+  const fused = reciprocalRankFusion([row("a")], [row("b")], 60, 5);
+  const keys = fused.map((r) => r.docKey).sort();
+  assert.deepEqual(keys, ["a", "b"]);
+});
+
+test("reciprocalRankFusion: empate nas duas listas soma as contribuições", () => {
+  const fused = reciprocalRankFusion([row("a"), row("b")], [row("b"), row("a")], 60, 5);
+  const scoreA = fused.find((r) => r.docKey === "a")!.score;
+  const scoreB = fused.find((r) => r.docKey === "b")!.score;
+  assert.ok(Math.abs(scoreA - scoreB) < 1e-9, "a e b deveriam empatar (1º numa lista, 2º na outra)");
+});
+
+test("reciprocalRankFusion: respeita o limit mesmo com união maior", () => {
+  const fused = reciprocalRankFusion([row("a"), row("b"), row("c")], [row("d"), row("e")], 60, 2);
+  assert.equal(fused.length, 2);
 });

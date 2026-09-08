@@ -90,7 +90,7 @@ export function segmentDocumentText(text: string, maxChars: number = MAX_EXTRACT
 }
 
 /** Formato texto que o pgvector aceita como entrada para a coluna `vector`. */
-function toVectorLiteral(embedding: number[] | null): string | null {
+export function toVectorLiteral(embedding: number[] | null): string | null {
   return embedding ? `[${embedding.join(",")}]` : null;
 }
 
@@ -158,7 +158,7 @@ export interface SearchResult {
   title: string | null;
   body: string;
   score: number;
-  method: "vector" | "literal";
+  method: "vector" | "literal" | "hybrid";
   /** ISO 8601 — `chunks.updated_at`: quando o chunk foi (re)sincronizado no índice. */
   updatedAt: string | null;
 }
@@ -172,6 +172,90 @@ export interface SearchResult {
 function hnswEfSearch(): number {
   const n = Math.floor(Number(process.env.RAG_HNSW_EF_SEARCH) || 40);
   return Math.max(1, Math.min(1000, n));
+}
+
+export interface HybridSearchConfig {
+  enabled: boolean;
+  rrfK: number;
+}
+
+/**
+ * RAG_HYBRID_SEARCH fica OFF por padrão — mesmo padrão de RAG_RERANK/
+ * RAG_SEMANTIC_CACHE: introduzido pra medição em corpus real antes de virar
+ * default (ver docs/RAG-HYBRID.md).
+ */
+export function hybridSearchConfig(): HybridSearchConfig {
+  const raw = (process.env.RAG_HYBRID_SEARCH ?? "off").toLowerCase();
+  const enabled = raw === "on" || raw === "1" || raw === "true";
+  const rrfK = Math.max(1, Math.floor(Number(process.env.RAG_HYBRID_RRF_K)) || 60);
+  return { enabled, rrfK };
+}
+
+interface RankedRow {
+  docKey: string;
+  path: string;
+  title: string | null;
+  body: string;
+  updatedAt: string | null;
+}
+
+/**
+ * Reciprocal Rank Fusion: funde duas listas rankeadas (vetorial + full-text)
+ * somando 1/(k+rank) por lista em que o doc aparece. Não depende dos scores
+ * originais (escalas diferentes entre cosseno e ts_rank_cd não são
+ * comparáveis), só da posição em cada ranking.
+ */
+export function reciprocalRankFusion(
+  vectorRows: RankedRow[],
+  fulltextRows: RankedRow[],
+  k: number,
+  limit: number,
+): SearchResult[] {
+  const fused = new Map<string, { row: RankedRow; score: number }>();
+  const addRanked = (rows: RankedRow[]) => {
+    rows.forEach((row, idx) => {
+      const contribution = 1 / (k + idx + 1);
+      const existing = fused.get(row.docKey);
+      if (existing) {
+        existing.score += contribution;
+      } else {
+        fused.set(row.docKey, { row, score: contribution });
+      }
+    });
+  };
+  addRanked(vectorRows);
+  addRanked(fulltextRows);
+
+  return [...fused.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ row, score }) => ({
+      docKey: row.docKey,
+      path: row.path,
+      title: row.title,
+      body: row.body,
+      score,
+      method: "hybrid" as const,
+      updatedAt: row.updatedAt,
+    }));
+}
+
+async function fullTextSearch(pool: Pool, soul: string, query: string, max: number): Promise<RankedRow[]> {
+  const { rows } = await pool.query<{ doc_key: string; path: string; title: string | null; body: string; updated_at: string | null }>(
+    `SELECT doc_key, path, title, body, updated_at
+     FROM chunks
+     WHERE soul = $2 AND tsv @@ websearch_to_tsquery('portuguese', $1)
+     ORDER BY ts_rank_cd(tsv, websearch_to_tsquery('portuguese', $1)) DESC
+     LIMIT $3`,
+    [query, soul, max],
+  );
+  return rows.map((r) => ({
+    docKey: r.doc_key,
+    path: r.path,
+    title: r.title,
+    body: r.body,
+    updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+  }));
 }
 
 export async function search(
@@ -209,7 +293,21 @@ export async function search(
     } finally {
       client.release();
     }
-    if (rows.length > 0) {
+
+    const hybrid = hybridSearchConfig();
+    if (hybrid.enabled) {
+      const vectorRows: RankedRow[] = rows.map((r) => ({
+        docKey: r.doc_key,
+        path: r.path,
+        title: r.title,
+        body: r.body,
+        updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+      }));
+      const fulltextRows = await fullTextSearch(pool, soul, query, max);
+      if (vectorRows.length > 0 || fulltextRows.length > 0) {
+        return reciprocalRankFusion(vectorRows, fulltextRows, hybrid.rrfK, max);
+      }
+    } else if (rows.length > 0) {
       return rows.map((r) => ({
         docKey: r.doc_key,
         path: r.path,
@@ -289,6 +387,38 @@ export async function listDocumentPaths(pool: Pool, soul: string): Promise<strin
     [soul],
   );
   return rows.map((r) => r.path);
+}
+
+export interface BackfillStatusRow {
+  soul: string;
+  candidatos: number;
+  completos: number;
+  falharam: number;
+  pendentes: number;
+}
+
+/** Resumo por soul do progresso de `os memory backfill-entities` — candidatos
+ * (documentos distintos já indexados no RAG, via `chunks`) vs. o que
+ * `document_extraction_state` já registrou como completo/falho. "Pendentes"
+ * são os que nunca foram sequer tentados. */
+export async function getBackfillStatus(pool: Pool): Promise<BackfillStatusRow[]> {
+  const { rows } = await pool.query<{ soul: string; candidatos: string; completos: string; falharam: string }>(
+    `SELECT
+       c.soul,
+       COUNT(DISTINCT c.path) AS candidatos,
+       COALESCE(SUM(CASE WHEN d.status = 'completed' THEN 1 ELSE 0 END), 0) AS completos,
+       COALESCE(SUM(CASE WHEN d.status = 'failed' THEN 1 ELSE 0 END), 0) AS falharam
+     FROM (SELECT DISTINCT soul, path FROM chunks) c
+     LEFT JOIN document_extraction_state d ON d.soul = c.soul AND d.path = c.path
+     GROUP BY c.soul
+     ORDER BY c.soul`,
+  );
+  return rows.map((r) => {
+    const candidatos = Number(r.candidatos);
+    const completos = Number(r.completos);
+    const falharam = Number(r.falharam);
+    return { soul: r.soul, candidatos, completos, falharam, pendentes: candidatos - completos - falharam };
+  });
 }
 
 /**

@@ -8,6 +8,7 @@ import { indexDirectory } from "../indexer.js";
 import { addObservation } from "../graph.js";
 import { retrieveContext, buildRagChain, runRagChain } from "../rag-chain.js";
 import { createTestSchema } from "./pgTestHelper.js";
+import { loadConfig, resolveCloudProvider } from "@assistente-os/core";
 
 function tempDir(t: string) {
   return mkdtempSync(join(tmpdir(), "aos-langchain-"));
@@ -119,7 +120,11 @@ test("runRagChain retorna resultado com fontes (requer Ollama)", async () => {
     const result = await runRagChain(testDb.pool, "s1", "deploy", 5);
     assert.ok(typeof result.answer === "string");
     assert.ok(result.sources.length > 0);
-    assert.equal(result.model, "hybrid-embedder");
+    // Com fontes encontradas, `model` reflete o provider realmente usado
+    // (resolveCloudProvider: OpenRouter > Zen > Ollama) — "hybrid-embedder"
+    // é só o sentinel do ramo "zero documentos" (rag-chain.ts), não se aplica aqui.
+    const cloud = resolveCloudProvider(loadConfig({}));
+    assert.equal(result.model, cloud ? cloud.chatModel : loadConfig({}).ollamaChatModel);
     assert.equal(result.query, "deploy");
   } finally {
     rmSync(dir, { recursive: true, force: true });

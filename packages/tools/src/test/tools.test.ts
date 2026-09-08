@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { McpServer, SERVER_NAME } from "../index.js";
-import { createSoul, todayISODate } from "@assistente-os/core";
+import { createSoul, todayISODate, getPool } from "@assistente-os/core";
+import { upsertRelation } from "@assistente-os/memory";
 import { pointDatabaseUrlAtFreshSchema } from "./pgTestHelper.js";
 
 const prevDatabaseUrl = process.env.DATABASE_URL;
@@ -287,6 +288,30 @@ test("mcp: observation_add grava e graph_list lê de volta", async () => {
     });
     const graphParsed = JSON.parse((graph?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as { observations?: { body: string }[] };
     assert.ok(graphParsed.observations?.some((o) => o.body === "observação de teste"));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("mcp: graph_walk percorre o grafo a partir de uma entidade", async () => {
+  const home = await tempHome();
+  const server = new McpServer({ home });
+  try {
+    const pool = getPool(process.env.DATABASE_URL!);
+    await upsertRelation(pool, "main", "João", "trabalha_em", "Acme");
+    await upsertRelation(pool, "main", "Acme", "sediada_em", "São Paulo");
+
+    const walk = await server.handleMessage({
+      jsonrpc: "2.0", id: 275, method: "tools/call",
+      params: { name: "graph_walk", arguments: { soul: "main", start: "João", max_hops: 2 } },
+    });
+    const walkParsed = JSON.parse((walk?.result as { content?: { text: string }[] })?.content?.[0]?.text ?? "{}") as {
+      nodes?: { name: string }[];
+      edges?: { from: string; rel: string; to: string }[];
+    };
+    const names = (walkParsed.nodes ?? []).map((n) => n.name).sort();
+    assert.deepEqual(names, ["Acme", "João", "São Paulo"]);
+    assert.ok(walkParsed.edges?.some((e) => e.from === "João" && e.to === "Acme"));
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

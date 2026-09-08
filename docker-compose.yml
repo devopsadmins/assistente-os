@@ -6,6 +6,17 @@ services:
   postgres:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
+    # Default do Docker (64MB) estoura sob concorrência de testes (schemas
+    # temporários criados/derrubados em paralelo pelo pgTestHelper) — erro
+    # "out of shared memory" / "could not resize shared memory segment".
+    # Achado ao rodar `npm run dod` (2026-09-08): a migration 0023 chegou a
+    # falhar por isso.
+    shm_size: '1gb'
+    # Default do Postgres (64) estoura sob a mesma concorrência acima — erro
+    # "out of shared memory", hint "increase max_locks_per_transaction". É
+    # parâmetro de postgresql.conf (exige restart, não só reload), por isso
+    # via `command`, não `ALTER SYSTEM` em runtime.
+    command: postgres -c max_locks_per_transaction=256
     environment:
       - POSTGRES_USER=assistente_os
       - POSTGRES_PASSWORD=assistente_os
@@ -21,7 +32,7 @@ services:
       retries: 10
 
   # Só necessário se você optar por rodar o daemon em Docker também (ver
-  # docs/ARCHITECTURE.md — o padrão recomendado no Linux é daemon nativo).
+  # docs/design.md — o padrão recomendado no Linux é daemon nativo).
   daemon:
     build: .
     restart: unless-stopped

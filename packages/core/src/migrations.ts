@@ -493,4 +493,63 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE entity_extraction_queue ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
     `,
   },
+  {
+    // Full-text nativo do Postgres (tsvector/GIN) pra combinar com a busca
+    // vetorial via RRF (packages/memory/src/indexer.ts). `to_tsvector` com a
+    // config como literal fixo é IMMUTABLE, então funciona em coluna gerada.
+    id: "0023_chunks_fulltext",
+    sql: `
+      ALTER TABLE chunks
+        ADD COLUMN IF NOT EXISTS tsv tsvector
+          GENERATED ALWAYS AS (to_tsvector('portuguese', coalesce(title, '') || ' ' || body)) STORED;
+      CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON chunks USING gin (tsv);
+    `,
+  },
+  {
+    // Histórico append-only de entities/relations (ledger de mudanças, inspirado
+    // no Utopia) + colunas de suporte a dedup: name_fold (case-insensitive,
+    // barato, sempre ativo) e embedding (similaridade semântica, atrás de
+    // GRAPH_ENTITY_DEDUP). unaccent() é STABLE e não pode entrar em coluna
+    // GENERATED, por isso name_fold só normaliza case — acento fica por conta
+    // da similaridade por embedding.
+    id: "0024_graph_history_dedup",
+    sql: `
+      ALTER TABLE entities
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        ADD COLUMN IF NOT EXISTS name_fold TEXT GENERATED ALWAYS AS (lower(name)) STORED,
+        ADD COLUMN IF NOT EXISTS embedding vector(768);
+      CREATE INDEX IF NOT EXISTS idx_entities_name_fold ON entities (soul, name_fold);
+      CREATE INDEX IF NOT EXISTS idx_entities_embedding_hnsw ON entities USING hnsw (embedding vector_cosine_ops);
+
+      ALTER TABLE relations
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+      CREATE TABLE IF NOT EXISTS entity_history (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        entity_id BIGINT NOT NULL,
+        soul TEXT NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        properties JSONB,
+        replaced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        replaced_by TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_entity_history_entity ON entity_history (entity_id, replaced_at);
+
+      CREATE TABLE IF NOT EXISTS relation_history (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        relation_id BIGINT NOT NULL,
+        soul TEXT NOT NULL,
+        from_name TEXT NOT NULL,
+        rel TEXT NOT NULL,
+        to_name TEXT NOT NULL,
+        properties JSONB,
+        replaced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        replaced_by TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_relation_history_relation ON relation_history (relation_id, replaced_at);
+    `,
+  },
 ];

@@ -63,10 +63,10 @@ describe("LangGraph tools (unit)", () => {
     }
   });
 
-  it("inclui todas as 11 tools", () => {
+  it("inclui todas as 12 tools", () => {
     const tools = createAgentTools(opts());
     const names = tools.map((t) => t.name) as string[];
-    const expected = ["memory_search", "memory_index", "memory_status", "graph_list", "observation_add", "soul_anotar", "soul_licao", "soul_decidir", "agenda_add", "agenda_list", "costs_summary"];
+    const expected = ["memory_search", "memory_index", "memory_status", "graph_list", "graph_walk", "observation_add", "soul_anotar", "soul_licao", "soul_decidir", "agenda_add", "agenda_list", "costs_summary"];
     for (const n of expected) {
       assert.ok(names.includes(n), `falta tool: ${n}`);
     }

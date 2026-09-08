@@ -13,7 +13,7 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage, type AIMessageChun
 import type { StructuredTool } from "@langchain/core/tools";
 import { runRagChain } from "./rag-chain.js";
 import { AgentState, type AgentStateType } from "./agent-state.js";
-import { loadConfig, nextZenApiKey, agentReactSystem, resolveLangGraphMaxIterations, type Pool } from "@assistente-os/core";
+import { loadConfig, resolveCloudProvider, agentReactSystem, resolveLangGraphMaxIterations, type Pool } from "@assistente-os/core";
 
 export type { AgentStateType };
 
@@ -24,21 +24,20 @@ export type { AgentStateType };
  * 404 MODEL_NOT_FOUND. Usa a config canônica (mesma de todo o resto do
  * sistema) em vez de reinventar um terceiro par de env vars/defaults.
  *
- * Prefere o OpenCode Zen (cloud, tool-calling nativo real) quando
- * ZEN_API_KEY estiver configurada — modelos locais pequenos no Ollama não
- * suportam tool-calling de forma confiável (o modelo escreve a chamada
- * como texto solto em vez de preencher o campo estruturado da resposta),
- * o que torna as tools do LangGraph inutilizáveis com Ollama sozinho.
- * Sem a chave, cai de volta pro Ollama local (sem tools funcionais, mas
- * ainda responde).
+ * Prefere um provider cloud (OpenRouter, senão OpenCode Zen — ver
+ * `resolveCloudProvider`) com tool-calling nativo real, quando configurado —
+ * modelos locais pequenos no Ollama não suportam tool-calling de forma
+ * confiável (o modelo escreve a chamada como texto solto em vez de
+ * preencher o campo estruturado da resposta), o que torna as tools do
+ * LangGraph inutilizáveis com Ollama sozinho. Sem provider cloud configurado,
+ * cai de volta pro Ollama local (sem tools funcionais, mas ainda responde).
  */
 function createLLM(tools?: StructuredTool[]) {
   const config = loadConfig({});
-  const useZen = Boolean(config.zenApiKey);
-  const baseUrl = useZen ? config.zenBaseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
-  const modelName = useZen ? config.zenChatModel : config.ollamaChatModel;
-  // Rodízio entre as chaves Zen registradas (round-robin por chamada).
-  const apiKey = useZen ? nextZenApiKey(config)! : process.env.OPENAI_API_KEY || "ollama";
+  const cloud = resolveCloudProvider(config);
+  const baseUrl = cloud ? cloud.baseUrl : `${config.ollamaUrl.replace(/\/$/, "")}/v1`;
+  const modelName = cloud ? cloud.chatModel : config.ollamaChatModel;
+  const apiKey = cloud ? cloud.apiKey : process.env.OPENAI_API_KEY || "ollama";
   const llm = new ChatOpenAI({
     modelName,
     apiKey,
@@ -48,11 +47,11 @@ function createLLM(tools?: StructuredTool[]) {
   });
 
   // Só bindamos tools quando o provider faz tool-calling estruturado real
-  // (Zen cloud). Com Ollama local + modelos pequenos, o campo `tool_calls`
+  // (cloud). Com Ollama local + modelos pequenos, o campo `tool_calls`
   // nunca vem preenchido (ver doc comment acima) — bindar tools só produz
   // loops `generate → tools → generate` que crescem o histórico até o
   // provider devolver um corpo inválido e o parser da lib quebrar.
-  if (tools && tools.length > 0 && useZen) {
+  if (tools && tools.length > 0 && cloud) {
     return llm.bindTools(tools);
   }
   return llm;

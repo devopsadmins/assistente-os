@@ -16,6 +16,7 @@ const MCP_TOOLS_CATALOG: Array<{ name: string; description: string; namespace: s
   { name: "memory_index", description: "Indexa (idempotente) a pasta da soul no memory.db.", namespace: "memory" },
   { name: "memory_status", description: "Contagem de chunks e grafo (entidades/relações/observações) da soul.", namespace: "memory" },
   { name: "graph_list", description: "Lista entidades, relações e observações do grafo da soul.", namespace: "soul" },
+  { name: "graph_walk", description: "Percorre o grafo da soul a partir de uma entidade, N saltos, com filtro opcional por tipo de relação.", namespace: "soul" },
   { name: "costs_summary", description: "Resumo de custos por soul e últimas chamadas do kernel.db.", namespace: "core" },
   { name: "router_status", description: "Degraus do roteador e config do Ollama.", namespace: "core" },
   { name: "observation_add", description: "Adiciona uma observação ao grafo da soul.", namespace: "soul" },
