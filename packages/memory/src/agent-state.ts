@@ -1,5 +1,5 @@
 /**
- * Estado do agente LangGraph para o Assistente OS.
+ * Estado do agente LangGraph para o terrasIA.
  *
  * Define o schema de estado via Annotation do LangGraph, que gerencia
  * reducers automaticamente e serializa/deserializa o estado entre nós.

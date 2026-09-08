@@ -101,7 +101,7 @@ export class WhatsAppChannel extends EventEmitter {
       },
       version,
       printQRInTerminal: false,
-      browser: ["Assistente OS", "Safari", "17.0"],
+      browser: ["terrasIA", "Safari", "17.0"],
       generateHighQualityLinkPreview: false,
     });
 

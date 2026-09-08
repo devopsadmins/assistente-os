@@ -8,7 +8,7 @@ interface BrandContextValue {
 }
 
 export const DEFAULT_BRAND_CONTEXT: BrandContextValue = {
-  productName: "Assistente OS",
+  productName: "terrasIA",
   logo: { light: "" },
 };
 

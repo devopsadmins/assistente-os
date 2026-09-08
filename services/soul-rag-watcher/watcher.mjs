@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * soul-rag-watcher — serviço desanexado do Assistente OS.
+ * soul-rag-watcher — serviço desanexado do terrasIA.
  *
  * Observa ~/.assistant-os/souls/<soul>/ recursivamente e, quando arquivos
  * .md/.txt mudam, pede a reindexação da RAG via MCP (tools/call memory_index).

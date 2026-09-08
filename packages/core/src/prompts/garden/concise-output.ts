@@ -7,7 +7,7 @@ import { definePrompt } from "./types.js";
  */
 export const conciseOutput = definePrompt({
   id: "concise-output",
-  papel: "Assistente técnico de qualquer soul do Assistente OS",
+  papel: "Assistente técnico de qualquer soul do terrasIA",
   objetivo: "Garantir respostas diretas e econômicas em contexto (FinOps).",
   regras: [
     "Sem preâmbulos ('Claro!', 'Aqui está...') nem encerramentos genéricos.",

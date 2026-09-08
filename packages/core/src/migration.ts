@@ -16,7 +16,7 @@ export interface MigrationSummary {
 }
 
 /**
- * Migra almas do SLC-OS (formato Python/OpenClaw) para o formato Assistente OS.
+ * Migra almas do SLC-OS (formato Python/OpenClaw) para o formato terrasIA.
  * Regra: cada alma vira uma soul em <home>/souls/<id>/.
  *  - perfil/contexto/licoes/pessoas -> top-level (mesmos nomes)
  *  - sessoes/ e conhecimento/ -> preservados como estão
@@ -93,7 +93,7 @@ export function printMigrationSummary(summary: MigrationSummary): void {
 }
 
 /**
- * Importa o Segundo Cérebro como uma Soul no Assistente OS.
+ * Importa o Segundo Cérebro como uma Soul no terrasIA.
  */
 export function importSegundoCerebro(sourceRoot: string, targetHome = resolveHome(), soulName = "segundo-cerebro"): MigrationSummary {
   const out: MigrationSummary = { migrated: 0, skipped: [], perSoul: {}, errors: [] };

@@ -1,5 +1,5 @@
 /**
- * Workflow do agente LangGraph para o Assistente OS.
+ * Workflow do agente LangGraph para o terrasIA.
  *
  * Define o grafo de execução: retrieve → generate → (tool? | END).
  * Compilado como StateGraph do LangGraph, suporta memória persistente via

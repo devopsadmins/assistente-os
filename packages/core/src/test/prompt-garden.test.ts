@@ -104,7 +104,7 @@ test("migrados p/ outputSchema: entity-extraction e guardian-audit renderizam o 
 test("agentReactSystem: render sem vars é o system prompt do ReAct", () => {
   assert.equal(
     agentReactSystem.render({}),
-    "Você é o assistente do Assistente OS. Use as ferramentas disponíveis para responder perguntas do usuário. " +
+    "Você é o assistente do terrasIA. Use as ferramentas disponíveis para responder perguntas do usuário. " +
       "Você tem acesso a um grafo de memória com entidades, relações e observações.",
   );
 });

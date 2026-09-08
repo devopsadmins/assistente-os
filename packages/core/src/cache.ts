@@ -1,5 +1,5 @@
 /**
- * Cache em camadas para o Assistente OS:
+ * Cache em camadas para o terrasIA:
  * 1. Redis (primary, persistente, compartilhado entre instâncias)
  * 2. Map em memória (fallback local, quando Redis cair)
  * 3. SQLite kernel.db (tertiário, para dados que precisam de query indexed)

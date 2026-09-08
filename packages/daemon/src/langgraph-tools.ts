@@ -1,7 +1,7 @@
 /**
  * Tools LangChain para o agente LangGraph.
  *
- * Wrap das funções do Assistente OS como tools LangChain,
+ * Wrap das funções do terrasIA como tools LangChain,
  * permitindo tool-calling no agente.
  */
 import { DynamicStructuredTool } from "@langchain/core/tools";

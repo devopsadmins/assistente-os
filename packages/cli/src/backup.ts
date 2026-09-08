@@ -30,7 +30,7 @@ export async function createFullBackup(
   backupDir: string,
   now = new Date(),
 ): Promise<BackupResult> {
-  if (!existsSync(home)) throw new Error(`home do Assistente OS não encontrada: ${home}`);
+  if (!existsSync(home)) throw new Error(`home do terrasIA não encontrada: ${home}`);
   await mkdir(backupDir, { recursive: true, mode: 0o700 });
 
   const stamp = now.toISOString().replace(/[:.]/g, "-");

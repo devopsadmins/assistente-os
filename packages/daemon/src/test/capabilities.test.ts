@@ -19,7 +19,7 @@ test("daemon: GET /llms.txt expõe rotas, tools MCP e souls (loopback, sem token
     assert.equal(res.status, 200);
     assert.match(res.headers.get("content-type") ?? "", /text\/markdown/);
     const body = await res.text();
-    assert.match(body, /^# Assistente OS/);
+    assert.match(body, /^# terrasIA/);
     assert.ok(body.includes("## Rotas ativas"));
     assert.ok(body.includes("## Catálogo de MCP Tools"));
     assert.ok(body.includes("## Souls registradas"));
@@ -48,7 +48,7 @@ test("daemon: GET /api/capabilities retorna JSON estruturado", async () => {
     assert.match(res.headers.get("content-type") ?? "", /application\/json/);
     const body: any = await res.json();
     assert.ok(body.system);
-    assert.ok(body.system.name === "Assistente OS");
+    assert.ok(body.system.name === "terrasIA");
     assert.ok(Array.isArray(body.souls));
     assert.ok(body.souls.length >= 1);
     assert.ok(body.souls.some((s: any) => s.id === "main"));

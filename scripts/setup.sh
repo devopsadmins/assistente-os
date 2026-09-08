@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Assistente OS — instalador guiado
+#  terrasIA — instalador guiado
 #
 #  Sobe o sistema numa máquina limpa: checa pré-requisitos, instala e compila,
 #  bootstrapa ~/.assistant-os/.env (interativo), sobe Postgres+pgvector e
@@ -39,7 +39,7 @@ for arg in "$@"; do
     -y|--yes) ASSUME_YES=1 ;;
     --pm2)    DO_PM2=1 ;;
     --skip-build) SKIP_BUILD=1 ;;
-    -h|--help) sed -n '/^#  Assistente OS/,/^# ===\+ *$/{/^# ===/d;s/^#\( \|$\)//;p}' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '/^#  terrasIA/,/^# ===\+ *$/{/^# ===/d;s/^#\( \|$\)//;p}' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "${RED}argumento desconhecido: $arg${RST}"; exit 2 ;;
   esac
 done

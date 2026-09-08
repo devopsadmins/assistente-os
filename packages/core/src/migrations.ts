@@ -4,7 +4,7 @@ export interface Migration {
 }
 
 /**
- * Migrações do banco único do Assistente OS (kernel + memória/RAG).
+ * Migrações do banco único do terrasIA (kernel + memória/RAG).
  * Aplicadas em ordem por runMigrations() (db.ts), controladas por schema_migrations.
  * Embutidas como string (não arquivos .sql soltos) para não depender de copiar
  * assets no build/Docker — tsc já compila este arquivo como qualquer outro.

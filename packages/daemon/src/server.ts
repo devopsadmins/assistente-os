@@ -194,7 +194,7 @@ export interface DaemonHandle {
 }
 
 /**
- * Daemon API-first do Assistente OS.
+ * Daemon API-first do terrasIA.
  * Rotas:
  *   GET  /health                -> status (público, sem token; não lista souls)
  *   GET  /souls                 -> lista de souls

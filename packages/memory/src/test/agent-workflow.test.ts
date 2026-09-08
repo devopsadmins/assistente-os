@@ -20,7 +20,7 @@ describe("createInitialState", () => {
     assert.equal(state.soul, "minha-soul");
     assert.equal(state.messages.length, 1);
     assert.equal(state.messages[0]!.role, "system");
-    assert.ok(state.messages[0]!.content.includes("Assistente OS"));
+    assert.ok(state.messages[0]!.content.includes("terrasIA"));
   });
 
   it("inicializa campos default corretamente", () => {

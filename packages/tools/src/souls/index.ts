@@ -21,7 +21,7 @@ function extractOpenCodeText(stdout: string): string {
 export const SOULS_TOOLS: Tool[] = [
   {
     name: "souls_list",
-    description: "Lista as souls disponíveis no Assistente OS.",
+    description: "Lista as souls disponíveis no terrasIA.",
     inputSchema: { type: "object", properties: {} },
   },
   {

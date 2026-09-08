@@ -52,7 +52,7 @@ export interface LangGraphRunnerOptions {
  * memória persistente via thread ID.
  *
  * Se useTools=true (padrão), cria tools LangChain que wrapam
- * as ferramentas do Assistente OS (memory, graph, soul, agenda).
+ * as ferramentas do terrasIA (memory, graph, soul, agenda).
  */
 export async function runLangGraphAgent(
   pool: Pool,

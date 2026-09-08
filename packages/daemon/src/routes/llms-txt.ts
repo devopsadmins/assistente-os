@@ -9,7 +9,7 @@ import type { RequestContext } from "./shared.js";
  * TOOLS de packages/tools/src/index.ts ao adicionar/remover tools.
  */
 const MCP_TOOLS_CATALOG: Array<{ name: string; description: string; namespace: string }> = [
-  { name: "souls_list", description: "Lista as souls disponíveis no Assistente OS.", namespace: "soul" },
+  { name: "souls_list", description: "Lista as souls disponíveis no terrasIA.", namespace: "soul" },
   { name: "soul_context", description: "Retorna o contexto (perfil/contexto/licoes/pessoas/soul.md) de uma soul.", namespace: "soul" },
   { name: "soul_chat", description: "Roda opencode run headless na soul. Retorna o texto gerado.", namespace: "soul" },
   { name: "memory_search", description: "Busca RAG na memória da soul (semântica com Ollama; degrada para literal).", namespace: "memory" },
@@ -89,7 +89,7 @@ const ROUTES_CATALOG: Array<{ method: string; path: string; description: string 
 function buildLlmsTxt(home: string): string {
   const souls = listSouls(home);
   const lines: string[] = [
-    "# Assistente OS",
+    "# terrasIA",
     "",
     "Copiloto residente API-first, local-first. Cada \"soul\" é um perfil vivo de",
     "conhecimento (markdown canônico + RAG derivado em pgvector). Este documento",
@@ -151,7 +151,7 @@ export async function handleCapabilities(
 
   const capabilities = {
     system: {
-      name: "Assistente OS",
+      name: "terrasIA",
       version: "0.1.0",
       localFirst: true,
     },

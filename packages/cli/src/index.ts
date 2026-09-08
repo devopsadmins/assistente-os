@@ -73,7 +73,7 @@ function canvasFacts(config: AssistenteOsConfig): CanvasSystemFacts {
 }
 
 const HELP = `
-os — Assistente OS
+os — terrasIA
 
 Uso:
   os status                          mostra home, souls e modelo padrão

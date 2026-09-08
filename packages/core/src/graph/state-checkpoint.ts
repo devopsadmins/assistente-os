@@ -1,5 +1,5 @@
 /**
- * Checkpointing e Telemetria para LangGraph no Assistente OS
+ * Checkpointing e Telemetria para LangGraph no terrasIA
  * 
  * Responsabilidades:
  * 1. Validar flag LANGGRAPH_ENABLED=true antes de operações de grafo
