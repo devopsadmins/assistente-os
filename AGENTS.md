@@ -98,6 +98,11 @@ PR.
 
 `.github/pull_request_template.md` has 4 required sections, all enforced by the `compliance` CI job (`.github/scripts/compliance-rules.mjs`): Descrição (min length), **Plano — arquivos + ordem** (SPEC-EP1, 2026-09-05: architectural reasoning before code — which files change, in what order, and why that order; "N/A" or a placeholder is rejected), Rastreabilidade (ADR-XXX, roadmap Exx, Tn.n, or #issue), Rollback (real plan, "N/A" rejected). Changes to sensitive paths (`packages/core/src/{config,policy,migrations,manifest}.ts`, `packages/core/src/{prompts,governance}/`, `.github/`, `docs/adr/`) also require a `CHANGELOG.md` or `docs/adr/` entry in the same PR. `docs/adr/` was archived out in 2026-09-06 and reopened for `ADR-RAG-002` — a new ADR file there satisfies the paper trail; otherwise use a `CHANGELOG.md` entry. The `discriminator` (LLM) CI gate was removed 2026-09-06 — only `compliance` and `build-and-test` run on PRs.
 
+## Criando um agente novo
+
+Como criar uma soul (técnico + adoção v4-standards) ou um subagente do Claude Code:
+`docs/GUIA-CRIACAO-DE-AGENTES.md`.
+
 ## Documentação arquivada (2026-09-06)
 
 ADRs, specs/plans de `docs/superpowers/`, análises pontuais (ARCHITECTURE-REVIEW,

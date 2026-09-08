@@ -70,6 +70,10 @@ convention (`CONTRIBUTING.md`), not just an emergent pattern.
   matcher (`packages/core/src/skills.ts`). Custom FLAT frontmatter parser (not YAML):
   `description` ≤ 280 chars, `keywords`/`tools` must be list form, **CRLF breaks it silently**.
   A skill only reaches the prompt if its name is in the soul's `agent.permissions.skills`.
+- **Creating a new soul or vertical** (technical flow + v4-standards compliance
+  adoption): see `docs/GUIA-CRIACAO-DE-AGENTES.md` — also covers dev-tooling subagents
+  for Claude Code, Codex CLI, and OpenCode (the latter's `.opencode/agents/<soul-id>.md`
+  files are a different thing: the OpenCode-native backend for `soul.config.agent`).
 
 ### Storage — one PostgreSQL, no SQLite
 
@@ -94,7 +98,11 @@ go to Ollama (local/LAN tier) or Zen cloud; **Ollama is optional** — offline, 
 back to `@xenova/transformers` and the router skips the `local` tier.
 
 Several RAG toggles ship **OFF pending measurement**: `RAG_RERANK`, `RAG_SEMANTIC_CACHE`,
-`ROUTER_ESCALATION` (the default reranker model regresses PT-BR corpora — see `rerank.ts`).
+`ROUTER_ESCALATION` (the default reranker model regresses PT-BR corpora — see `rerank.ts`),
+`RAG_HYBRID_SEARCH` (RRF fusion of pgvector + Postgres full-text `tsvector`, `indexer.ts`
+`search()` — see `docs/RAG-HYBRID.md`). Same pattern for the knowledge graph:
+`GRAPH_ENTITY_DEDUP` gates embedding-similarity entity dedup (migration `0024`); name-fold
+dedup runs unconditionally.
 
 ### Multi-tenant (Modo Amigável)
 
@@ -107,6 +115,10 @@ replacement but is still in-flight. Migrations `0018_accounts` / `0019_friendly_
 ## Conventions
 
 - **Everything is in Brazilian Portuguese** — code, comments, commits, docs. Keep it.
+- **Naming split:** the product is branded **terrasIA** (README, UI, `package.json` root
+  `name: "terrasia"`); every workspace package still publishes under the `@assistente-os/*`
+  scope and `~/.assistant-os/` is still the runtime home dir. Don't "fix" this mismatch —
+  it's an in-progress rebrand, not a bug.
 - **Branches:** work happens on `dev`; every PR targets `dev`, never `main`. `main` only gets
   `dev`→`main` promotion PRs. GitHub Free → no enforced branch protection; convention only.
 - **PR body** has 4 sections enforced by the `compliance` CI job
