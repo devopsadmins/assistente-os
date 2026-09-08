@@ -7,7 +7,7 @@
 | Campo | Valor |
 |---|---|
 | Produto/repositório | Vertical técnica "clínicas" (`clinica_template`) dentro de `terrasIA` (`assistente-os`) |
-| Versão avaliada | Fase 1 de adoção — nenhum código de produto ainda (soul/tools não escaladas) |
+| Versão avaliada | Fase 1 (conformidade) + Fase 2 em modo dry-run (soul `clinica_template` + tools `clinic_triage_lead`/`clinic_prevent_noshow` escaladas, sem dado real de paciente) |
 | Data da avaliação | 2026-09-07 |
 | Owner técnico | agente terrasIA |
 | Owner de negócio | produto SLC Clínicas — owner a confirmar (ver `SLC/PERFIL.md`) |
@@ -34,7 +34,7 @@ reavaliados e aprovados com evidência real.
 - [x] Perfil declarado; Bloco G **com** gate reprovado pendente — não atende ainda.
 - [ ] Autenticação, autorização e isolamento testados.
 - [ ] Contratos públicos versionados.
-- [ ] Testes automatizados proporcionais ao risco.
+- [x] Testes automatizados proporcionais ao risco — `packages/tools/src/test/clinic-tools.test.ts` (8/8, inclui o gate L3).
 - [ ] SAST, secret scanning, análise de dependências e SBOM.
 - [x] Matriz requisito-teste e evidências acessíveis (Princípio 10) — este conjunto de documentos.
 - [ ] Rollback, backup/restore testado e runbooks.
@@ -112,9 +112,9 @@ reavaliados e aprovados com evidência real.
 
 ---
 
-**Como usar este documento**: nenhuma linha de código de produto (soul `clinica_template`,
-tools `clinic_triage_lead`/`clinic_prevent_noshow`) deve ser escrita processando dado real de
-paciente enquanto este documento disser "Não conforme". A Fase 2 (scaffolding técnico) do
-plano de adoção pode avançar em ambiente de teste/dry-run — sem dado real — mas o gate real
-para produção é a reemissão desta declaração como "Conforme" ou "Conforme com pendências
-datadas" depois que G3/G4/G5 forem aprovados.
+**Como usar este documento**: a Fase 2 (scaffolding técnico) foi implementada em modo
+dry-run — soul `clinica_template`, tools `clinic_triage_lead` (L2) e `clinic_prevent_noshow`
+(L3, nunca dispara mensagem real, sempre retorna `dryRun: true`) — sem processar dado real de
+paciente. Nenhuma dessas tools deve sair do modo dry-run/teste enquanto este documento disser
+"Não conforme". O gate real para produção é a reemissão desta declaração como "Conforme" ou
+"Conforme com pendências datadas" depois que G3/G4/G5 forem aprovados (ver `ADR-PRIV-003` §5).

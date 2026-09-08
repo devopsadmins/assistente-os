@@ -24,10 +24,22 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
   Instrumentos completos de adoção (questionário Blocos G+1–14, mapa de
   artefatos/lacunas, declaração de conformidade = "Não conforme" nesta
   rodada) em `docs/compliance/clinicas/`. `docs/AI-INVENTORY.md` #11 e
-  `docs/ROADMAP.md` § "Vertical Clínicas" atualizados. Nenhum código de
-  produto (soul/tools reais) foi criado nesta rodada — só os artefatos de
-  conformidade da Fase 1; scaffolding técnico (Fase 2) fica gated ao Bloco G
-  ser reaprovado.
+  `docs/ROADMAP.md` § "Vertical Clínicas" atualizados.
+
+  **Fase 2 (scaffolding técnico) implementada em modo dry-run**, permitido
+  pela própria declaração de conformidade por não processar dado real:
+  soul `~/.assistant-os/souls/clinica_template/` (`autonomy: "ask"` +
+  `approvalPolicy` cobrindo `clinic_prevent_noshow`, allowlist mínima);
+  nova família `packages/tools/src/clinic/index.ts` com `clinic_triage_lead`
+  (score de lead por heurística transparente, `L2`) e `clinic_prevent_noshow`
+  (`L3`, **sempre** retorna `dryRun: true` — nunca despacha WhatsApp/e-mail
+  real, não há provedor escolhido); entradas em `CAPABILITY_CATALOG`
+  (`packages/core/src/policy.ts`) e `SOUL_SCOPED_TOOLS`/`FAMILY_HANDLERS`
+  (`packages/tools/src/index.ts`). Testes:
+  `packages/tools/src/test/clinic-tools.test.ts` (8/8, inclui o gate L3
+  sob `MCP_ZERO_TRUST=on` + `autonomy: suggest`). Produção com dado real de
+  paciente continua bloqueada até o Bloco G ser reaprovado (P1–P8 do
+  `ADR-PRIV-003` §5).
 - **`calcCost` real substituindo `cost: 0` hardcoded em `cost_calls`**
   (`packages/core/src/pricing.ts`). Todo call-site (`agenda.ts`, `events.ts`,
   `routes/stream.ts`, `observability/record-llm-call.ts`) gravava `cost: 0`

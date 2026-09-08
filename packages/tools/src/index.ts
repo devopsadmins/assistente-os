@@ -15,6 +15,7 @@ import { MEMORY_TOOLS, MEMORY_HANDLERS } from "./memory/index.js";
 import { SPEC_GRILL_TOOLS, SPEC_GRILL_HANDLERS } from "./specGrill/index.js";
 import { MISC_TOOLS, MISC_HANDLERS } from "./misc/index.js";
 import { EDITORIAL_TOOLS, EDITORIAL_HANDLERS } from "./editorial/index.js";
+import { CLINIC_TOOLS, CLINIC_HANDLERS } from "./clinic/index.js";
 import { validateToolArgs } from "./argSchema.js";
 
 export const SERVER_NAME = "assistente-os";
@@ -93,6 +94,7 @@ const TOOLS: Tool[] = [
   ...SKILL_TOOLS,
   ...SOUL_CREATE_TOOLS,
   ...EDITORIAL_TOOLS,
+  ...CLINIC_TOOLS,
 ];
 
 interface McpServerOptions {
@@ -137,6 +139,7 @@ Object.assign(FAMILY_HANDLERS, MEMORY_HANDLERS);
 Object.assign(FAMILY_HANDLERS, SPEC_GRILL_HANDLERS);
 Object.assign(FAMILY_HANDLERS, MISC_HANDLERS);
 Object.assign(FAMILY_HANDLERS, EDITORIAL_HANDLERS);
+Object.assign(FAMILY_HANDLERS, CLINIC_HANDLERS);
 
 export class McpServer {
   private config;

@@ -101,7 +101,7 @@ de roadmap datado com owner no `ADR-PRIV-003` §5.
 |---|---|---|---|
 | 8.1 | Agentes com identidade única/rastreável? | Sim | `soul_id` |
 | 8.2 | Ações categorizadas (leitura/escrita/irreversível)? | Sim | Catálogo L1/L2/L3 (`packages/core/src/policy.ts`) |
-| 8.3 | Human-in-the-loop para irreversíveis? | Parcial | Mecanismo existe (`authorizeExecution()`), mas `MCP_ZERO_TRUST` desligado por padrão — P8 |
+| 8.3 | Human-in-the-loop para irreversíveis? | Parcial | Mecanismo existe e testado (`authorizeExecution()`, `clinic-tools.test.ts` — bloqueia `clinic_prevent_noshow` com `autonomy: suggest` sob `MCP_ZERO_TRUST=on`), mas a env var fica desligada por padrão em produção — P8 |
 | 8.4 | Log imutável de decisões/ações? | Sim | Audit trail (`logFullAuditEntry`) já existe no repo |
 | 8.5 | Orquestração multi-agente com segregação? | N/A | Clínicas não usa múltiplos agentes por ora |
 
@@ -129,9 +129,9 @@ de roadmap datado com owner no `ADR-PRIV-003` §5.
 
 | # | Pergunta | Sim/Par/Não | Evidência |
 |---|---|---|---|
-| 11.1 | Tools categorizadas por risco? | Sim (planejado) | `clinic_triage_lead`/`clinic_prevent_noshow` entram no catálogo L1/L2/L3 na Fase 2 |
+| 11.1 | Tools categorizadas por risco? | **Sim** | `clinic_triage_lead` = `L2`, `clinic_prevent_noshow` = `L3` (`packages/core/src/policy.ts`) |
 | 11.2 | Sandbox de tools não confiáveis? | N/A | Tools rodam no mesmo processo sandboxado das demais famílias do repo |
-| 11.3 | Timeout/retry/circuit breaker por tool? | Não confirmado | Pendência técnica da Fase 2 (envio de WhatsApp/e-mail) |
+| 11.3 | Timeout/retry/circuit breaker por tool? | N/A por ora | `clinic_prevent_noshow` roda em dry-run (não faz chamada de rede real); vira pendência real só quando o provedor de mensageria (P6) for integrado de fato |
 | 11.4 | Auditoria de invocação de tool? | Sim | Audit trail genérico já cobre chamadas de tool (mesmo padrão usado nos testes do daemon, SPEC-HR3) |
 
 ## Bloco 12 — IA: Observabilidade
@@ -148,7 +148,7 @@ de roadmap datado com owner no `ADR-PRIV-003` §5.
 | # | Pergunta | Sim/Par/Não | Evidência |
 |---|---|---|---|
 | 13.1 | Versão de protocolo fixada (não "latest")? | Sim | MCP stdio JSON-RPC 2.0, mesmo runtime das demais famílias |
-| 13.2 | Handshake/auth/schemas/erro/cancelamento testados? | Não confirmado | Cobrir nos testes da Fase 2 (`clinic-tools.test.ts`) |
+| 13.2 | Handshake/auth/schemas/erro/cancelamento testados? | **Sim** | `packages/tools/src/test/clinic-tools.test.ts` (8 testes: score, dry-run, validação de input, allowlist, gate L3) |
 | 13.3 | Streaming/progress notifications validados? | N/A | Tools de clínicas não são streaming |
 | 13.4 | Interoperabilidade A2A verificada? | N/A | Repo não usa A2A |
 

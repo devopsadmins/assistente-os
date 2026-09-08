@@ -67,6 +67,7 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "soul_record_lesson", level: "L2" },
   { pattern: "memory_index", level: "L2" },
   { pattern: "soul_generate_aiia", level: "L2" },
+  { pattern: "clinic_triage_lead", level: "L2", description: "Score comercial de lead + dossiê — escrita local, sem efeito externo (AI-4, ADR-PRIV-003)" },
 
   // L2 — leituras a sistemas externos (classificação fechada com o usuário)
   { pattern: "ado_list_projects", level: "L2" },
@@ -92,6 +93,7 @@ export const CAPABILITY_CATALOG: CapabilityCatalogEntry[] = [
   { pattern: "spec_grill_plan", level: "L3" },
   { pattern: "worktree_merge_locally", level: "L3", description: "Merge local de worktree — efeito irreversível na árvore de trabalho" },
   { pattern: "git_commit_push", level: "L3", description: "Commit + push remoto — efeito externo irreversível" },
+  { pattern: "clinic_prevent_noshow", level: "L3", description: "Dispara gatilho de cadência a paciente (WhatsApp/e-mail) — efeito externo; roda em dry-run enquanto o Bloco G do ADR-PRIV-003 estiver BLOCKED" },
   { pattern: "annotate_diff", level: "L2", description: "Anotação de diff no grafo da soul — escrita local reversível" },
 ];
 

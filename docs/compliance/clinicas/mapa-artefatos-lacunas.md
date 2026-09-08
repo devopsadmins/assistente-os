@@ -29,9 +29,11 @@ já estiver Aceita quando essas decisões chegarem, abrir um ADR substituto).
 | Rotina de eliminação em cascata (RAG/embeddings/eventos/checkpoints) equivalente a `familias.ts` | privacy-lgpd-product | Molde: `packages/core/src/familias.ts` (`encerrarFamilia`/`excluirFamilia`/`sweepRetencaoFamilias`) | Fase 2 | Owner técnico |
 | Fluxo de consentimento (`consent_evidence_ref` equivalente) | privacy-lgpd-product | Molde: migration `0013_familias_consent_evidence` | Fase 2, após base legal decidida | Owner técnico |
 | DPO nomeado + substituto + canal operacional | org-governance | — (P3) | Antes de reavaliar Bloco G | Usuário |
-| Entrada L3 de `clinic_prevent_noshow` (+ nível de `clinic_triage_lead`) no catálogo `policy.ts` | security-operations | Molde: entradas `L3` existentes (`browser_*`, `sales_*`, `guardian_*`) | Fase 2 | Owner técnico |
-| Confirmação de `MCP_ZERO_TRUST=on` no ambiente real | security-operations | Gap identificado em `packages/tools/src/index.ts:250` (P8) | Antes de liberar `clinic_prevent_noshow` fora de teste | Owner técnico |
-| Testes `packages/tools/src/test/clinic-tools.test.ts` (score, não-vazamento de dado sensível, gate L3) | ai-agent-harness | — | Fase 2 | Owner técnico |
+| Scaffolding da soul `clinica_template` (`soul.md`/`perfil.md`/`contexto.md`/`licoes.md`/`pessoas.md`/`config.json`) | ai-agent-harness | ✅ **Feito** — `~/.assistant-os/souls/clinica_template/`, `autonomy: "ask"` + `approvalPolicy: ["clinic_prevent_noshow"]`, allowlist mínima (7 tools) | Fase 2 | Owner técnico |
+| Nova família de tools `packages/tools/src/clinic/index.ts` (`clinic_triage_lead` L2, `clinic_prevent_noshow` L3 dry-run) | ai-agent-harness | ✅ **Feito** — registrada em `FAMILY_HANDLERS`/`SOUL_SCOPED_TOOLS` (`packages/tools/src/index.ts`) | Fase 2 | Owner técnico |
+| Entrada L3 de `clinic_prevent_noshow` (+ nível `L2` de `clinic_triage_lead`) no catálogo `policy.ts` | security-operations | ✅ **Feito** — `packages/core/src/policy.ts` (`CAPABILITY_CATALOG`) | Fase 2 | Owner técnico |
+| Confirmação de `MCP_ZERO_TRUST=on` no ambiente real | security-operations | Gap identificado em `packages/tools/src/index.ts:250` (P8) — **ainda pendente**, é decisão operacional de ambiente, não de código | Antes de liberar `clinic_prevent_noshow` fora de teste | Owner técnico |
+| Testes `packages/tools/src/test/clinic-tools.test.ts` (score, não-vazamento de dado sensível, gate L3) | ai-agent-harness | ✅ **Feito** — 8/8 testes passando, incluindo o gate L3 sob `MCP_ZERO_TRUST=on` | Fase 2 | Owner técnico |
 | Dataset de avaliação versionado + thresholds para `clinic_triage_lead` | ai-evaluation-harness | — | Fase 2 (ou exceção formal adicional se adiado) | Owner técnico |
 
 ## 3. Políticas e documentos a adequar

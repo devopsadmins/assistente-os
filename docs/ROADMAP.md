@@ -225,8 +225,12 @@ separado.
 - Pendências P1–P8 (`ADR-PRIV-003` §5) exigem decisão do usuário/DPO/responsável clínico —
   base legal do dado sensível, retenção, DPO, provedor de mensageria, modelo de
   multitenancy. Nenhuma inventada por analogia com o ADR-PRIV-001 de famílias.
-  Scaffolding técnico (soul + tools) pode avançar em ambiente de teste/dry-run,
-  sem dado real, mas produção fica bloqueada até o Bloco G ser reaprovado.
+- **Scaffolding técnico (Fase 2) implementado em modo dry-run**: soul
+  `clinica_template`, tools `clinic_triage_lead`/`clinic_prevent_noshow`
+  (`packages/tools/src/clinic/`), entradas L2/L3 em `policy.ts`, 8 testes —
+  ver `CHANGELOG.md`. `clinic_prevent_noshow` nunca dispara mensagem real
+  (`dryRun: true` sempre). Produção com dado real de paciente segue
+  bloqueada até o Bloco G ser reaprovado.
 - `docs/AI-INVENTORY.md` #11 registra o sistema.
 
 ### Exclusões de escopo registradas
