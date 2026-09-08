@@ -1,12 +1,12 @@
 import { authorizeTool, type Tool, type ToolHandler } from "../index.js";
 
 /**
- * Vertical Clínicas — perfil AI-4 (`ADR-PRIV-003`). Bloco G BLOCKED (G3/G4/G5,
- * ver `docs/compliance/clinicas/`): nenhuma destas tools deve processar dado
- * real de paciente até o Bloco G ser reaprovado. `clinic_prevent_noshow` roda
- * em modo dry-run — nunca dispara mensagem real — enquanto o provedor de
- * mensageria (pendência P6) não for escolhido e `MCP_ZERO_TRUST` (P8) não
- * estiver confirmado no ambiente real.
+ * Vertical Clínicas — perfil AI-4 (`ADR-PRIV-003`, Aceita, Bloco G approved —
+ * ver `docs/compliance/clinicas/`). Ainda assim, `clinica_template` segue
+ * protótipo, sem clínica real onboardada, e `clinic_prevent_noshow` roda em
+ * modo dry-run — nunca dispara mensagem real — enquanto `MCP_ZERO_TRUST`
+ * (pendência P8) não estiver confirmado no ambiente real. Nenhuma destas
+ * tools deve processar dado real de paciente antes do onboarding formal.
  */
 
 export const CLINIC_TOOLS: Tool[] = [
@@ -120,8 +120,10 @@ export const CLINIC_HANDLERS: Record<string, ToolHandler> = {
     const parsed = new Date(appointmentDate);
     if (Number.isNaN(parsed.getTime())) throw new Error("appointmentDate inválida — use ISO 8601");
 
-    // Modo dry-run: Bloco G (ADR-PRIV-003) BLOCKED — nunca despachar mensagem
-    // real aqui. Só devolve o plano de gatilhos que SERIA agendado.
+    // Modo dry-run hardcoded: mesmo com o Bloco G aprovado (ADR-PRIV-003
+    // Aceita), clinica_template segue protótipo sem clínica real e
+    // MCP_ZERO_TRUST (P8) segue desligado por decisão — nunca despachar
+    // mensagem real aqui. Só devolve o plano de gatilhos que SERIA agendado.
     const triggers = [
       { tipo: "nutricao", offsetHoras: -72 },
       { tipo: "confirmacao", offsetHoras: -24 },
@@ -132,7 +134,7 @@ export const CLINIC_HANDLERS: Record<string, ToolHandler> = {
 
     return {
       dryRun: true,
-      motivo: "Bloco G BLOCKED (ADR-PRIV-003) — provedor de mensageria (P6) e MCP_ZERO_TRUST (P8) ainda pendentes; nenhuma mensagem real é disparada.",
+      motivo: "clinica_template ainda é protótipo, sem clínica real onboardada, e MCP_ZERO_TRUST (P8, ADR-PRIV-003) segue desligado por decisão — nenhuma mensagem real é disparada.",
       patientId,
       appointmentDate,
       gatilhosPlanejados: triggers,
