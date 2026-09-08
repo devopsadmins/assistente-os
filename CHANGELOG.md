@@ -10,6 +10,24 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **`ADR-PRIV-003` — adoção formal AI-4 da vertical Clínicas dentro do terrasIA**
+  (2026-09-07). O rascunho técnico `clinic_triage_lead`/`clinic_prevent_noshow`
+  (soul `clinica_template`) processa dado de saúde de paciente —
+  `standards_classify_profile` confirmou perfil AI-4. Diferente do domínio
+  famílias (excluído do backlog em 2026-09-05 pra virar produto separado, ver
+  `docs/ROADMAP.md` § "Exclusões de escopo registradas"), o usuário decidiu a
+  trilha de adoção formal completa dentro do repo. `standards_gate_blockg`
+  avaliou o Bloco G com veredito **BLOCKED** (G3/G4/G5 reprovados — base
+  legal/retenção, provedor de mensageria, `MCP_ZERO_TRUST` desligado por
+  padrão); pendências P1–P8 registradas no ADR, a maioria exigindo decisão do
+  usuário/DPO, não inventadas por analogia com o `ADR-PRIV-001` (famílias).
+  Instrumentos completos de adoção (questionário Blocos G+1–14, mapa de
+  artefatos/lacunas, declaração de conformidade = "Não conforme" nesta
+  rodada) em `docs/compliance/clinicas/`. `docs/AI-INVENTORY.md` #11 e
+  `docs/ROADMAP.md` § "Vertical Clínicas" atualizados. Nenhum código de
+  produto (soul/tools reais) foi criado nesta rodada — só os artefatos de
+  conformidade da Fase 1; scaffolding técnico (Fase 2) fica gated ao Bloco G
+  ser reaprovado.
 - **`calcCost` real substituindo `cost: 0` hardcoded em `cost_calls`**
   (`packages/core/src/pricing.ts`). Todo call-site (`agenda.ts`, `events.ts`,
   `routes/stream.ts`, `observability/record-llm-call.ts`) gravava `cost: 0`

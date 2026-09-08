@@ -208,6 +208,27 @@ em aberto, porque aí vira ação de escrita e entra questão de permissão/auth
   (~359 documentos restantes do `--dry-run` original de 1.097) — não
   iniciado, decisão de quando rodar em aberto.
 
+### Vertical Clínicas — adoção AI-4 (2026-09-07)
+
+Rascunho técnico (`clinic_triage_lead`/`clinic_prevent_noshow`, soul `clinica_template`)
+processa dado de saúde de paciente — `standards_classify_profile` confirmou perfil **AI-4**.
+Diferente do domínio famílias (ver "Exclusões de escopo" abaixo), o usuário decidiu
+explicitamente a trilha de adoção formal completa **dentro** do terrasIA, não como produto
+separado.
+
+- ADR de adoção: `docs/adr/ADR-PRIV-003-clinicas-base-legal-retencao-ai4.md` — status
+  **Proposta**, Bloco G avaliado via `standards_gate_blockg` com veredito **BLOCKED**
+  (G3/G4/G5 reprovados — base legal/retenção, provedor de mensageria, `MCP_ZERO_TRUST`
+  desligado por padrão).
+- Instrumentos completos (questionário Blocos G+1–14, mapa de artefatos/lacunas, declaração
+  de conformidade = "Não conforme" nesta rodada): `docs/compliance/clinicas/`.
+- Pendências P1–P8 (`ADR-PRIV-003` §5) exigem decisão do usuário/DPO/responsável clínico —
+  base legal do dado sensível, retenção, DPO, provedor de mensageria, modelo de
+  multitenancy. Nenhuma inventada por analogia com o ADR-PRIV-001 de famílias.
+  Scaffolding técnico (soul + tools) pode avançar em ambiente de teste/dry-run,
+  sem dado real, mas produção fica bloqueada até o Bloco G ser reaprovado.
+- `docs/AI-INVENTORY.md` #11 registra o sistema.
+
 ### Exclusões de escopo registradas
 
 - **ADR-PRIV-002 / ADR-AI-005 (perfil AI-4 de famílias)**: excluído do
@@ -215,7 +236,10 @@ em aberto, porque aí vira ação de escrita e entra questão de permissão/auth
   famílias foi um teste que vira produto separado, fora do escopo do
   terrasIA. O ADR-PRIV-001 (aceito, arquivado — ver nota abaixo) e
   `docs/AI-INVENTORY.md` #6 registram o resíduo formalmente, com nota de
-  coordenação apontando pra esta exclusão.
+  coordenação apontando pra esta exclusão. **Nota (2026-09-07):** esses dois
+  códigos ficam definitivamente aposentados/reservados a este resíduo — a
+  vertical Clínicas (também AI-4, ver acima) usa um código novo,
+  `ADR-PRIV-003`, para não colidir com este histórico.
 
 ---
 
