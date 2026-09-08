@@ -1,4 +1,4 @@
-# MCPs do Assistente OS
+# MCPs do terrasIA
 
 Servidores MCP configurados no `opencode.json` global (`~/.config/opencode/opencode.jsonc`).
 

@@ -1,4 +1,4 @@
-# LangGraph no Assistente OS
+# LangGraph no terrasIA
 
 Visão geral da integração LangGraph com streaming, mode routing e UI web.
 
@@ -59,7 +59,7 @@ O daemon broadcasta `graph.step` via WebSocket a cada step:
 
 ## Tools disponíveis
 
-11 tools LangChain wrapam as ferramentas do Assistente OS:
+11 tools LangChain wrapam as ferramentas do terrasIA:
 
 | Tool | Descrição |
 |---|---|

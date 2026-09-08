@@ -1,6 +1,6 @@
 # Modo Amigável — contas multi-tenant self-service
 
-Camada de acesso self-service sobre o Assistente OS: uma pessoa cria uma conta
+Camada de acesso self-service sobre o terrasIA: uma pessoa cria uma conta
 por e-mail/senha, ganha um assistente (soul) próprio e configura o essencial
 por uma UI enxuta (`/friendly.html`), sem token de admin e sem tocar em
 `config.json`.

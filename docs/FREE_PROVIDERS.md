@@ -1,15 +1,15 @@
-# Provedores Gratuitos para Assistente OS
+# Provedores Gratuitos para terrasIA
 
-Este documento lista todos os provedores de IA gratuitos disponíveis através do OmniRoute e como registrá-los no assistente-os. Atualmente o projeto usa 7 providers Zen customizados, mas podem ser expandidos para 56+ "free forever" providers do OmniRoute.
+Este documento lista todos os provedores de IA gratuitos disponíveis através do OmniRoute e como registrá-los no terrasIA. Atualmente o projeto usa 7 providers Zen customizados, mas podem ser expandidos para 56+ "free forever" providers do OmniRoute.
 
 ---
 
 ## 🆓 **Free Forever - Nenhum token/chave necessário**
 
-| Provedor | Models | Como conectar no assistente-os |
+| Provedor | Models | Como conectar no terrasIA |
 |----------|--------|-------------------------------|
 | **OpenCode Zen** | 6 modelos de coding | **Já vem configurado!** - Os 7 providers `zen-*` no `.assistant-os/.env` já usam OpenCode Zen. Chaves: `ZEN_*_API_KEY`. Modelo padrão: `nemotron-3-ultra-free`. |
-| **Pollinations** | GPT-5, Claude, Gemini, DeepSeek, Llama 4 | Acesso via web direto. No OmniRoute: dashboard → Connect → Pollinations → "No key needed". No assistente-os: pode ser integrado como provider HTTP direto. |
+| **Pollinations** | GPT-5, Claude, Gemini, DeepSeek, Llama 4 | Acesso via web direto. No OmniRoute: dashboard → Connect → Pollinations → "No key needed". No terrasIA: pode ser integrado como provider HTTP direto. |
 
 ---
 
@@ -22,9 +22,9 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 2. Faça login com **AWS Builder ID** ou **Google/GitHub**
 3. No dashboard OmniRoute: *Providers → Add Provider → Kiro AI*
 4. OAuth flow automático - não precisa de chave manual
-5. No assistente-os: integrar endpoint OAuth ou usar chave gerada
+5. No terrasIA: integrar endpoint OAuth ou usar chave gerada
 
-**Uso no assistente-os:**
+**Uso no terrasIA:**
 - Prefixo sugerido: `kr/`
 - Exemplos: `kr/claude-sonnet-4.5`, `kr/claude-haiku-4.5`, `kr/claude-opus-4.6`
 - Cota: 50 créditos/mês (reseta ciclo de faturamento)
@@ -39,9 +39,9 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 2. Gere API key na conta
 3. No dashboard OmniRoute: *Providers → Add Provider → Qoder*
 4. Insira a API key gerada
-5. No assistente-os: adicionar provider com auth type "apikey"
+5. No terrasIA: adicionar provider com auth type "apikey"
 
-**Uso no assistente-os:**
+**Uso no terrasIA:**
 - Prefixo sugerido: `if/`
 - Exemplos: `if/qwen3-coder-plus`, `if/kimi-k2`, `if/deepseek-r1`
 - Models: Kimi-K2, DeepSeek-R1, Qwen3 variants (coder tasks)
@@ -59,9 +59,9 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 3. Gere API key na dashboard
 4. No dashboard OmniRoute: *Providers → Add Provider → LongCat*
 5. Insira a API key
-6. No assistente-os: adicionar provider com auth type "apikey"
+6. No terrasIA: adicionar provider com auth type "apikey"
 
-**Uso no assistente-os:**
+**Uso no terrasIA:**
 - Modelo: `longcat/flash-lite` ou similar
 - Cota: 50M tokens (uma única concessão on-signup, **não recorrente diária/mensal**)
 - Best for: "one-off free allowance; pay-as-you-go beyond it"
@@ -76,7 +76,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 3. No dashboard OmniRoute: *Providers → Add Provider → SiliconFlow*
 4. Insira a API key
 
-**Uso no assistente-os:**
+**Uso no terrasIA:**
 - Models: Qwen3 variants, DeepSeek, Llama, etc.
 - Cota: "Permanently free, no token cap" - rate/concurrency-limited apenas
 - Caution: "counting them at RPM×24/7 is the inflation we reject"
@@ -91,7 +91,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 3. No dashboard OmniRoute: *Providers → Add Provider → Z.AI*
 4. Insira a API key
 
-**Uso no assistente-os:**
+**Uso no terrasIA:**
 - Models: `glm-4-flash`, `glm-4.5-flash`, `glm-4.7-flash`
 - **⚠️ ToS**: Terms de serviço podem ter restrições - verificar antes de usar em produção
 - Bonus: 20M tokens signup credit
@@ -106,7 +106,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 3. No dashboard OmniRoute: *Providers → Add Provider → Kilo*
 4. Use credenciais da conta
 
-**Uso no assistente-os:**
+**Uso no terrasIA:**
 - Prefixo: `kilo/` ou similar
 - Cota: "Free tier, no token cap" - rate/concurrency-limited
 - Models: NVIDIA Nemotron 3 family, StepFun, Poolside, Nex-N2-Pro
@@ -121,7 +121,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 1. Registre em: <https://openrouter.ai>
 2. Gere API key (gratuita inicialmente)
 3. **Para +24M tokens/mo**: faça $10 top-up
-4. No assistente-os: adicionar provider com auth type "apikey"
+4. No terrasIA: adicionar provider com auth type "apikey"
 
 **Combo estratégico (prioridade):**
 1. Groq (30 RPM, muito rápido)
@@ -140,7 +140,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 **Registro:**
 1. Registre em: <https://console.groq.com>
 2. Gere API key (gratuita - 30 RPM)
-3. No assistente-os: adicionar provider com auth type "apikey"
+3. No terrasIA: adicionar provider com auth type "apikey"
 
 **Uso:**
 - Models: `groq/llama-4-scout`, `groq/mixtral`, `groq/llama-3.3-70b`
@@ -153,7 +153,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 **Registro:**
 1. Registre em: <https://aistudio.google.com>
 2. Crie chave API
-3. No assistente-os: adicionar provider com auth type "apikey"
+3. No terrasIA: adicionar provider com auth type "apikey"
 
 **Uso:**
 - Models: `gemini-1.5-pro`, `gemini-1.5-flash`, `gemini-1.5-flash-8b`
@@ -166,7 +166,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 **Registro:**
 1. Registre em: <https://platform.deepseek.com>
 2. Gere API key
-3. No assistente-os: adicionar provider com auth type "apikey"
+3. No terrasIA: adicionar provider com auth type "apikey"
 
 **Uso:**
 - Models: `deepseek-coder-v2`, `deepseek-v3`, `deepseek-r1`
@@ -179,7 +179,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 **Registro:**
 1. Registre em: <https://build.nvidia.com>
 2. Crie conta/key
-3. No assistente-os: adicionar provider com auth type "apikey"
+3. No terrasIA: adicionar provider com auth type "apikey"
 
 **Uso:**
 - Models: 129 modelos hosted (incluem Claude, Gemini, Llama variants)
@@ -192,7 +192,7 @@ Este documento lista todos os provedores de IA gratuitos disponíveis através d
 **Registro:**
 1. Registre em: <https://cerebras.ai>
 2. Crie conta/key
-3. No assistente-os: adicionar provider com auth type "apikey"
+3. No terrasIA: adicionar provider com auth type "apikey"
 
 **Uso:**
 - Models: Qwen3 235B, GPT-OSS 120B, etc.
@@ -228,7 +228,7 @@ Priority order (combo "priority" strategy):
 
 ---
 
-## 📦 **Integração no assistente-os** (planning only - read-only mode atualmente)
+## 📦 **Integração no terrasIA** (planning only - read-only mode atualmente)
 
 ### Passos para implementação futura:
 

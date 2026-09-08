@@ -152,6 +152,7 @@ code, pre, .mono { font-family: var(--font-mono); }
   box-shadow: var(--glow-cyan);
 }
 .brand-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.brand-terras { color: var(--text-primary); text-shadow: none; }
 .brand-text h1 {
   font-family: var(--font-mono);
   font-weight: 800;

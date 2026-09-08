@@ -1,4 +1,4 @@
-# Roadmap — Assistente OS
+# Roadmap — terrasIA
 
 Este documento é o histórico do que foi entregue e o que ainda está em aberto.
 Para o que o sistema **faz hoje** (features, pacotes, API, deploy), ver o
@@ -64,7 +64,7 @@ milhões nem inchar a equipe de TI* — é onde está a monetização:
 - O serviço extrai essas regras, estrutura a base em Markdown e instala o
   "cérebro".
 - **Cobrança:** setup estruturado para resolver o gargalo + mensalidade de
-  sustentação e governança. O `assistente-os` é engine/moat, não um SaaS
+  sustentação e governança. O `terrasIA` é engine/moat, não um SaaS
   vendido avulso.
 
 ---
@@ -213,7 +213,7 @@ em aberto, porque aí vira ação de escrita e entra questão de permissão/auth
 - **ADR-PRIV-002 / ADR-AI-005 (perfil AI-4 de famílias)**: excluído do
   backlog deste projeto em 2026-09-05 (decisão do usuário) — o domínio
   famílias foi um teste que vira produto separado, fora do escopo do
-  assistente-os. O ADR-PRIV-001 (aceito, arquivado — ver nota abaixo) e
+  terrasIA. O ADR-PRIV-001 (aceito, arquivado — ver nota abaixo) e
   `docs/AI-INVENTORY.md` #6 registram o resíduo formalmente, com nota de
   coordenação apontando pra esta exclusão.
 

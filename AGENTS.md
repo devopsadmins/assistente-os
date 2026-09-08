@@ -1,4 +1,4 @@
-# AGENTS.md — Assistente OS
+# AGENTS.md — terrasIA
 
 ## Quick commands
 

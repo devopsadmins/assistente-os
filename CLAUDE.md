@@ -9,30 +9,37 @@ big-picture architecture and corrects a few stale points in AGENTS.md.
 
 ```bash
 npm run setup                     # guided installer on a clean machine (prereqs, .env, Postgres, migrations)
-npm install && npm run build      # ALWAYS build first — tests/typecheck/CLI run from dist/, not src/
+npm install && npm run build      # ALWAYS build first — backend tests/typecheck/CLI run from dist/, not src/
 npm run typecheck                 # tsc --pretty false, all workspaces
 npm run lint                      # eslint . — single rule: @typescript-eslint/no-explicit-any (tests exempt)
-npm test                          # node --test on dist/**  (needs a running Postgres + pgvector)
+npm test                          # all workspaces (needs a running Postgres + pgvector)
 npm run dod                       # build → typecheck → lint → test → manifest → discriminator; runs all, summarizes at end
 
 # Single package / single file
 npm run test --workspace=@assistente-os/core
 node --test packages/daemon/dist/test/extract.test.js      # after building that package
 
-# CLI (the `os` command)
-npm run os -- status | souls | chat | memory | migrate | daemon | backup | manifest | discriminator
+# CLI (the `os` command) — top-level verbs:
+#   status souls soul chat migrate import-sc memory graph costs agenda worktree
+#   guardian skill prompt rag trace voice backup daemon manifest discriminator
+npm run os -- status
 
 # Live/integration tests (real daemon on AOS_URL, real Ollama/LangGraph — NOT in `npm test`, named *.live.ts on purpose)
 npm run test:live --workspace=@assistente-os/daemon      # requires AOS_URL / AOS_TOKEN
 ```
 
-Test runner is Node's built-in `node --test` — **no vitest/jest**. DB tests create an
-isolated Postgres schema per file (`packages/*/src/test/pgTestHelper.ts`); `DATABASE_URL`
-or `DATABASE_URL_TEST` points at the instance. Without Postgres only the non-DB subset runs.
+Node `>=22.16.0` (see `engines`). **Two test setups:** the backend packages
+(`core`/`memory`/`daemon`/`tools`/`cli`/`voice`) build `src/` → `dist/` with `tsc -b` and
+run Node's built-in `node --test` **on `dist/**`** — always `npm run build` first. The
+frontend packages (`ui`/`web`) never emit `dist/`: `build`/`typecheck` are `tsc --noEmit`
+(plus `vite build` for `web`) and tests run under **Vitest** (`vitest run`, with Testing
+Library + `expectNoA11yViolations`). DB tests create an isolated Postgres schema per file
+(`packages/*/src/test/pgTestHelper.ts`); `DATABASE_URL` or `DATABASE_URL_TEST` points at the
+instance. Without Postgres only the non-DB subset runs.
 
 ## Architecture — the big picture
 
-**Monorepo, npm workspaces (`packages/*`), ESM (`"type": "module"`), `tsc -b` per package, `src/` → `dist/` (gitignored).**
+**Monorepo, npm workspaces (`packages/*`), ESM (`"type": "module"`). Backend packages: `tsc -b`, `src/` → `dist/` (gitignored). Frontend packages (`ui`/`web`): `tsc --noEmit` + Vite, no `dist/`.**
 
 | Package | Role |
 |---|---|
@@ -42,8 +49,8 @@ or `DATABASE_URL_TEST` points at the instance. Without Postgres only the non-DB 
 | `tools` | MCP server (stdio JSON-RPC) exposing the kernel — 13 tool families, `ToolContext`/`FAMILY_HANDLERS` pattern in `src/index.ts` |
 | `cli` | the `os` command |
 | `voice` | VAD + Whisper STT + TTS |
-| `ui` | shared React component library (`packages/ui`) — frontend dependency zone |
-| `web` | Vite React app (`packages/web`) — the account-facing SPA |
+| `ui` | shared React 19 component library (`@assistente-os/ui`) — Radix primitives, OKLCH theme tokens, Ladle catalog; the frontend dependency zone |
+| `web` | Vite + React 19 SPA (`packages/web`) — in-flight thread-based redesign, **not yet the prod entrypoint** (paused with Modo Amigável; see `docs/ROADMAP.md`) |
 
 Package dep graph: `memory`/`voice` → `core`; `daemon` → `core`/`memory`/`voice`;
 `tools` → `core`/`memory`/`daemon`; `cli` → `core`/`memory`/`daemon`; `web` → `ui`.
@@ -93,8 +100,9 @@ Several RAG toggles ship **OFF pending measurement**: `RAG_RERANK`, `RAG_SEMANTI
 
 Account sessions (`accounts` table, scrypt) run alongside the admin token. Ownership of
 `/souls/:id/*` is checked centrally in `server.ts`, not per-route. Self-service upload has a
-per-account KB cap (`friendlyUploadKbLimit()`). `packages/web` is the account SPA;
-`packages/daemon/web/friendly.html` is the lightweight friendly UI.
+per-account KB cap (`friendlyUploadKbLimit()`). The live account UI is the lightweight
+`packages/daemon/web/friendly.html`; the richer `packages/web` SPA is the intended
+replacement but is still in-flight. Migrations `0018_accounts` / `0019_friendly_allowlist`.
 
 ## Conventions
 
@@ -112,7 +120,8 @@ per-account KB cap (`friendlyUploadKbLimit()`). `packages/web` is the account SP
   still runs `os discriminator` locally (Zen if configured, else Ollama).
 - **Process docs archived 2026-09-06**: ADRs, specs, ARCHITECTURE-REVIEW, backlogs left the
   repo (copied to soul `consultoria_ia`). `docs/ROADMAP.md` absorbed the essential decisions —
-  **start there**. `docs/adr/` is being reopened for new ADRs.
+  **start there** for what's done vs. open. `docs/design.md` is the current architecture
+  narrative (replaced the deleted `docs/ARCHITECTURE.md`). `docs/adr/` is reopened for new ADRs.
 
 ## Do not
 

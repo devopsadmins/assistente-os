@@ -1,6 +1,6 @@
-# Quick Start — Assistente OS
+# Quick Start — terrasIA
 
-Guia completo para configurar e rodar o Assistente OS do zero.
+Guia completo para configurar e rodar o terrasIA do zero.
 
 ## 1. Pré-requisitos
 
@@ -469,7 +469,7 @@ npm run typecheck # verifica tipos sem emitir
 
 ## 11. Próximos passos
 
-- [Arquitetura detalhada](docs/ARCHITECTURE.md)
+- [Arquitetura detalhada](docs/design.md)
 - [Ferramentas MCP](docs/MCPS.md)
 - [Provedores gratuitos](docs/FREE_PROVIDERS.md)
 - Status e pendências: seção **Status** do [README](README.md)

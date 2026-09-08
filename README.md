@@ -1,4 +1,4 @@
-# Assistente OS
+# terrasIA
 
 Copiloto residente em Node/TS, API-first, local-first. Monorepo npm workspaces com 8 pacotes, soul-based knowledge management, RAG + knowledge graph, agente LangGraph com tool-calling, orquestração ORCA (modos de execução fast/pro + isolamento de tarefas em git worktree), design system próprio, governança com autoaprendizado, interface web responsiva (PWA + uma nova app React em construção), canais WhatsApp/Telegram, pipeline de voz, e deploy em produção via PM2 + Cloudflare Tunnel + CI no GitHub Actions.
 
@@ -120,7 +120,7 @@ Camada de acesso self-service sobre o daemon — detalhes em **[docs/FRIENDLY-MO
 
 ### LangGraph Agent
 
-- **Tool-calling**: 11 tools LangChain wrapando ferramentas do Assistente OS
+- **Tool-calling**: 11 tools LangChain wrapando ferramentas do terrasIA
   - Memory: `memory_search`, `memory_index`, `memory_status`
   - Graph: `graph_list`, `observation_add`
   - Soul: `soul_anotar`, `soul_licao`, `soul_decidir`
@@ -371,7 +371,7 @@ docker compose up -d tunnel
 
 - **Métricas Prometheus**: `GET /metrics` (Bearer, prefixo `aos_`): `aos_chat_requests_total{soul,tier,mode,status}`, `aos_chat_latency_seconds` (histograma), `aos_tokens_total{soul,tier,kind,source}` (alimentado pelo FinOps do chat), `aos_agenda_queue_depth`, `aos_events_pending`, `aos_prompt_injection_alerts_total{severity,source}` (`source`: `user_input` | `retrieved_chunk`) + default metrics (event-loop lag, heap, GC).
 - **Sentry**: erros não tratados do handler HTTP vão pro Sentry quando `SENTRY_DSN` está setado (no-op sem DSN); `beforeSend` roda o content-filter para não vazar segredo. `SENTRY_TRACES_SAMPLE_RATE` (default 0.1).
-- **Stack local** (opcional): `docker compose --profile observability up -d` sobe Prometheus (`:9090`) + Grafana (`:3001`, dashboard "Assistente OS — visão geral" já provisionado). Configs em `ops/` (`prometheus.yml`, `rules.yml` com alertas de daemon-down / backlog de agenda / pico de prompt-injection / taxa de erro de chat).
+- **Stack local** (opcional): `docker compose --profile observability up -d` sobe Prometheus (`:9090`) + Grafana (`:3001`, dashboard "terrasIA — visão geral" já provisionado). Configs em `ops/` (`prometheus.yml`, `rules.yml` com alertas de daemon-down / backlog de agenda / pico de prompt-injection / taxa de erro de chat).
 
 ## Testes
 
@@ -403,7 +403,7 @@ ainda está em aberto, ver [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Docs
 
-- [Arquitetura](docs/ARCHITECTURE.md)
+- [Arquitetura](docs/design.md)
 - [LangGraph](docs/LANGGRAPH.md)
 - [MCPs](docs/MCPS.md)
 - [Prompt Garden](docs/PROMPT-GARDEN.md) · [Canvas de Arquitetura por soul](docs/ARCHITECTURE-CANVAS-TEMPLATE.md)
