@@ -7,7 +7,7 @@ Preenchido em 2026-09-07. ADR: [`ADR-PRIV-003`](../../adr/ADR-PRIV-003-clinicas-
 
 | Código | Decisão | Bloco de origem | Perfil | Prazo | Owner |
 |---|---|---|---|---|---|
-| `ADR-PRIV-003` | Adoção AI-4 de clínicas dentro do terrasIA (não produto separado) | Bloco G, Bloco 14 | AI-4 | Criado 2026-09-07, status Proposta | agente terrasIA |
+| `ADR-PRIV-003` | Adoção AI-4 de clínicas dentro do terrasIA (não produto separado) | Bloco G, Bloco 14 | AI-4 | Criado 2026-09-07, **Aceito** 2026-09-08 | Everton Lima |
 
 Nenhum ADR adicional identificado nesta rodada — todas as decisões pendentes (base legal,
 retenção, DPO, provedor de mensageria, multitenancy) cabem como atualização do próprio
@@ -18,17 +18,17 @@ já estiver Aceita quando essas decisões chegarem, abrir um ADR substituto).
 
 | Artefato | Origem (módulo) | Evidência | Prazo | Owner |
 |---|---|---|---|---|
-| Matriz RACI do produto clínicas | org-governance | — | Antes do Bloco G ser reavaliado | Usuário |
-| Registro de aceitação de risco (ata) para a exceção do Bloco 14 | org-governance | Exceção já rascunhada em `ADR-PRIV-003` §7; falta ata formal | Junto da aceitação do ADR | Owner do repositório |
-| Decisão de provedor de mensageria (WhatsApp Business API vs. Evolution vs. outro) | vendor-cloud | — (P6) | Antes de reavaliar Bloco G | Usuário |
-| Due diligence do provedor de mensageria escolhido | vendor-cloud | — | Após decisão de provedor | Usuário |
-| Classificação da informação (comum / sensível / biométrico) por campo de dado de clínica | privacy-lgpd-product | Parcial — já sabido que é dado de saúde; taxonomia completa depende de P5 | Antes de reavaliar Bloco G | Usuário |
-| Retention schedule (`CLINICAS_RETENCAO_DIAS` ou equivalente) | privacy-lgpd-product | — (P4) | Antes do go-live com dado real | Responsável clínico |
-| AIP/RIPD e ROPA da vertical clínicas | privacy-lgpd-product | — | Antes do go-live com dado real | Usuário + DPO |
+| Matriz RACI do produto clínicas | org-governance | Parcial — owners provisórios definidos (`ADR-PRIV-003` Identificação), matriz RACI completa formal ainda não escrita | Antes do onboarding da 1ª clínica real | Everton Lima |
+| Registro de aceitação de risco (ata) para a exceção do Bloco 14 | org-governance | Exceção formal em `ADR-PRIV-003` §7, aceite registrado na tabela §9; falta ata formal de órgão de governança colegiado (não existe um nesta fase) | Quando houver órgão de governança formal | Owner do repositório |
+| Decisão de provedor de mensageria | vendor-cloud | ✅ **Resolvido (P6)** — Evolution API self-hosted, `ADR-PRIV-003` §2 | — | Everton Lima |
+| Due diligence do provedor de mensageria escolhido | vendor-cloud | N/A — mesma infra já em uso no repo (`packages/daemon/src/channels/whatsapp.ts`), sem fornecedor novo | — | — |
+| Classificação da informação (comum / sensível / biométrico) por campo de dado de clínica | privacy-lgpd-product | ✅ **Resolvido (P5)** — sem biometria real nesta fase; dado de saúde tratado como sensível por padrão | — | Everton Lima |
+| Retention schedule (`CLINICAS_RETENCAO_DIAS`) | privacy-lgpd-product | ✅ **Resolvido (provisório, P4)** — 1825 dias, `ADR-PRIV-003` §2 | Confirmar valor exato com conselho profissional antes do go-live real | Responsável clínico |
+| AIP/RIPD e ROPA da vertical clínicas | privacy-lgpd-product | Parcial — base legal/finalidade/retenção decididas (insumo do ROPA); documento formal ainda não escrito | Antes do go-live com dado real | Everton Lima + DPO |
 | Migration de privacidade equivalente a `0008_familias_privacidade` (`base_legal`, `finalidade`, `encerrado_em`, `retencao_ate`) | privacy-lgpd-product | Molde: `packages/core/src/migrations.ts` (`0008_familias_privacidade`) | Fase 2, após base legal decidida | Owner técnico |
 | Rotina de eliminação em cascata (RAG/embeddings/eventos/checkpoints) equivalente a `familias.ts` | privacy-lgpd-product | Molde: `packages/core/src/familias.ts` (`encerrarFamilia`/`excluirFamilia`/`sweepRetencaoFamilias`) | Fase 2 | Owner técnico |
 | Fluxo de consentimento (`consent_evidence_ref` equivalente) | privacy-lgpd-product | Molde: migration `0013_familias_consent_evidence` | Fase 2, após base legal decidida | Owner técnico |
-| DPO nomeado + substituto + canal operacional | org-governance | — (P3) | Antes de reavaliar Bloco G | Usuário |
+| DPO nomeado + substituto + canal operacional | org-governance | ✅ **Resolvido (provisório, P3)** — Everton Lima; substituto ainda não nomeado | Nomear substituto antes de produção real | Everton Lima |
 | Scaffolding da soul `clinica_template` (`soul.md`/`perfil.md`/`contexto.md`/`licoes.md`/`pessoas.md`/`config.json`) | ai-agent-harness | ✅ **Feito** — `~/.assistant-os/souls/clinica_template/`, `autonomy: "ask"` + `approvalPolicy: ["clinic_prevent_noshow"]`, allowlist mínima (7 tools) | Fase 2 | Owner técnico |
 | Nova família de tools `packages/tools/src/clinic/index.ts` (`clinic_triage_lead` L2, `clinic_prevent_noshow` L3 dry-run) | ai-agent-harness | ✅ **Feito** — registrada em `FAMILY_HANDLERS`/`SOUL_SCOPED_TOOLS` (`packages/tools/src/index.ts`) | Fase 2 | Owner técnico |
 | Entrada L3 de `clinic_prevent_noshow` (+ nível `L2` de `clinic_triage_lead`) no catálogo `policy.ts` | security-operations | ✅ **Feito** — `packages/core/src/policy.ts` (`CAPABILITY_CATALOG`) | Fase 2 | Owner técnico |
@@ -49,7 +49,7 @@ já estiver Aceita quando essas decisões chegarem, abrir um ADR substituto).
 
 | Lacuna | Evidência da lacuna | Ação | Prazo | Owner |
 |---|---|---|---|---|
-| `MCP_ZERO_TRUST` desligado por padrão | `packages/tools/src/index.ts:250` | Confirmar/ligar no ambiente que servir `clinica_template` | Antes de liberar `clinic_prevent_noshow` fora de teste | Owner técnico |
+| `MCP_ZERO_TRUST` desligado por padrão | `packages/tools/src/index.ts:250` | **Decisão explícita (P8): manter desligado nesta fase.** `clinic_prevent_noshow` compensa isso ficando hardcoded em dry-run no código — não é uma lacuna ativa enquanto isso for verdade | Antes de tirar `clinic_prevent_noshow` do dry-run | Owner técnico |
 | Sem kill-switch/circuit-breaker dedicado a modelo | Só existem `maxTurns`/`maxIterations`/`dailyLimitTokens` (limites de passos/custo, não um "desligar já") | Avaliar se um kill-switch genérico vale a pena para o repo todo, ou só documentar como limitação conhecida | A decidir | Owner técnico |
 | Sem rito de notificação de incidente (LGPD) para nenhum domínio do repo, não só clínicas | Verificado nos Blocos 4.7/9 do questionário | Gap de repo, não bloqueia especificamente clínicas | A decidir (fora do escopo deste ADR) | Owner técnico + DPO |
 | Bloco 14 (Riscos Avançados AI-4) sem nenhuma evidência | Questionário, Bloco 14 | Coberto por exceção formal — `ADR-PRIV-003` §7 | Até o onboarding da primeira clínica real | Owner técnico + owner de risco |
@@ -71,7 +71,8 @@ já estiver Aceita quando essas decisões chegarem, abrir um ADR substituto).
 
 ## 7. Declaração de conformidade
 
-Emitida em: 2026-09-07 — estado: [ ] Conforme [ ] Conforme com pendências datadas [x] Não
-conforme — `standards_gate_blockg` retornou veredito **BLOCKED** (G3/G4/G5 reprovados, não
-apenas lacunas em blocos técnicos); produção fica bloqueada até o Bloco G ser reaprovado. Ver
-[`declaracao-conformidade.md`](declaracao-conformidade.md) (mesma pasta).
+Emitida em: 2026-09-07 — estado: [ ] Conforme [x] Conforme com pendências datadas [ ] Não
+conforme — `standards_gate_blockg` reavaliado retornou veredito **approved** (todos os 5
+gates aprovados após as decisões P1–P8, `ADR-PRIV-003` §2/§5). Não é "Conforme" puro porque
+a exceção do Bloco 14 segue aberta e alguns itens dos Blocos 2/3/4/7/9/12 continuam
+Parcial/Não. Ver [`declaracao-conformidade.md`](declaracao-conformidade.md) (mesma pasta).

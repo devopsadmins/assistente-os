@@ -208,7 +208,7 @@ em aberto, porque aí vira ação de escrita e entra questão de permissão/auth
   (~359 documentos restantes do `--dry-run` original de 1.097) — não
   iniciado, decisão de quando rodar em aberto.
 
-### Vertical Clínicas — adoção AI-4 (2026-09-07)
+### Vertical Clínicas — adoção AI-4 (2026-09-07/08)
 
 Rascunho técnico (`clinic_triage_lead`/`clinic_prevent_noshow`, soul `clinica_template`)
 processa dado de saúde de paciente — `standards_classify_profile` confirmou perfil **AI-4**.
@@ -217,14 +217,21 @@ explicitamente a trilha de adoção formal completa **dentro** do terrasIA, não
 separado.
 
 - ADR de adoção: `docs/adr/ADR-PRIV-003-clinicas-base-legal-retencao-ai4.md` — status
-  **Proposta**, Bloco G avaliado via `standards_gate_blockg` com veredito **BLOCKED**
-  (G3/G4/G5 reprovados — base legal/retenção, provedor de mensageria, `MCP_ZERO_TRUST`
-  desligado por padrão).
+  **Aceita (2026-09-08)**. 1ª avaliação do Bloco G (2026-09-07) veio **BLOCKED**
+  (G3/G4/G5 reprovados); depois de P1–P8 respondidas pelo owner do repositório, reavaliação
+  em 2026-09-08 veio **approved** — todos os 5 gates aprovados.
+- Decisões que fecharam o Bloco G: base legal do dado sensível = LGPD art. 11 II "f" (IA
+  sempre sob supervisão de profissional de saúde); retenção = 1825 dias (provisório, mesmo
+  valor de famílias, sujeito a confirmação com conselho profissional); provedor de
+  mensageria = Evolution API self-hosted (mesma infra já usada no canal WhatsApp do repo,
+  sem fornecedor novo); `clinic_prevent_noshow` continua hardcoded em dry-run —
+  `MCP_ZERO_TRUST` permanece desligado por decisão explícita (fase de protótipo, sem
+  clínica real).
+- Owners (técnico/negócio/risco/DPO) nesta fase: todos Everton Lima, **provisório** até o
+  onboarding da primeira clínica real (reabre `ADR-PRIV-003` para responsável clínico e DPO
+  reais/distintos, confirmação exata da retenção, e modelo de isolamento cross-tenant).
 - Instrumentos completos (questionário Blocos G+1–14, mapa de artefatos/lacunas, declaração
-  de conformidade = "Não conforme" nesta rodada): `docs/compliance/clinicas/`.
-- Pendências P1–P8 (`ADR-PRIV-003` §5) exigem decisão do usuário/DPO/responsável clínico —
-  base legal do dado sensível, retenção, DPO, provedor de mensageria, modelo de
-  multitenancy. Nenhuma inventada por analogia com o ADR-PRIV-001 de famílias.
+  de conformidade = "Conforme com pendências datadas"): `docs/compliance/clinicas/`.
 - **Scaffolding técnico (Fase 2) implementado em modo dry-run**: soul
   `clinica_template`, tools `clinic_triage_lead`/`clinic_prevent_noshow`
   (`packages/tools/src/clinic/`), entradas L2/L3 em `policy.ts`, 8 testes —

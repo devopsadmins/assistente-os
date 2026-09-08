@@ -10,6 +10,22 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **`ADR-PRIV-003` aceita (2026-09-08) — Bloco G aprovado após P1–P8 resolvidas.**
+  Reavaliação do `standards_gate_blockg` (1ª rodada em 2026-09-07 tinha veredito BLOCKED,
+  G3/G4/G5 reprovados) — owner do repositório (Everton Lima) decidiu as 8 pendências:
+  base legal do dado sensível = LGPD art. 11 II "f" (IA sempre sob supervisão de
+  profissional de saúde); responsável clínico e DPO = Everton Lima, provisório; retenção =
+  1825 dias (`CLINICAS_RETENCAO_DIAS`), provisório até confirmar com conselho profissional;
+  sem dado biométrico real nesta fase; provedor de mensageria = Evolution API self-hosted
+  (mesma infra do canal WhatsApp já existente, sem fornecedor novo); segue protótipo, sem
+  clínica real onboardada (isolamento cross-tenant fica pra depois); `MCP_ZERO_TRUST`
+  permanece desligado por decisão — `clinic_prevent_noshow` já é hardcoded em dry-run no
+  código, então não há ação irreversível real acontecendo de qualquer forma. Veredito final:
+  **approved**, todos os 5 gates. Declaração de conformidade reemitida:
+  "Conforme com pendências datadas" (era "Não conforme"). `docs/adr/ADR-PRIV-003-*.md`,
+  `docs/compliance/clinicas/*`, `docs/AI-INVENTORY.md` #11 e `docs/ROADMAP.md` atualizados.
+  Nenhuma mudança de código nesta entrada — `clinic_prevent_noshow` continua sem despachar
+  mensagem real; sair do dry-run exige decisão e mudança de código separadas (P8).
 - **`ADR-PRIV-003` — adoção formal AI-4 da vertical Clínicas dentro do terrasIA**
   (2026-09-07). O rascunho técnico `clinic_triage_lead`/`clinic_prevent_noshow`
   (soul `clinica_template`) processa dado de saúde de paciente —

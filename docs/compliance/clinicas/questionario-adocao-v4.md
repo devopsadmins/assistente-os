@@ -14,20 +14,20 @@ Perfil AI-4 exige todos os blocos: G + 1–14.
 |---|---|---|---|
 | G1 | Conflito entre obrigação legal e o fluxo atual? | **Sim** (aprovado) | Nenhum conflito identificado — `standards_gate_blockg` |
 | G2 | Segredo/credencial exposta? | **Sim** (aprovado) | `TempVault`/`purgeCredentials` (`packages/core/src/security/temp-vault.ts`) |
-| G3 | Dado pessoal sem base legal/finalidade/retenção? | **Não** (reprovado) | Base legal, finalidade e retenção pendentes — P1/P4 do `ADR-PRIV-003` |
-| G4 | Transferência internacional sem avaliação? | **Não** (reprovado) | Provedor de mensageria ainda não escolhido — P6 |
-| G5 | Ação irreversível sem aprovação humana? | **Não** (reprovado) | `clinic_prevent_noshow` seria `L3`, mas `MCP_ZERO_TRUST` desligado por padrão — P8 |
+| G3 | Dado pessoal sem base legal/finalidade/retenção? | **Sim** (aprovado) | Base legal (LGPD art. 11 II "f" — P1), finalidade e retenção provisória de 1825 dias (P4) decididas — `ADR-PRIV-003` §2 |
+| G4 | Transferência internacional sem avaliação? | **Sim** (aprovado) | Evolution API self-hosted (P6) — mesma infra já usada no canal WhatsApp do repo, sem fornecedor novo |
+| G5 | Ação irreversível sem aprovação humana? | **Sim** (aprovado) | `clinic_prevent_noshow` hardcoded em `dryRun: true`; `MCP_ZERO_TRUST` fica desligado por decisão (P8), condição de reabertura registrada |
 
-**Veredito** (`standards_gate_blockg`): **BLOCKED** — G3/G4/G5 reprovados, cada um virou item
-de roadmap datado com owner no `ADR-PRIV-003` §5.
+**Veredito** (`standards_gate_blockg`, reavaliado após P1–P8): **approved** — todos os 5 gates
+aprovados com evidência, `ADR-PRIV-003` §1.
 
 ## Bloco 1 — Classificação do produto
 
 | # | Pergunta | Resposta |
 |---|---|---|
 | 1.1 | Perfil declarado | **AI-4** (`standards_classify_profile`: dado sensível em runtime força reclassificação) |
-| 1.2 | Multitenant? Isolamento/testes cross-tenant | A definir — P7 do ADR. Hoje `clinica_template` é soul única (template), sem tenant real; suíte de isolamento cross-tenant não existe |
-| 1.3 | Dado sensível/biométrico em runtime? | **Sim** — procedimento médico e agenda de paciente (dado de saúde). Biometria real (fotos) a confirmar — P5 |
+| 1.2 | Multitenant? Isolamento/testes cross-tenant | **Não, nesta fase** (P7) — protótipo sem clínica real, `clinica_template` é soul única. Isolamento cross-tenant fica pra decidir no onboarding da 1ª clínica real |
+| 1.3 | Dado sensível/biométrico em runtime? | **Sim** (saúde) / **Não** (biométrico — P5: sem fotos/reconhecimento facial nesta fase) |
 | 1.4 | Decisão automatizada com efeito jurídico/impacto relevante? | Parcial/a confirmar — `clinic_triage_lead` gera score que influencia priorização comercial; se afetar diretamente o atendimento do paciente, também dispara Bloco 14.1/14.2 |
 | 1.5 | Dependência de IA em runtime? | **Sim** — mesmo router local-first (Ollama/Zen) do resto do repo |
 
@@ -38,28 +38,28 @@ de roadmap datado com owner no `ADR-PRIV-003` §5.
 | 2.1 | Matriz RACI cobre o ciclo de vida completo? | Não | Só owners provisórios no `ADR-PRIV-003` (Identificação); RACI completo pendente |
 | 2.2 | Segregação de funções controlada tecnicamente? | Parcial | Catálogo L1/L2/L3 + `authorizeExecution()` existe; efetividade depende de `MCP_ZERO_TRUST=on` (P8) |
 | 2.3 | Ciclo de vida de ADR em uso? | Sim | Este processo — `docs/adr/ADR-PRIV-003-*.md`, versionado, com gatilhos de reavaliação (§8) |
-| 2.4 | DPO nomeado com substituto e canal operacional? | Não | P3 pendente |
+| 2.4 | DPO nomeado com substituto e canal operacional? | Parcial | DPO provisório nomeado (P3 — Everton Lima); substituto e canal operacional formal ainda pendentes |
 | 2.5 | Aceitações de risco residual em ata, com revisão? | Parcial | Exceção do Bloco 14 registrada no ADR §7 (validade + condição de encerramento); sem ata formal de órgão de governança ainda |
 
 ## Bloco 3 — Fornecedores, terceiros e nuvem
 
 | # | Pergunta | Sim/Par/Não | Evidência |
 |---|---|---|---|
-| 3.1 | Due diligence de fornecedores registrada? | Não | Depende do provedor de mensageria — P6 |
-| 3.2 | Contratos cobrem LGPD/auditoria/incidente? | Não | Idem P6 |
+| 3.1 | Due diligence de fornecedores registrada? | N/A | Evolution API self-hosted (P6) — mesmo fornecedor/infra já em uso no repo, sem due diligence nova a fazer |
+| 3.2 | Contratos cobrem LGPD/auditoria/incidente? | N/A | Idem — sem fornecedor novo |
 | 3.3 | Provedor de IA sem treinamento/retenção de dados do cliente? | Não verificado | Herdaria a config Zen/Ollama já usada no repo geral — não auditado especificamente para clínicas |
-| 3.4 | Modelo de responsabilidade compartilhada registrado? | Não | Pendente |
-| 3.5 | Plano de saída com exportabilidade? | Não | Pendente |
-| 3.6 | Região de processamento/DR avaliada (transferência)? | Não | Depende de P6 |
+| 3.4 | Modelo de responsabilidade compartilhada registrado? | Não | Pendente, não bloqueante (sem fornecedor novo) |
+| 3.5 | Plano de saída com exportabilidade? | Não | Pendente, não bloqueante (sem fornecedor novo) |
+| 3.6 | Região de processamento/DR avaliada (transferência)? | Parcial | Evolution self-hosted na própria infra do repo (P6); tráfego de protocolo WhatsApp ainda toca a rede da Meta — mesma exposição já aceita pelo canal existente, não uma transferência nova |
 
 ## Bloco 4 — Privacidade no produto (LGPD)
 
 | # | Pergunta | Sim/Par/Não | Evidência |
 |---|---|---|---|
-| 4.1 | Classificação da informação por tipo de dado? | Parcial | Sabemos que é dado de saúde (sensível); taxonomia completa (comum/sensível/biométrico) depende de P5 |
-| 4.2 | Retention schedule versionado, com descarte? | Não | P4 pendente (não herdar `FAMILIAS_RETENCAO_DIAS`=1825 por analogia) |
-| 4.3 | AIP/DPIA como gate de engenharia? | Não | Não implementado |
-| 4.4 | ROPA atualizado e sincronizado com código? | Não | Depende de P1–P4 |
+| 4.1 | Classificação da informação por tipo de dado? | Sim | Dado comum (nome/telefone/agenda) vs. sensível de saúde (procedimento/histórico) — sem biométrico (P5). `ADR-PRIV-003` §2 |
+| 4.2 | Retention schedule versionado, com descarte? | Parcial | 1825 dias decidido (P4), **provisório** até confirmar com conselho profissional — mecanismo de descarte (migration/sweep) ainda não implementado em código (Fase 2 futura, molde: `familias.ts`) |
+| 4.3 | AIP/DPIA como gate de engenharia? | Não | Não implementado — coberto pela exceção formal do Bloco 14 nesta fase de protótipo |
+| 4.4 | ROPA atualizado e sincronizado com código? | Parcial | Insumos decididos (base legal, finalidade, retenção — `ADR-PRIV-003` §2); documento ROPA formal ainda não escrito |
 | 4.5 | Consentimento específico, com prova e revogação? | Não | Padrão reaproveitável existe (`consent_evidence_ref`, domínio famílias — `ADR-PRIV-001` §8 P2), ainda não portado |
 | 4.6 | Fluxo de direitos do titular autenticado, com prazo? | Parcial | Padrão reaproveitável (`encerrarFamilia`/`excluirFamilia`/`sweepRetencaoFamilias`, `packages/core/src/familias.ts`) — plano: replicar equivalente para clínicas na Fase 2 |
 | 4.7 | Rito de notificação de incidente? | Não | Gap geral do repo, não específico de clínicas |
@@ -166,8 +166,8 @@ de roadmap datado com owner no `ADR-PRIV-003` §5.
 
 | Campo | Valor |
 |---|---|
-| Gates reprovados (Bloco G) — com item de roadmap | G3, G4, G5 — ver `ADR-PRIV-003` §5 (P1, P4, P5, P6, P8) |
-| ADRs a criar a partir dos blocos | `ADR-PRIV-003` (este) — cobre G3/G4/G5 e a exceção do Bloco 14; nenhum ADR adicional identificado nesta rodada |
+| Gates reprovados (Bloco G) — com item de roadmap | **Nenhum** — G1–G5 todos aprovados após P1–P8 (`ADR-PRIV-003` §1/§5) |
+| ADRs a criar a partir dos blocos | `ADR-PRIV-003` (este) — **Aceita** 2026-09-08; cobre G3/G4/G5 e a exceção do Bloco 14 |
 | Artefatos a criar / lacunas | Ver `mapa-artefatos-lacunas.md` (mesma pasta) |
 | Exceções com owner, validade e condição de encerramento | 1 — Bloco 14 completo, ver `ADR-PRIV-003` §7 |
-| Declaração de conformidade emitida | Ver `declaracao-conformidade.md` — estado "Não conforme" (Bloco G BLOCKED) |
+| Declaração de conformidade emitida | Ver `declaracao-conformidade.md` — estado "Conforme com pendências datadas" (Bloco G approved) |
