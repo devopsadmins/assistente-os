@@ -10,6 +10,7 @@ export * from "./migration.js";
 export * from "./webhook.js";
 export * from "./events.js";
 export * from "./entityQueue.js";
+export * from "./advisoryLock.js";
 export * from "./sessions.js";
 export * from "./accounts.js";
 export * from "./threads.js";

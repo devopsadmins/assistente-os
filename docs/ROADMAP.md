@@ -227,6 +227,24 @@ em aberto, porque aí vira ação de escrita e entra questão de permissão/auth
   reprocessam sozinhas na próxima run). Ainda falta: as outras 13 souls
   (~359 documentos restantes do `--dry-run` original de 1.097) — não
   iniciado, decisão de quando rodar em aberto.
+  **Otimização 2026-09-08** (achados verificados no código, não só supostos
+  numa análise externa): (1) cache de resolução canônica de entidade agora
+  dura a run inteira por soul, não só o segmento atual — `--soul` sem esse
+  fix recriava o Map a cada segmento; (2) o poller de extração do daemon
+  (`packages/daemon/src/entityExtraction.ts`) agora pula seus ticks via
+  advisory lock (`isBackfillRunning`) enquanto qualquer `backfill-entities`
+  estiver ativo — antes competiam pelo mesmo Ollama sem trava nenhuma;
+  (3) **dado real medido, não estimado**: rodar `main` + `investimentos` em
+  paralelo (dois processos de backfill ao mesmo tempo) elevou a taxa de
+  falha por timeout de 0% (solo) para 11–33% (paralelo) — confirma a
+  preocupação já documentada no JSDoc de `runBackfillEntities` contra
+  paralelizar entre souls. **Não implementado**: paralelismo formal entre
+  souls (`--souls a,b,c`) fica fora de escopo até essa taxa de falha cair
+  com amostra maior. `ENTITY_EXTRACTION_MAX_INPUT_CHARS` (novo, default
+  8000, mesmo padrão de `ENTITY_EXTRACTION_TIMEOUT_MS`) e a nova flag
+  `--force` existem só pra permitir medir timeout/tamanho de segmento antes
+  de decidir mudar qualquer default — ver `Toggles OFF a medir em staging`
+  abaixo.
 
 ### Vertical Clínicas — adoção AI-4 (2026-09-07/08)
 

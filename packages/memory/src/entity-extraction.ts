@@ -33,8 +33,10 @@ export type EntityKind = (typeof ENTITY_KINDS)[number];
 /** Abaixo deste tamanho não vale gastar uma chamada de LLM. */
 export const MIN_BODY_LENGTH_FOR_EXTRACTION = 20;
 
-/** Trunca corpo grande (ex.: conteúdo inteiro de um upload) antes de mandar pro LLM. */
-export const MAX_EXTRACTION_INPUT_CHARS = 8000;
+/** Trunca corpo grande (ex.: conteúdo inteiro de um upload) antes de mandar pro LLM.
+ * Override via env pra medir o efeito de segmentos maiores/menores (menos/mais
+ * chamadas de LLM) sem precisar rebuildar a cada experimento — ver docs/ROADMAP.md. */
+export const MAX_EXTRACTION_INPUT_CHARS = Number(process.env.ENTITY_EXTRACTION_MAX_INPUT_CHARS) || 8000;
 
 /**
  * Default subiu de 60s pra 180s (2026-09): 18 de 21 falhas históricas da fila
@@ -200,7 +202,16 @@ export async function extractEntitiesWithOllama(
 export async function processExtractionJob(
   pool: Pool,
   job: { soul: string; body: string },
-  opts: { ollamaUrl: string; chatModel: string; embedder?: EmbedderLike },
+  opts: {
+    ollamaUrl: string;
+    chatModel: string;
+    embedder?: EmbedderLike;
+    /** Cache de nome→canônico compartilhado entre chamadas (ex.: por soul,
+     * dentro de uma run de `os memory backfill-entities`). Sem isso, cada
+     * chamada cria um Map novo (comportamento do poller do daemon, que
+     * processa 1 job por vez e não se beneficiaria de um cache maior). */
+    canonicalNameCache?: Map<string, string>;
+  },
 ): Promise<{ entitiesCreated: number; relationsCreated: number; usage?: LlmUsageLite }> {
   const { entities, relations, usage } = await extractEntitiesWithOllama(job.body, opts.ollamaUrl, opts.chatModel);
 
@@ -208,7 +219,7 @@ export async function processExtractionJob(
   // se `opts.embedder` + GRAPH_ENTITY_DEDUP estiverem ligados) antes de
   // upsertar — evita criar duplicata e evita relação órfã apontando pro
   // nome bruto quando o canônico é outro.
-  const canonicalNames = new Map<string, string>();
+  const canonicalNames = opts.canonicalNameCache ?? new Map<string, string>();
   const resolve = async (rawName: string): Promise<string> => {
     const cached = canonicalNames.get(rawName);
     if (cached) return cached;

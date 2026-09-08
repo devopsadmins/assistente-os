@@ -32,6 +32,7 @@ import {
   canvasDrift,
   type CanvasSystemFacts,
   type AssistenteOsConfig,
+  acquireSharedLock,
 } from "@assistente-os/core";
 import {
   indexDirectory,
@@ -88,7 +89,7 @@ Uso:
   os memory <soul> index             indexa a pasta da soul (md/txt) no memory.db
   os memory <soul> search <q>        busca RAG (literal se Ollama ausente)
   os memory <soul> status            contagem de chunks e grafo
-  os memory backfill-entities [--soul <id>] [--dry-run] [--limit N] [--model <nome>]
+  os memory backfill-entities [--soul <id>] [--dry-run] [--limit N] [--model <nome>] [--force]
                                      extrai entidades/relações do que já está indexado no RAG
                                      (por documento, não por chunk); --model sobrescreve só
                                      pra esta run (não mexe no OLLAMA_CHAT_MODEL do chat ao
@@ -137,10 +138,13 @@ interface BackfillFlags {
   dryRun: boolean;
   limit?: number;
   model?: string;
+  /** Reprocessa mesmo documentos já `completed` — pra comparar configs (timeout,
+   * ENTITY_EXTRACTION_MAX_INPUT_CHARS) no MESMO documento entre duas runs. */
+  force: boolean;
 }
 
 function parseBackfillFlags(args: string[]): BackfillFlags {
-  const flags: BackfillFlags = { dryRun: false };
+  const flags: BackfillFlags = { dryRun: false, force: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--soul" && args[i + 1]) {
       flags.soul = args[++i];
@@ -150,6 +154,8 @@ function parseBackfillFlags(args: string[]): BackfillFlags {
       flags.limit = Number(args[++i]);
     } else if (args[i] === "--model" && args[i + 1]) {
       flags.model = args[++i];
+    } else if (args[i] === "--force") {
+      flags.force = true;
     }
   }
   return flags;
@@ -165,8 +171,17 @@ function parseBackfillFlags(args: string[]): BackfillFlags {
  * Bypassa `entity_extraction_queue` (chama processExtractionJob direto) pra
  * não competir com tráfego de chat ao vivo e ter progresso síncrono no
  * terminal. Idempotente via `document_extraction_state`: documentos já
- * `completed` são pulados, então a run pode ser interrompida (Ctrl-C) e
- * retomada depois sem reprocessar.
+ * `completed` são pulados (exceto com `--force`), então a run pode ser
+ * interrompida (Ctrl-C) e retomada depois sem reprocessar.
+ *
+ * Segura um advisory lock compartilhado (`acquireSharedLock`) enquanto roda:
+ * várias souls/processos de backfill convivem entre si sem se bloquear, mas
+ * o poller do daemon (`packages/daemon/src/entityExtraction.ts`) pula seus
+ * ticks enquanto qualquer backfill estiver ativo — evita a mesma contenção
+ * de Ollama que motivou o processamento serial. Paralelismo *entre souls*
+ * (ex.: dois backfills ao mesmo tempo) continua por conta de quem chama —
+ * dados reais mostraram taxa de falha maior nesse caso (ver docs/ROADMAP.md),
+ * então não é recomendado sem medir primeiro.
  */
 async function runBackfillEntities(config: AssistenteOsConfig, args: string[]): Promise<void> {
   const flags = parseBackfillFlags(args);
@@ -183,82 +198,97 @@ async function runBackfillEntities(config: AssistenteOsConfig, args: string[]): 
   let processed = 0;
   let ok = 0;
   let failed = 0;
+  const latenciesMs: number[] = [];
+  const failuresByType = new Map<string, number>();
 
-  outer: for (const soulId of soulIds) {
-    let paths: string[];
-    try {
-      paths = await listDocumentPaths(pool, soulId);
-    } catch (err) {
-      console.error(`${soulId}: falha ao listar documentos — ${err instanceof Error ? err.message : String(err)}`);
-      continue;
-    }
-    for (const path of paths) {
-      let status: string | null;
+  const backfillLock = flags.dryRun ? null : await acquireSharedLock(pool);
+  try {
+    outer: for (const soulId of soulIds) {
+      let paths: string[];
       try {
-        status = await getDocumentExtractionStatus(pool, soulId, path);
+        paths = await listDocumentPaths(pool, soulId);
       } catch (err) {
-        console.error(`${soulId}/${path}: falha ao consultar estado — ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`${soulId}: falha ao listar documentos — ${err instanceof Error ? err.message : String(err)}`);
         continue;
       }
-      if (status === "completed") continue;
+      // Por soul, não por run inteira: um cache global por processo faria um
+      // nome igual em duas souls diferentes ("João" em `main` e em
+      // `investimentos`) colidir e vazar o canônico errado entre souls.
+      const canonicalNameCache = new Map<string, string>();
+      for (const path of paths) {
+        let status: string | null;
+        try {
+          status = await getDocumentExtractionStatus(pool, soulId, path);
+        } catch (err) {
+          console.error(`${soulId}/${path}: falha ao consultar estado — ${err instanceof Error ? err.message : String(err)}`);
+          continue;
+        }
+        if (status === "completed" && !flags.force) continue;
 
-      if (flags.dryRun) {
+        if (flags.dryRun) {
+          try {
+            const text = await getDocumentText(pool, soulId, path);
+            candidateDocs++;
+            candidateSegments += segmentDocumentText(text).length;
+          } catch (err) {
+            console.error(`${soulId}/${path}: falha ao ler texto — ${err instanceof Error ? err.message : String(err)}`);
+          }
+          continue;
+        }
+
+        if (flags.limit !== undefined && processed >= flags.limit) break outer;
+
+        // Um documento inteiro não deve derrubar a run inteira (horas de trabalho já
+        // feito) por causa de um erro pontual — LLM ou conexão de banco instável no
+        // meio de uma run longa. Falha aqui vira "failed" nesse documento só; a run
+        // continua pro próximo (retomável depois via document_extraction_state).
+        let docFailed = false;
+        let lastError = "";
+        let segmentCount = 0;
         try {
           const text = await getDocumentText(pool, soulId, path);
-          candidateDocs++;
-          candidateSegments += segmentDocumentText(text).length;
-        } catch (err) {
-          console.error(`${soulId}/${path}: falha ao ler texto — ${err instanceof Error ? err.message : String(err)}`);
-        }
-        continue;
-      }
-
-      if (flags.limit !== undefined && processed >= flags.limit) break outer;
-
-      // Um documento inteiro não deve derrubar a run inteira (horas de trabalho já
-      // feito) por causa de um erro pontual — LLM ou conexão de banco instável no
-      // meio de uma run longa. Falha aqui vira "failed" nesse documento só; a run
-      // continua pro próximo (retomável depois via document_extraction_state).
-      let docFailed = false;
-      let lastError = "";
-      let segmentCount = 0;
-      try {
-        const text = await getDocumentText(pool, soulId, path);
-        const segments = segmentDocumentText(text);
-        segmentCount = segments.length;
-        for (const segment of segments) {
-          let succeeded = false;
-          for (let attempt = 0; attempt < BACKFILL_MAX_ATTEMPTS && !succeeded; attempt++) {
-            try {
-              await processExtractionJob(pool, { soul: soulId, body: segment }, {
-                ollamaUrl: config.ollamaUrl,
-                chatModel: flags.model ?? config.entityExtractionModel,
-                embedder: graphDedupConfig().embeddingEnabled ? getEmbedder() : undefined,
-              });
-              succeeded = true;
-            } catch (err) {
-              lastError = err instanceof Error ? err.message : String(err);
+          const segments = segmentDocumentText(text);
+          segmentCount = segments.length;
+          for (const segment of segments) {
+            let succeeded = false;
+            for (let attempt = 0; attempt < BACKFILL_MAX_ATTEMPTS && !succeeded; attempt++) {
+              try {
+                const { usage } = await processExtractionJob(pool, { soul: soulId, body: segment }, {
+                  ollamaUrl: config.ollamaUrl,
+                  chatModel: flags.model ?? config.entityExtractionModel,
+                  embedder: graphDedupConfig().embeddingEnabled ? getEmbedder() : undefined,
+                  canonicalNameCache,
+                });
+                if (usage) latenciesMs.push(usage.latencyMs);
+                succeeded = true;
+              } catch (err) {
+                lastError = err instanceof Error ? err.message : String(err);
+                failuresByType.set(lastError, (failuresByType.get(lastError) ?? 0) + 1);
+              }
+            }
+            if (!succeeded) {
+              docFailed = true;
+              break;
             }
           }
-          if (!succeeded) {
-            docFailed = true;
-            break;
-          }
+        } catch (err) {
+          docFailed = true;
+          lastError = err instanceof Error ? err.message : String(err);
+          failuresByType.set(lastError, (failuresByType.get(lastError) ?? 0) + 1);
         }
-      } catch (err) {
-        docFailed = true;
-        lastError = err instanceof Error ? err.message : String(err);
-      }
 
-      try {
-        await setDocumentExtractionState(pool, soulId, path, docFailed ? "failed" : "completed", docFailed ? lastError : null);
-      } catch {
-        /* melhor esforço — não deixa um erro de estado derrubar a run */
+        try {
+          await setDocumentExtractionState(pool, soulId, path, docFailed ? "failed" : "completed", docFailed ? lastError : null);
+        } catch {
+          /* melhor esforço — não deixa um erro de estado derrubar a run */
+        }
+        docFailed ? failed++ : ok++;
+        processed++;
+        console.log(`[${processed}] ${soulId}/${path} — ${docFailed ? `falhou: ${lastError}` : `ok (${segmentCount} segmento(s))`}`);
       }
-      docFailed ? failed++ : ok++;
-      processed++;
-      console.log(`[${processed}] ${soulId}/${path} — ${docFailed ? `falhou: ${lastError}` : `ok (${segmentCount} segmento(s))`}`);
     }
+  } finally {
+    await backfillLock?.release();
   }
 
   if (flags.dryRun) {
@@ -268,6 +298,18 @@ async function runBackfillEntities(config: AssistenteOsConfig, args: string[]): 
     return;
   }
   console.log(`concluído: ${processed} documento(s) processado(s) — ${ok} ok, ${failed} falhou(aram)`);
+  if (latenciesMs.length > 0) {
+    const sum = latenciesMs.reduce((a, b) => a + b, 0);
+    const min = Math.min(...latenciesMs);
+    const max = Math.max(...latenciesMs);
+    console.log(`latência LLM por chamada: média ${Math.round(sum / latenciesMs.length)}ms · min ${min}ms · max ${max}ms · n=${latenciesMs.length}`);
+  }
+  if (failuresByType.size > 0) {
+    console.log("falhas por tipo:");
+    for (const [message, count] of failuresByType) {
+      console.log(`  ${count}x — ${message}`);
+    }
+  }
 }
 
 async function main(): Promise<void> {

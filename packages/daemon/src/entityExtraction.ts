@@ -4,6 +4,7 @@ import {
   claimEntityExtractionJobs,
   finishEntityExtractionJob,
   reclaimStuckEntityExtractionJobs,
+  isBackfillRunning,
   MAX_EXTRACTION_ATTEMPTS,
 } from "@assistente-os/core";
 import { processExtractionJob, graphDedupConfig, getEmbedder } from "@assistente-os/memory";
@@ -24,6 +25,12 @@ export async function processEntityExtractionJobs(options: EntityExtractionConsu
   const { home, onDone } = options;
   const config = loadConfig({ home });
   const pool = getPool(config.databaseUrl);
+  // `os memory backfill-entities` segura um advisory lock compartilhado
+  // enquanto roda — pula este tick pra não competir pelo mesmo Ollama
+  // (achado real: paralelizar contra a mesma instância eleva a taxa de
+  // timeout/abort). Jobs do chat ficam `pending` e são pegos no próximo
+  // tick livre (20s depois), mesma garantia que já existe pra jobs presos.
+  if (await isBackfillRunning(pool)) return 0;
   await reclaimStuckEntityExtractionJobs(pool);
   const jobs = await claimEntityExtractionJobs(pool, 5);
   let processed = 0;
