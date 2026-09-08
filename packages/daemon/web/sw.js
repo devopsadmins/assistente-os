@@ -1,12 +1,12 @@
-const CACHE_NAME = 'assistente-os-v5';
+const CACHE_NAME = 'terras-ia-v7';
 const FILES_TO_CACHE = [
   '/',
   '/manifest.json',
   '/assets/app.css',
   '/assets/app.js',
-  '/assets/logo.png',
-  '/assets/icon-192.png',
-  '/assets/icon-512.png'
+  '/assets/logo.svg',
+  '/assets/terrasia-icon-192.png',
+  '/assets/terrasia-icon-512.png'
 ];
 
 self.addEventListener('install', event => {

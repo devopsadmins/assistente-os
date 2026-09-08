@@ -107,11 +107,16 @@ $("#tabs").addEventListener("click", (e) => {
   } else {
     stopCentralAutoRefresh();
   }
+  if (btn.dataset.tab === "observability") {
+    loadObservability();
+    startObservabilityAutoRefresh();
+  } else {
+    stopObservabilityAutoRefresh();
+  }
   if (btn.dataset.tab === "dashboard") loadDashboard();
   if (btn.dataset.tab === "memory" && state.active) loadMemoryStatus();
   if (btn.dataset.tab === "graph" && state.active) loadGraph();
   if (btn.dataset.tab === "langgraph" && state.active) loadLangGraph();
-  if (btn.dataset.tab === "observability") loadObservability();
   if (btn.dataset.tab === "friendly-admin") loadFriendlyAdmin();
   if (btn.dataset.tab === "buffer") loadBuffer();
   if (btn.dataset.tab === "llm") loadLlm();
@@ -1103,12 +1108,46 @@ async function loadCentral() {
   }
 }
 
+let _observabilityInterval = null;
+function stopObservabilityAutoRefresh() {
+  if (_observabilityInterval) {
+    clearInterval(_observabilityInterval);
+    _observabilityInterval = null;
+  }
+}
+function startObservabilityAutoRefresh() {
+  stopObservabilityAutoRefresh();
+  _observabilityInterval = setInterval(() => loadObservability().catch(() => {}), 15000);
+}
+
 async function loadObservability() {
-  const [infra, events, costs] = await Promise.all([
+  const [infra, events, costs, backfill] = await Promise.all([
     api("/infra/status").catch(() => null),
     api("/events").catch(() => null),
     api("/costs").catch(() => null),
+    api("/telemetry/backfill-status").catch(() => null),
   ]);
+
+  const backfillBox = $("#backfill-status-box");
+  if (backfillBox) {
+    const rows = backfill?.souls ?? [];
+    backfillBox.innerHTML = rows.length
+      ? `<table class="costs-table">
+          <thead><tr><th>Soul</th><th>Candidatos</th><th>Completos</th><th>Falharam</th><th>Nunca tentados</th></tr></thead>
+          <tbody>${rows
+            .map(
+              (r) => `<tr>
+                <td>${esc(r.soul)}</td>
+                <td>${r.candidatos}</td>
+                <td>${r.completos}</td>
+                <td>${r.falharam > 0 ? `<span class="chip fail">${r.falharam}</span>` : "0"}</td>
+                <td>${r.pendentes > 0 ? `<span class="chip">${r.pendentes}</span>` : "0"}</td>
+              </tr>`,
+            )
+            .join("")}</tbody>
+        </table>`
+      : `<span class="muted">${backfill ? "nenhum documento indexado ainda" : "indisponível"}</span>`;
+  }
 
   const mon = infra?.monitors ?? [];
   const ollamaOk = !!(infra && infra.ollama && infra.ollama.ok);

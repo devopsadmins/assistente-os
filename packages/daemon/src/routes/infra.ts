@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { loadConfig, getPool, eventStats, listMonitors, listExecutions, getTrace } from "@assistente-os/core";
+import { getBackfillStatus } from "@assistente-os/memory";
 import { sendJson, type RequestContext } from "./shared.js";
 
 /** GET /infra/status — snapshot de saúde do daemon (Ollama, Postgres, sistema, RAG, eventos, monitores). */
@@ -155,6 +156,21 @@ export async function handleInfra(
       monitors: await listMonitors(pool),
       executions: await listExecutions(pool, undefined, 5),
     });
+    return true;
+  }
+
+  /** GET /telemetry/backfill-status — progresso do `os memory backfill-entities` por soul. */
+  if (req.method === "GET" && path === "/telemetry/backfill-status") {
+    const config = loadConfig({ home });
+    const pool = getPool(config.databaseUrl);
+    const { listSouls } = await import("@assistente-os/core");
+    // `chunks`/`document_extraction_state` acumulam linhas órfãs de souls já
+    // apagadas do disco (nunca são limpas na exclusão) — filtra pras que
+    // existem de verdade, senão a tabela mistura lixo histórico com o que
+    // importa hoje.
+    const realSoulIds = new Set(listSouls(home).map((s) => s.id));
+    const status = (await getBackfillStatus(pool)).filter((r) => realSoulIds.has(r.soul));
+    sendJson(res, 200, { souls: status });
     return true;
   }
 
