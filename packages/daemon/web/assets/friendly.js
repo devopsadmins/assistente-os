@@ -226,6 +226,19 @@ function collectCapabilitiesPicker(container, kind) {
   return [...container.querySelectorAll(`input[data-kind="${kind}"]:checked`)].map((el) => el.value);
 }
 
+/* ---------- picker de modelo liberado pelo plano da conta ---------- */
+
+let availableModelsCache = null;
+async function fetchAvailableModels() {
+  if (availableModelsCache) return availableModelsCache;
+  try {
+    availableModelsCache = await api("/accounts/me/available-models");
+  } catch {
+    availableModelsCache = { models: [] };
+  }
+  return availableModelsCache;
+}
+
 /* ---------- criação de soul (wizard, Fase 2) ---------- */
 
 async function openCreateModal() {
@@ -239,6 +252,16 @@ async function openCreateModal() {
     wrap.hidden = false;
   } else {
     wrap.hidden = true;
+  }
+  const availableModels = await fetchAvailableModels();
+  const modelWrap = $("#friendly-create-model-wrap");
+  if (availableModels.models.length) {
+    $("#friendly-create-model").innerHTML = availableModels.models
+      .map((m) => `<option value="${esc(m)}">${esc(m)}</option>`)
+      .join("");
+    modelWrap.hidden = false;
+  } else {
+    modelWrap.hidden = true;
   }
   $("#friendly-create-overlay").hidden = false;
   $("#friendly-create-purpose").focus();
@@ -273,17 +296,19 @@ $("#friendly-create-confirm").addEventListener("click", async () => {
     const capPicker = $("#friendly-create-capabilities");
     const capabilities = collectCapabilitiesPicker(capPicker, "capability");
     const skills = collectCapabilitiesPicker(capPicker, "skill");
+    const modelWrap = $("#friendly-create-model-wrap");
+    const model = modelWrap.hidden ? undefined : $("#friendly-create-model").value;
     // dry_run (valida + gera plan_hash) seguido de commit imediato — o usuário
     // amigável não precisa ver a etapa de confirmação técnica, ela é uma
     // garantia de contrato da API, não uma decisão que ele precisa tomar.
-    const dry = await api("/accounts/me/souls", { method: "POST", body: JSON.stringify({ purpose, id: id || undefined, capabilities, skills }) });
+    const dry = await api("/accounts/me/souls", { method: "POST", body: JSON.stringify({ purpose, id: id || undefined, model, capabilities, skills }) });
     if (!dry.ok) {
       showCreateError((dry.issues && dry.issues[0] && dry.issues[0].message) || "não foi possível criar esse assistente");
       return;
     }
     const commit = await api("/accounts/me/souls", {
       method: "POST",
-      body: JSON.stringify({ purpose, id: id || undefined, capabilities, skills, dry_run: false, plan_hash: dry.plan_hash }),
+      body: JSON.stringify({ purpose, id: id || undefined, model, capabilities, skills, dry_run: false, plan_hash: dry.plan_hash }),
     });
     state.activeSoulId = commit.soul_id;
     closeCreateModal();

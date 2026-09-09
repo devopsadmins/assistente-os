@@ -15,6 +15,8 @@ import {
   loadConfig,
   getPool,
   getFriendlyAllowlist,
+  getAccountById,
+  getPlan,
   CAPABILITY_CATALOG,
   SOUL_SPEC_SCHEMA_VERSION,
   CAPABILITY_CATALOG_VERSION,
@@ -29,6 +31,7 @@ import { directoryTotalBytes, friendlyUploadKbLimit } from "../upload.js";
 const CreateAccountSoulSchema = z.object({
   purpose: requiredTrimmedString("purpose é obrigatório — descreva no que esse assistente vai ajudar"),
   id: optionalTrimmedString(),
+  model: optionalTrimmedString(),
   capabilities: z.unknown().optional(),
   skills: z.unknown().optional(),
   dry_run: z.boolean().optional(),
@@ -90,6 +93,31 @@ async function validateRequestedGrants(
   return { ok: true, capabilities, skills };
 }
 
+/**
+ * Resolve e valida o modelo pedido na criação contra o plano da conta
+ * (packages/core/src/plans.ts, admin configura via /admin/plans). Lista
+ * vazia em plan.allowedModels = sem restrição (comportamento de hoje) —
+ * `requestedModel` passa direto, mesmo undefined. Lista não-vazia: modelo
+ * pedido tem que estar nela, senão erro; se o cliente não pediu nenhum,
+ * usa o primeiro da lista como default (nunca deixa a soul sem modelo
+ * quando o plano restringe).
+ */
+async function resolveModelForAccount(
+  pool: import("pg").Pool,
+  accountId: number,
+  requestedModel: string | undefined,
+): Promise<{ ok: true; model: string | undefined } | { ok: false; error: string }> {
+  const account = await getAccountById(pool, accountId);
+  const plan = account ? await getPlan(pool, account.planId) : null;
+  const allowedModels = plan?.allowedModels ?? [];
+  if (allowedModels.length === 0) return { ok: true, model: requestedModel };
+  if (requestedModel === undefined) return { ok: true, model: allowedModels[0] };
+  if (!allowedModels.includes(requestedModel)) {
+    return { ok: false, error: `modelo '${requestedModel}' não está liberado no plano '${plan?.id}'` };
+  }
+  return { ok: true, model: requestedModel };
+}
+
 /** Slug único: sufixa -2, -3... se colidir com uma soul existente. */
 function uniqueSlug(base: string, existingIds: Set<string>): string {
   const root = base || "assistente";
@@ -142,6 +170,19 @@ export async function handleAccountSouls(
     return true;
   }
 
+  if (path === "/accounts/me/available-models" && req.method === "GET") {
+    const accountId = getRequestAccountId(req);
+    if (accountId == null) {
+      sendJson(res, 401, { error: "requer sessão de conta (faça login)" });
+      return true;
+    }
+    const pool = getPool(loadConfig({ home }).databaseUrl);
+    const account = await getAccountById(pool, accountId);
+    const plan = account ? await getPlan(pool, account.planId) : null;
+    sendJson(res, 200, { models: plan?.allowedModels ?? [] });
+    return true;
+  }
+
   if (path !== "/accounts/me/souls" || req.method !== "POST") return false;
 
   const accountId = getRequestAccountId(req);
@@ -173,6 +214,11 @@ export async function handleAccountSouls(
     sendJson(res, 400, { error: grants.error, code: "E_VALIDATION" });
     return true;
   }
+  const modelResolution = await resolveModelForAccount(pool, accountId, body.model ?? undefined);
+  if (!modelResolution.ok) {
+    sendJson(res, 400, { error: modelResolution.error, code: "E_VALIDATION" });
+    return true;
+  }
 
   const existingIds = new Set(existingSouls.map((s) => s.id));
   const requestedId = body.id ?? "";
@@ -188,6 +234,7 @@ export async function handleAccountSouls(
     capabilities: grants.capabilities,
     skills: grants.skills,
     ownerAccountId: accountId,
+    model: modelResolution.model,
   };
   const validation = validateSoulSpec(spec, { existingIds });
   const resolved = resolveSoulSpecDefaults(spec, DEFAULT_GLOBAL_GUARDRAILS);

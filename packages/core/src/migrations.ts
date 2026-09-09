@@ -552,4 +552,26 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_relation_history_relation ON relation_history (relation_id, replaced_at);
     `,
   },
+  {
+    // Plano por conta (modo amigável): quais modelos as souls de uma conta
+    // podem usar + teto de gasto diário agregado por conta, além do
+    // dailyLimit por soul que já existia. allowed_models=[] e
+    // daily_spend_limit=NULL no seed 'free' == comportamento de hoje (sem
+    // restrição extra) — nenhuma conta self-service existente regride.
+    id: "0025_account_plans",
+    sql: `
+      CREATE TABLE IF NOT EXISTS plans (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        allowed_models TEXT[] NOT NULL DEFAULT '{}',
+        daily_spend_limit NUMERIC,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      INSERT INTO plans (id, display_name) VALUES ('free', 'Free')
+        ON CONFLICT (id) DO NOTHING;
+
+      ALTER TABLE accounts
+        ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'free' REFERENCES plans (id);
+    `,
+  },
 ];

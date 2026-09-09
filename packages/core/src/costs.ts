@@ -42,6 +42,15 @@ export async function sumCostBySoul(pool: Pool, soul: string, sinceIso?: string)
   return rows[0]?.s ?? 0;
 }
 
+/** Generalização de sumCostBySoul pra várias souls de uma vez — usada pra somar gasto por CONTA (souls-da-conta resolvidas pelo chamador via listSouls + ownerAccountId, não por esta função). */
+export async function sumCostBySouls(pool: Pool, souls: string[], sinceIso?: string): Promise<number> {
+  if (souls.length === 0) return 0;
+  const { rows } = sinceIso
+    ? await pool.query<{ s: number | null }>("SELECT SUM(cost) AS s FROM cost_calls WHERE soul = ANY($1) AND ts >= $2", [souls, sinceIso])
+    : await pool.query<{ s: number | null }>("SELECT SUM(cost) AS s FROM cost_calls WHERE soul = ANY($1)", [souls]);
+  return rows[0]?.s ?? 0;
+}
+
 export async function recentCalls(pool: Pool, soul: string, limit = 20): Promise<CostCall[]> {
   const { rows } = await pool.query("SELECT * FROM cost_calls WHERE soul = $1 ORDER BY id DESC LIMIT $2", [soul, limit]);
   return rows.map(rowToCostCall);

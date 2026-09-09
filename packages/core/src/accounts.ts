@@ -18,6 +18,7 @@ export interface AccountRecord {
   id: number;
   email: string;
   createdAt: string;
+  planId: string;
 }
 
 export interface AccountSession {
@@ -54,6 +55,7 @@ function rowToAccount(row: Record<string, unknown>): AccountRecord {
     id: Number(row.id),
     email: String(row.email),
     createdAt: String(row.created_at),
+    planId: String(row.plan_id),
   };
 }
 
@@ -124,4 +126,14 @@ export async function deleteAccountSession(pool: Pool, token: string): Promise<v
 export async function getAccountById(pool: Pool, accountId: number): Promise<AccountRecord | null> {
   const { rows } = await pool.query("SELECT * FROM accounts WHERE id = $1", [accountId]);
   return rows[0] ? rowToAccount(rows[0]) : null;
+}
+
+/** Lookup por e-mail sem checar senha — uso administrativo (ex.: atribuir plano por e-mail). */
+export async function getAccountByEmail(pool: Pool, email: string): Promise<AccountRecord | null> {
+  const { rows } = await pool.query("SELECT * FROM accounts WHERE email = $1", [normalizeEmail(email)]);
+  return rows[0] ? rowToAccount(rows[0]) : null;
+}
+
+export async function setAccountPlan(pool: Pool, accountId: number, planId: string): Promise<void> {
+  await pool.query("UPDATE accounts SET plan_id = $1 WHERE id = $2", [planId, accountId]);
 }

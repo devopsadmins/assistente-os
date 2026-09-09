@@ -6,6 +6,10 @@ import {
   anotar,
   todayISODate,
   sumCostBySoul,
+  sumCostBySouls,
+  listSouls,
+  getAccountById,
+  getPlan,
   openSession,
   bumpSessionPrompt,
   recordSessionMessage,
@@ -352,6 +356,28 @@ export async function preparePromptContext(params: {
   const spentToday = await sumCostBySoul(pool, soul.id, todayISODate());
   if (dailyLimit !== undefined && spentToday >= dailyLimit) {
     return { ok: false, status: 429, body: { error: "teto diário de gastos atingido", limit: dailyLimit, spent: spentToday } };
+  }
+  // FinOps por conta (modo amigável): teto agregado além do dailyLimit da
+  // soul individual — soma o gasto de todas as souls da MESMA conta
+  // (ownerAccountId mora no config.json em disco, não numa coluna, por
+  // isso o join é feito aqui via listSouls, não em SQL puro).
+  const ownerAccountId = soul.config.ownerAccountId;
+  if (ownerAccountId !== undefined) {
+    const account = await getAccountById(pool, ownerAccountId);
+    const plan = account ? await getPlan(pool, account.planId) : null;
+    if (plan?.dailySpendLimit != null) {
+      const accountSoulIds = listSouls(home)
+        .filter((s) => s.config.ownerAccountId === ownerAccountId)
+        .map((s) => s.id);
+      const spentTodayAccount = await sumCostBySouls(pool, accountSoulIds, todayISODate());
+      if (spentTodayAccount >= plan.dailySpendLimit) {
+        return {
+          ok: false,
+          status: 429,
+          body: { error: "teto diário de gastos da conta atingido", limit: plan.dailySpendLimit, spent: spentTodayAccount },
+        };
+      }
+    }
   }
   // Isolamento de sessão por cliente: header X-Client-Id se enviado, senão
   // hash do token (separa instalações), senão 'default' (single-user).

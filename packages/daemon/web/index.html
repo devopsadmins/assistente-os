@@ -506,6 +506,25 @@
         <button id="friendly-admin-save" type="button"><svg class="ic"><use href="#i-send"/></svg>Salvar allowlist</button>
       </div>
       <div id="friendly-admin-status" class="muted" style="margin-top:8px"></div>
+
+      <h2 style="margin-top:24px">Planos — modelo permitido e teto de gasto por conta</h2>
+      <div class="muted" style="margin-bottom:10px">
+        Cada conta tem um plano (`free` por padrão). Modelos vazio = sem restrição extra na criação da soul;
+        teto de gasto vazio = sem teto agregado por conta, além do dailyLimit de cada soul.
+      </div>
+      <div id="friendly-admin-plans" class="box"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="friendly-admin-plan-add" type="button">+ novo plano</button>
+      </div>
+      <div id="friendly-admin-plans-status" class="muted" style="margin-top:8px"></div>
+
+      <h3 style="margin-top:18px">Atribuir plano a uma conta</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="friendly-admin-assign-email" type="email" placeholder="e-mail da conta" style="flex:1;min-width:220px" />
+        <select id="friendly-admin-assign-plan"></select>
+        <button id="friendly-admin-assign-btn" type="button">Atribuir</button>
+      </div>
+      <div id="friendly-admin-assign-status" class="muted" style="margin-top:8px"></div>
     </section>
   </main>
 </div>

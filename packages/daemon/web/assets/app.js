@@ -117,7 +117,7 @@ $("#tabs").addEventListener("click", (e) => {
   if (btn.dataset.tab === "memory" && state.active) loadMemoryStatus();
   if (btn.dataset.tab === "graph" && state.active) loadGraph();
   if (btn.dataset.tab === "langgraph" && state.active) loadLangGraph();
-  if (btn.dataset.tab === "friendly-admin") loadFriendlyAdmin();
+  if (btn.dataset.tab === "friendly-admin") { loadFriendlyAdmin(); loadPlansAdmin(); }
   if (btn.dataset.tab === "buffer") loadBuffer();
   if (btn.dataset.tab === "llm") loadLlm();
   if (btn.dataset.tab === "mcp") loadMcp();
@@ -1551,6 +1551,83 @@ $("#friendly-admin-save")?.addEventListener("click", async () => {
     status.textContent = `salvo — ${capabilities.length} capability(ies), ${skills.length} skill(s) liberadas pro self-service`;
   } catch (err) {
     status.textContent = `erro ao salvar: ${esc(err.message)}`;
+  }
+});
+
+/* ---------- modo amigável: planos por conta ---------- */
+function planRowHtml(plan) {
+  const idAttr = esc(plan.id);
+  return `
+    <div class="friendly-plan-row" data-id="${idAttr}" style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap">
+      <input class="friendly-plan-id mono" value="${idAttr}" placeholder="id (ex: pro)" style="width:100px" ${plan.id ? "readonly" : ""} />
+      <input class="friendly-plan-name" value="${esc(plan.displayName || "")}" placeholder="nome" style="width:120px" />
+      <input class="friendly-plan-models mono" value="${esc((plan.allowedModels || []).join(", "))}" placeholder="modelos, separados por vírgula (vazio = sem restrição)" style="flex:1;min-width:220px" />
+      <input class="friendly-plan-limit" type="number" step="0.01" value="${plan.dailySpendLimit ?? ""}" placeholder="teto diário (vazio = sem teto)" style="width:150px" />
+      <button class="friendly-plan-save" type="button">salvar</button>
+    </div>`;
+}
+
+async function loadPlansAdmin() {
+  const status = $("#friendly-admin-plans-status");
+  status.textContent = "";
+  let data;
+  try {
+    data = await api("/admin/plans");
+  } catch (err) {
+    $("#friendly-admin-plans").innerHTML = "";
+    status.textContent = `erro ao carregar: ${esc(err.message)}`;
+    return;
+  }
+  $("#friendly-admin-plans").innerHTML = data.plans.map(planRowHtml).join("") || `<span class="muted">Nenhum plano ainda.</span>`;
+  $("#friendly-admin-assign-plan").innerHTML = data.plans.map((p) => `<option value="${esc(p.id)}">${esc(p.displayName)} (${esc(p.id)})</option>`).join("");
+}
+
+$("#friendly-admin-plans")?.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".friendly-plan-save");
+  if (!btn) return;
+  const row = btn.closest(".friendly-plan-row");
+  const status = $("#friendly-admin-plans-status");
+  const id = row.querySelector(".friendly-plan-id").value.trim();
+  const displayName = row.querySelector(".friendly-plan-name").value.trim();
+  const allowedModels = row
+    .querySelector(".friendly-plan-models")
+    .value.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const limitRaw = row.querySelector(".friendly-plan-limit").value.trim();
+  const dailySpendLimit = limitRaw === "" ? null : Number(limitRaw);
+  if (!id || !displayName) {
+    status.textContent = "id e nome são obrigatórios";
+    return;
+  }
+  status.textContent = "salvando…";
+  try {
+    await api("/admin/plans", { method: "PUT", body: JSON.stringify({ id, displayName, allowedModels, dailySpendLimit }) });
+    status.textContent = `plano '${id}' salvo`;
+    await loadPlansAdmin();
+  } catch (err) {
+    status.textContent = `erro ao salvar: ${esc(err.message)}`;
+  }
+});
+
+$("#friendly-admin-plan-add")?.addEventListener("click", () => {
+  $("#friendly-admin-plans").insertAdjacentHTML("beforeend", planRowHtml({ id: "", displayName: "", allowedModels: [], dailySpendLimit: null }));
+});
+
+$("#friendly-admin-assign-btn")?.addEventListener("click", async () => {
+  const status = $("#friendly-admin-assign-status");
+  const email = $("#friendly-admin-assign-email").value.trim();
+  const planId = $("#friendly-admin-assign-plan").value;
+  if (!email || !planId) {
+    status.textContent = "informe e-mail e plano";
+    return;
+  }
+  status.textContent = "atribuindo…";
+  try {
+    await api("/admin/accounts/plan", { method: "PATCH", body: JSON.stringify({ email, planId }) });
+    status.textContent = `conta '${email}' agora está no plano '${planId}'`;
+  } catch (err) {
+    status.textContent = `erro: ${esc(err.message)}`;
   }
 });
 
