@@ -86,29 +86,6 @@ milhões nem inchar a equipe de TI* — é onde está a monetização:
   limpeza do caminho legado `X-Client-Id`/`client_key` (coexiste com
   `accounts` sem reconciliação) e do `ffmpeg` hardcoded.
 
-### Engine headless — API remota completa p/ app cliente independente (2026-09-09)
-
-Plano de 6 fases pra consumir o assistente-os como motor por uma aplicação
-separada, na LAN — contexto/validação contra o material do LionCorp e Fases
-0/1/3/5 (contrato único, chaves de API + CORS, verbos operacionais, isolamento)
-já entregues, ver Concluído. Em aberto:
-
-- **Fase 2 — MCP sobre HTTP (adiada, decisão do usuário 2026-09-09).**
-  Montar `/mcp` dentro do processo do daemon exige antes realocar o kernel
-  MCP inteiro (`McpServer`, `TOOLS`, `FAMILY_HANDLERS`, as 14 famílias,
-  `tools.test.ts` de 57 KB — ~20 arquivos) de `packages/tools/src/` pra
-  `packages/daemon/src/mcp/`, porque `tools` já depende de `@assistente-os/daemon`
-  e o import reverso viraria ciclo. `McpServer.handleMessage(msg)` já é
-  agnóstico de transporte — só falta o wrapper HTTP depois da realocação.
-  Retomar como passo dedicado, com `tools.test.ts` rodando a cada etapa.
-- **Fase 4 — SDK `@assistente-os/client`** (não iniciada). Extrair
-  `packages/web/src/api/{client,stream}.ts` pra um pacote agnóstico de
-  framework (REST + SSE + tipos do manifesto de `/api/openapi.json`);
-  `packages/web` reaponta pra ele como prova de que o contrato serve um
-  consumidor real.
-- Detalhe completo (contexto, validação LionCorp, arquivos-chave,
-  verificação): `docs/ENGINE-API.md` + plano de sessão arquivado.
-
 ### Modo Amigável — PAUSADO (decisão do usuário, 2026-09-04)
 
 Trabalho existente (Fases 0–4 + upload de conhecimento, ver Concluído) segue
@@ -333,11 +310,12 @@ nesta página.
 
 ## Concluído (histórico)
 
-### 2026-09-09 — Engine headless: contrato único, chaves de API, verbos operacionais, isolamento
+### 2026-09-09 — Engine headless: as 6 fases completas
 
-Fases 0/1/3/5 do plano "assistente-os como motor consumido por um app cliente
-independente" (contexto e validação contra o material do LionCorp em
-`docs/ENGINE-API.md`; Fase 2 adiada e Fase 4 não iniciada, ver Aberto).
+Plano "assistente-os como motor consumido por um app cliente independente"
+(contexto e validação contra o material do LionCorp em `docs/ENGINE-API.md`)
+— Fases 0/1/2/3/4/5, todas entregues (algumas com escopo reduzido, registrado
+em cada uma).
 
 - **Fase 0 — contrato**: `packages/daemon/src/routes/catalog.ts` vira fonte
   única de verdade do contrato HTTP (`REST_ROUTES` ~70 rotas, `SSE_EVENTS`,
@@ -364,8 +342,25 @@ independente" (contexto e validação contra o material do LionCorp em
   `soul-ownership-sweep.test.ts` (varre toda rota GET escopada por soul,
   derivada do catálogo) e `catalog-routes-exist.test.ts` (chama de verdade
   toda rota GET catalogada, falha no fallback 404 genérico).
+- **Fase 2 — MCP sobre HTTP**: kernel MCP inteiro (`McpServer`, `TOOLS`,
+  `FAMILY_HANDLERS`, `authorizeTool`, as 14 famílias) realocado de
+  `packages/tools/src/` pra `packages/daemon/src/mcp/` — `tools` já
+  dependia de `@assistente-os/daemon`, então importar `tools` de volta no
+  daemon pra montar `/mcp` seria ciclo. `packages/tools` vira lançador stdio
+  fino (`os-mcp`). Novo `POST /mcp` (JSON-RPC 2.0), **admin-only** — o
+  kernel não tem `ownerAccountId`, só allowlist de tool por soul, então
+  sessão de conta vazaria tool contra soul de outra conta; app cliente usa
+  chave de API de serviço com escopo `mcp`/`mcp:<família>`.
+  `MCP_TOOL_CATALOG` deixa de ser lista mantida à mão e passa a derivar do
+  kernel real.
+- **Fase 4 — SDK `@assistente-os/client`**: novo workspace, extrai
+  `packages/web/src/api/` pra um SDK sem dependência de React/Vite (exporta
+  TS fonte, como `packages/ui`); `packages/web` reapontado (dogfood). Não
+  inclui cliente MCP-over-HTTP (dependia da Fase 2, então adiado até agora).
 - Verificação: build limpo dos 6 pacotes backend, typecheck+lint (0 erros),
-  suíte completa de daemon/tools/cli sem falha atribuível.
+  suíte completa de daemon/tools/cli sem falha atribuível — inclui spawn real
+  do binário `os-mcp` via stdio (prova que o transporte que opencode/Claude
+  Desktop usam não regrediu com a realocação).
 
 ### 2026-09-06 — FM1: ingestão de PDF/DOCX/XLSX no upload self-service
 

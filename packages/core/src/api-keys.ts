@@ -114,7 +114,15 @@ export async function revokeApiKey(pool: Pool, keyHash: string): Promise<boolean
 /**
  * Um escopo é `*` (tudo, inclusive admin), um domínio (`chat`, `souls`,
  * `memory`, `admin`, …, os valores de `domain` em REST_ROUTES), ou
- * `<domínio>:read` / `<domínio>:write`. Para Fase 2: `mcp` / `mcp:<família>`.
+ * `<domínio>:read` / `<domínio>:write`.
+ *
+ * Domínio `mcp` (Fase 2, `POST /mcp`) é especial: QUALQUER `mcp:<família>`
+ * já basta pra alcançar a rota — o refinamento por família de verdade
+ * (guardian, souls, browser, …) é feito de novo, com precisão, DENTRO de
+ * `routes/mcp.ts` (`scopeAllowsTool`), porque só ali dá pra ver qual tool o
+ * corpo JSON-RPC está chamando. Sem este caso especial, uma chave com só
+ * `mcp:souls` (sem o `mcp` genérico) nunca alcançaria `/mcp` — o gate
+ * genérico de domínio não entende sufixo de família, só `:read`/`:write`.
  */
 export function scopeAllows(scopes: readonly string[], domain: string, method: string): boolean {
   if (scopes.includes("*")) return true;
@@ -123,6 +131,7 @@ export function scopeAllows(scopes: readonly string[], domain: string, method: s
     if (s === domain) return true;
     if (s === `${domain}:read` && isRead) return true;
     if (s === `${domain}:write` && !isRead) return true;
+    if (domain === "mcp" && s.startsWith("mcp:")) return true;
   }
   return false;
 }

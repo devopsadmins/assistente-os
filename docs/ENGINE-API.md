@@ -1,6 +1,7 @@
 # Engine API — o assistente-os como motor headless
 
-> Estado: **Fase 0 (contrato) em andamento.** Plano completo em
+> Estado: **Fases 0/1/2/3/5 feitas** (Fase 4 — SDK `@assistente-os/client` —
+> também feita). Plano completo em
 > `~/.claude/plans/sim-nisso-que-estou-enumerated-shore.md`.
 
 O objetivo é permitir que uma **aplicação cliente independente** (repo próprio,
@@ -47,11 +48,19 @@ Níveis por rota (campo `auth` em `REST_ROUTES`):
 ### Escopos de chave de API
 
 Um escopo é `*` (tudo, inclusive `admin`), um `domain` de `REST_ROUTES`
-(`chat`, `souls`, `memory`, `agenda`, `admin`, …) ou `<domain>:read` /
-`<domain>:write`. Fase 2 adiciona `mcp` / `mcp:<família>`. O gate central
-(`server.ts` → `matchRoute` + `scopeAllows`) recusa fora do escopo com
-`403 {code: "E_AUTHZ"}`. Rotas não catalogadas não são alcançáveis por chave
-(fail-closed) — mais um motivo para manter `REST_ROUTES` completo.
+(`chat`, `souls`, `memory`, `agenda`, `admin`, `mcp`, …) ou `<domain>:read` /
+`<domain>:write`. O gate central (`server.ts` → `matchRoute` + `scopeAllows`)
+recusa fora do escopo com `403 {code: "E_AUTHZ"}`. Rotas não catalogadas não
+são alcançáveis por chave (fail-closed) — mais um motivo para manter
+`REST_ROUTES` completo.
+
+**Domínio `mcp` tem um segundo nível de escopo**, `mcp:<família>` (`souls`,
+`memory`, `misc`, `journal`, `guardian`, `sales`, `specGrill`, `ado`,
+`browser`, `worktree`, `skill`, `soulCreate`, `editorial`, `clinic` — os
+mesmos nomes de `TOOL_FAMILIES_TABLE` em `mcp/kernel.ts`). Qualquer
+`mcp:<família>` já basta pra alcançar `POST /mcp` (o gate genérico de domínio
+não entende sufixo de família); a rota então refina de verdade, olhando qual
+tool o corpo JSON-RPC está chamando — ver `routes/mcp.ts` `scopeAllowsTool`.
 
 ### CORS
 
@@ -73,22 +82,46 @@ souls (identidade, contexto, buffer, health), chat (`fast`/`pro`, tiers
 memória/RAG (status, search, upload, limpar), grafo (list + observation),
 alma-base (`anotar`/`licao`/`decidir`), agenda, eventos, monitores, missões
 (list/run), pipelines (email/meeting ingest), custos/FinOps, voz, worktree,
-canais WhatsApp/Telegram, famílias, contas self-service + planos + allowlist,
-manifesto de execução, trace por id, métricas. Ver `REST_ROUTES`.
+canais WhatsApp/Telegram, famílias (admin-only), contas self-service + planos
++ allowlist, manifesto de execução, trace por id, métricas, chaves de API,
+backup, discriminator, **e as ~65 tools MCP via `POST /mcp`** (ver abaixo).
+Ver `REST_ROUTES`.
 
-### Só via MCP `os-mcp` — hoje **stdio + in-process** (não alcançável pela rede)
+### MCP sobre HTTP — `POST /mcp` (Fase 2)
 
-As ~65 tools de `MCP_TOOL_CATALOG`, com destaque para o que **não** tem
-equivalente REST: `graph_walk`, `soul_record_lesson`/`soul_get_lessons`,
-`soul_generate_aiia`, `guardian_*` (ciclo de golden-rules + aprovação HITL),
-`sales_*`, `spec_grill_plan`, `ado_*`, `browser_*`, `editorial_*`, `clinic_*`,
-`skill_create`/`skill_list`, `worktree_*`.
+O kernel MCP (`McpServer`, `TOOLS`, `FAMILY_HANDLERS`, `authorizeTool`, as 14
+famílias) foi **realocado de `packages/tools/src/` pra
+`packages/daemon/src/mcp/`** — `tools` já dependia de `@assistente-os/daemon`
+(`runOpenCode`, `meetingIngestPipeline`, `createWorktree`, etc.); importar
+`tools` de volta no daemon pra montar `/mcp` seria ciclo de dependência
+(`tsc -b`/npm workspaces recusam). `packages/tools` agora é só o lançador
+stdio fino (`os-mcp`, consumido por opencode/Claude Desktop), reexportando o
+kernel de `@assistente-os/daemon`.
 
-- **Gap:** o servidor MCP (`packages/tools`) só fala JSON-RPC por stdin/stdout e
-  importa `@assistente-os/core|memory|daemon` em processo (precisa de Postgres +
-  FS + `opencode`). Um cliente remoto não consegue consumir.
-- **Fecha em:** Fase 2 — transporte streamable-HTTP + SSE no servidor MCP,
-  co-localizado com o daemon e exposto em `/mcp`.
+`POST /mcp` é JSON-RPC 2.0 — uma requisição, uma resposta (`McpServer.handleMessage`
+já era agnóstico de transporte). **Não** é o streamable-HTTP completo da spec
+MCP (sem stream SSE de servidor, sem sessão resumível); suficiente pra
+`tools/list`/`tools/call` de um app cliente, que é o caso de uso real. Upgrade
+pra streamable-HTTP fica pra quando um cliente MCP de verdade (não o app
+próprio) precisar.
+
+**Admin-only, de propósito** (mesmo padrão de `/admin/*`/`/familias/*`): o
+kernel MCP não tem noção de `ownerAccountId` — só allowlist de tool por soul
+(`soul.config.agent.permissions.tools`), pensado pra um operador confiável
+rodando localmente. Abrir pra sessão de conta self-service deixaria uma conta
+chamar `graph_walk`/`soul_chat`/etc. contra a soul de OUTRA conta — mesma
+classe de vazamento que a Fase 5 fechou em `GET /souls/:id`, só que pior
+(execução, não só leitura). Um app cliente independente usa uma **chave de
+API de serviço** (`account_id` nulo, escopo `mcp` ou `mcp:<família>`).
+
+**Limite conhecido:** o corpo passa por `readJson` (teto de 1 MB, igual toda
+rota REST) — uma tool com payload grande (`sales_ingest_meeting` com
+transcrição longa) pode estourar; o stdio não tem esse teto. Não resolvido
+nesta fase.
+
+`MCP_TOOL_CATALOG` (`routes/catalog.ts`) agora é **derivado** de
+`TOOLS`/`TOOL_FAMILIES` (`mcp/kernel.ts`) — não existe mais como lista mantida
+à mão, então não tem como divergir da realidade.
 
 ### Só via CLI `os` — sem rota HTTP
 
@@ -144,11 +177,21 @@ foi reapontada pra eles ainda (dogfood adiado; não é gap de alcance).
 
 ## Consumo hoje (referência)
 
-- `packages/web` — SPA React que já consome o daemon via `src/api/{client,stream}.ts`
-  (threads + SSE). É a referência viva do padrão cliente-separado.
+- `packages/client` (`@assistente-os/client`, Fase 4) — SDK agnóstico de
+  framework (REST + SSE: `listThreads`/`createThread`/`getThreadMessages`,
+  `streamThreadMessage` + `SSEFrameParser`); sem dependência de React/Vite,
+  exporta TS fonte direto (como `packages/ui`, sem `dist/`) pra qualquer
+  bundler transpilar — inclusive um app fora do monorepo via dependência
+  `file:`.
+- `packages/web` — SPA React reapontada pra `@assistente-os/client` (dogfood
+  do SDK). É a referência viva do padrão cliente-separado.
 - `packages/desktop` — casca Electron sobre o build de `web`, apontada por
   `VITE_API_BASE_URL` a um daemon na LAN. Desliga `webSecurity` como gambiarra
-  na falta de CORS (a Fase 1 remove essa necessidade).
+  na falta de CORS (a Fase 1 já resolve isso quando configurado).
+- **App cliente independente** (decisão 2026-09-09): em construção em
+  `/home/support/terrasia_client`, fora deste monorepo — Vite + React 19 + TS
+  (mesma stack de `packages/web`), pra reaproveitar o encapsulamento Electron
+  já validado em `packages/desktop`.
 
 ## Fora de escopo (não adotar do LionCorp)
 

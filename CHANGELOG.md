@@ -8,6 +8,33 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Engine headless — Fase 2: MCP sobre HTTP** (2026-09-09). Kernel MCP
+  (`McpServer`, `TOOLS`, `FAMILY_HANDLERS`, `authorizeTool`, as 14 famílias:
+  souls, memory, misc, journal, guardian, sales, specGrill, ado, browser,
+  worktree, skill, soulCreate, editorial, clinic) **realocado de
+  `packages/tools/src/` pra `packages/daemon/src/mcp/`** — `tools` já
+  dependia de `@assistente-os/daemon`, então o daemon importar `tools` de
+  volta pra montar `/mcp` seria ciclo. `packages/tools` vira só o lançador
+  stdio fino (`os-mcp`), reexportando o kernel de `@assistente-os/daemon`;
+  `McpServer.handleMessage(msg)` já era agnóstico de transporte. Novo
+  `POST /mcp` (JSON-RPC 2.0, uma requisição/uma resposta — não é o
+  streamable-HTTP completo da spec) em `routes/mcp.ts`, **admin-only**: o
+  kernel não tem `ownerAccountId`, só allowlist de tool por soul, então abrir
+  pra sessão de conta vazaria tool contra soul de outra conta (mesma classe
+  do achado da Fase 5, só que execução em vez de leitura). Chave de API de
+  serviço com escopo `mcp`/`mcp:<família>` é o caminho pra um app cliente;
+  `scopeAllows` (`packages/core/src/api-keys.ts`) ganhou um caso especial pra
+  `mcp:<família>` alcançar a rota, com o refinamento de verdade (qual tool)
+  feito dentro de `routes/mcp.ts`. `MCP_TOOL_CATALOG` (`routes/catalog.ts`)
+  deixa de ser lista mantida à mão e passa a **derivar** de `TOOLS`/
+  `TOOL_FAMILIES` (novo em `mcp/kernel.ts`) — não tem mais como divergir.
+  Testes: 44 (suíte grande realocada, incl. o spawn real do binário `os-mcp`
+  via stdio) + 5 novas (`mcp-http.test.ts`) + 3 (`mcp-catalog.test.ts`
+  reescrito) verdes; regressão completa de daemon/tools/cli sem falha
+  atribuível.
+
 ### Corrigido
 
 - **Vazamento entre contas em `GET /souls/:id`** (2026-09-09, achado ao

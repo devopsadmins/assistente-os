@@ -8,9 +8,11 @@
  * `GET /api/capabilities` e `GET /api/openapi.json` agora derivam todos daqui.
  *
  * Ao ADICIONAR/REMOVER/RENOMEAR uma rota em `routes/*.ts`, atualize
- * `REST_ROUTES` no mesmo commit — `manifest.test.ts` falha se uma rota
- * montada não estiver catalogada (e vice-versa).
+ * `REST_ROUTES` no mesmo commit — `catalog-routes-exist.test.ts` falha se uma
+ * rota GET montada não estiver catalogada (e vice-versa).
  */
+
+import { TOOLS, TOOL_FAMILIES } from "../mcp/kernel.js";
 
 /** Versão do contrato/servidor exposta em /llms.txt, /api/capabilities e /api/openapi.json. */
 export const SERVER_VERSION = "0.1.0";
@@ -159,6 +161,9 @@ export const REST_ROUTES: readonly RestRoute[] = [
   { method: "POST", path: "/admin/backup", domain: "admin", auth: "admin", description: "Backup completo (souls/ + dump do Postgres) num ZIP em backupDir; aplica a retenção de 7 dias.", operational: true },
   { method: "POST", path: "/admin/discriminator", domain: "admin", auth: "admin", description: "Gate SPEC-GR4: julga um changesSummary (commits/stat/diff, calculado pelo cliente) via Guardian.", operational: true },
 
+  // ── MCP sobre HTTP (Fase 2) ─────────────────────────────────────────────
+  { method: "POST", path: "/mcp", domain: "mcp", auth: "admin", description: "JSON-RPC 2.0 pro kernel MCP (as 65 tools de MCP_TOOL_CATALOG). Admin-only — sem ownership por conta no kernel; app cliente usa chave de API de serviço com escopo mcp/mcp:<família>." },
+
   // ── Tempo real ────────────────────────────────────────────────────────
   { method: "WS", path: "/", domain: "realtime", auth: "query-token", description: "WebSocket de eventos em tempo real. Token via ?token=. Eventos escopados por conta." },
 ] as const;
@@ -253,101 +258,25 @@ export const ERROR_CODES: readonly { code: string; httpStatus: number; descripti
   { code: "E_POLICY_APPROVAL", httpStatus: 403, description: "Ação exige aprovação humana pendente (HITL)." },
 ] as const;
 
-/**
- * Catálogo das MCP tools expostas por `packages/tools` (13+ famílias).
- * Mantido aqui porque `daemon` não pode importar `tools` (ciclo:
- * tools→daemon). `mcp-catalog.test.ts` em `packages/tools` compara este array
- * com o `TOOLS` real e falha se divergir — a checagem que o comentário antigo
- * pedia "à mão" agora é um teste.
- */
 export interface McpToolEntry {
   name: string;
   family: string;
   description: string;
 }
 
-export const MCP_TOOL_CATALOG: readonly McpToolEntry[] = [
-  // souls
-  { name: "souls_list", family: "souls", description: "Lista as souls disponíveis." },
-  { name: "soul_context", family: "souls", description: "Contexto (perfil/contexto/licoes/pessoas/soul.md) de uma soul." },
-  { name: "soul_chat", family: "souls", description: "Roda opencode run headless na soul e retorna o texto." },
-  { name: "soul_create", family: "souls", description: "Cria uma soul (dry_run → plan_hash → commit)." },
-  // memory
-  { name: "memory_search", family: "memory", description: "Busca RAG na memória da soul (semântica; degrada p/ literal)." },
-  { name: "memory_index", family: "memory", description: "Indexa (idempotente) a pasta da soul." },
-  { name: "memory_status", family: "memory", description: "Contagem de chunks e grafo da soul." },
-  { name: "graph_list", family: "memory", description: "Lista entidades, relações e observações do grafo." },
-  { name: "graph_walk", family: "memory", description: "Percorre o grafo a partir de uma entidade, N saltos, filtro por relação." },
-  { name: "observation_add", family: "memory", description: "Adiciona uma observação ao grafo da soul." },
-  // journal
-  { name: "soul_anotar", family: "journal", description: "Anota item cronológico na sessão do dia. Idempotente na data." },
-  { name: "soul_licao", family: "journal", description: "Registra lição aprendida em licoes.md." },
-  { name: "soul_decidir", family: "journal", description: "Grava decisão no formato ADR em decisoes/." },
-  { name: "soul_record_lesson", family: "journal", description: "Registra incidente de agente; após 3 reincidências propõe regra global." },
-  { name: "soul_get_lessons", family: "journal", description: "Últimas lições registradas em licoes.md." },
-  { name: "soul_generate_aiia", family: "journal", description: "Gera o relatório AIIA (governança) da soul." },
-  // misc (core)
-  { name: "costs_summary", family: "misc", description: "Resumo de custos por soul e últimas chamadas." },
-  { name: "router_status", family: "misc", description: "Degraus do roteador e config do Ollama." },
-  { name: "action_execute", family: "misc", description: "Executa ação registrada na agenda ou dispara um fluxo." },
-  { name: "agenda_add", family: "misc", description: "Agenda uma tarefa para o daemon despachar." },
-  { name: "agenda_list", family: "misc", description: "Lista itens da agenda por status." },
-  { name: "agenda_update", family: "misc", description: "Edita título/corpo/prazo de item pending." },
-  { name: "agenda_cancel", family: "misc", description: "Cancela (soft) item pending." },
-  { name: "agenda_force", family: "misc", description: "Zera o prazo de item pending p/ despachar no próximo ciclo." },
-  { name: "mission_list", family: "misc", description: "Lista missões compostas do Mission Runner." },
-  { name: "mission_run", family: "misc", description: "Executa uma missão composta." },
-  // guardian
-  { name: "guardian_audit_execution", family: "guardian", description: "Julga a qualidade de uma execução via LLM (0-100, ISO/IEC 42001)." },
-  { name: "guardian_promote_golden_rule", family: "guardian", description: "Propõe manualmente uma regra de ouro (pendente de aprovação)." },
-  { name: "guardian_pending_rules", family: "guardian", description: "Lista propostas de regra de ouro pendentes." },
-  { name: "guardian_approve_rule", family: "guardian", description: "Aprova uma proposta (exige código enviado por Telegram)." },
-  { name: "guardian_reject_rule", family: "guardian", description: "Rejeita uma proposta pendente." },
-  { name: "guardian_get_golden_rules", family: "guardian", description: "Lista consolidada de regras de ouro em vigor." },
-  { name: "guardian_resend_approval_code", family: "guardian", description: "Reenvia o código de aprovação de uma proposta pendente." },
-  // sales
-  { name: "sales_ingest_meeting", family: "sales", description: "Ingere transcrição de reunião e extrai decisões/ações/objeções." },
-  { name: "sales_get_lead_brief", family: "sales", description: "Dossiê pré-call a partir do histórico de reuniões da soul." },
-  // spec-grill
-  { name: "spec_grill_plan", family: "specGrill", description: "Refina requisitos em duas fases antes de autorizar o modo build." },
-  // ADO
-  { name: "ado_list_projects", family: "ado", description: "Lista projetos da organização Azure DevOps." },
-  { name: "ado_list_repositories", family: "ado", description: "Lista repositórios de um projeto." },
-  { name: "ado_list_work_items", family: "ado", description: "Lista work items (WIQL)." },
-  { name: "ado_create_work_item", family: "ado", description: "Cria um work item." },
-  { name: "ado_get_work_item", family: "ado", description: "Detalhes de um work item." },
-  { name: "ado_update_work_item", family: "ado", description: "Atualiza campos de um work item." },
-  { name: "ado_list_pipelines", family: "ado", description: "Lista pipelines de um projeto." },
-  { name: "ado_run_pipeline", family: "ado", description: "Executa um pipeline." },
-  { name: "ado_list_pull_requests", family: "ado", description: "Lista pull requests de um repositório." },
-  { name: "ado_create_pull_request", family: "ado", description: "Cria um pull request." },
-  // browser
-  { name: "browser_navigate", family: "browser", description: "Abre uma URL em navegador headless. Retorna título e status HTTP." },
-  { name: "browser_click", family: "browser", description: "Clica em um elemento CSS na página da tarefa." },
-  { name: "browser_extract_text", family: "browser", description: "Extrai texto/tabelas estruturados da página." },
-  { name: "browser_screenshot", family: "browser", description: "Screenshot da página como PNG (base64)." },
-  { name: "browser_close", family: "browser", description: "Fecha a sessão do navegador da tarefa." },
-  { name: "browser_get_accessibility_tree", family: "browser", description: "Árvore de acessibilidade da página ativa." },
-  { name: "browser_execute_fix", family: "browser", description: "Injeta JavaScript na página para contornar um bloqueio." },
-  { name: "browser_audited_screenshot", family: "browser", description: "Screenshot com timestamp, hash SHA-256 e metadata para auditoria." },
-  // worktree
-  { name: "worktree_create", family: "worktree", description: "Cria um worktree git isolado." },
-  { name: "worktree_list", family: "worktree", description: "Lista worktrees gerenciados." },
-  { name: "worktree_destroy", family: "worktree", description: "Destrói um worktree." },
-  { name: "worktree_merge_locally", family: "worktree", description: "Faz merge local de um worktree." },
-  // skill
-  { name: "skill_create", family: "skill", description: "Cria um SKILL.md (global ou por soul) a partir de uma descrição." },
-  { name: "skill_list", family: "skill", description: "Lista skills disponíveis (global + por soul)." },
-  // editorial
-  { name: "editorial_add_idea", family: "editorial", description: "Adiciona uma pauta ao pipeline editorial." },
-  { name: "editorial_get_pipeline_status", family: "editorial", description: "Estado do pipeline editorial." },
-  { name: "editorial_generate_drafts", family: "editorial", description: "Gera rascunhos a partir das pautas." },
-  // clinic
-  { name: "clinic_triage_lead", family: "clinic", description: "Triagem de lead de clínica a partir de mensagem livre." },
-  { name: "clinic_prevent_noshow", family: "clinic", description: "Sugere ação anti-falta para um agendamento." },
-] as const;
+/**
+ * Catálogo das MCP tools, **derivado do kernel real** (`TOOLS`/`TOOL_FAMILIES`
+ * em `mcp/kernel.ts`) desde a Fase 2 (realocação do kernel MCP pra dentro do
+ * daemon) — antes disso era uma lista mantida à mão porque `daemon` não podia
+ * importar `packages/tools` (ciclo: tools→daemon). Sem lista manual, não tem
+ * como divergir: uma tool nova aparece aqui sozinha.
+ */
+export const MCP_TOOL_CATALOG: readonly McpToolEntry[] = TOOLS.map((t) => ({
+  name: t.name,
+  family: TOOL_FAMILIES[t.name] ?? "misc",
+  description: t.description,
+}));
 
-/** Verbos da CLI `os` sem equivalente HTTP hoje — alvo da Fase 3 do plano. */
 /**
  * Verbos `os <verbo>` sem chamada de rota direta hoje. `remoteViable: false`
  * = por natureza local (lê filesystem/git de quem roda a CLI, ou é o próprio

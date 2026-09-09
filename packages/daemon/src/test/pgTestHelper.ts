@@ -73,3 +73,18 @@ export async function tempDaemonHome(homeDir: string): Promise<{ cleanup: () => 
     },
   };
 }
+
+/**
+ * Aponta DATABASE_URL pra um schema novo e isolado, sem exigir uma home dir
+ * (McpServer resolve o pool via loadConfig() -> getPool(), não é derivado de
+ * um `home` que o caller já criou). Vinda de packages/tools/src/test/ na
+ * realocação do kernel MCP (Fase 2 do plano de engine headless) — usada por
+ * tools.test.ts/clinic-tools.test.ts/spec-ep2-tool-args.test.ts.
+ */
+export async function pointDatabaseUrlAtFreshSchema(): Promise<{ cleanup: () => Promise<void> }> {
+  const testDb = await createTestSchema();
+  const scopedUrl = new URL(baseUrl());
+  scopedUrl.searchParams.set("options", `-c search_path=${testDb.schema},public`);
+  process.env.DATABASE_URL = scopedUrl.toString();
+  return { cleanup: testDb.cleanup };
+}

@@ -10,15 +10,11 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b --pretty false",
-    "test": "node --test \"dist/test/**/*.test.js\""
+    "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
     "@assistente-os/core": "*",
-    "@assistente-os/daemon": "*",
-    "@assistente-os/memory": "*",
-    "ioredis": "^6.0.0",
-    "zod": "^3.25.76"
+    "@assistente-os/daemon": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

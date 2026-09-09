@@ -44,7 +44,8 @@ import { handleFriendlyAdmin } from "./routes/friendlyAdmin.js";
 import { handleAdminPlans } from "./routes/adminPlans.js";
 import { handleAdminApiKeys } from "./routes/adminApiKeys.js";
 import { handleAdminOps } from "./routes/adminOps.js";
-import { setRequestAccountId, bearerToken, resolveAccountBearer, resolveApiKeyBearer } from "./routes/accountAuth.js";
+import { handleMcp } from "./routes/mcp.js";
+import { setRequestAccountId, bearerToken, resolveAccountBearer, resolveApiKeyBearer, setRequestApiKeyScopes } from "./routes/accountAuth.js";
 import { matchRoute } from "./routes/catalog.js";
 import { scopeAllows } from "@assistente-os/core";
 
@@ -527,6 +528,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleAdminPlans,
   handleAdminApiKeys,
   handleAdminOps,
+  handleMcp,
 ];
 
 /** Handler de erro para os loops de background: loga + incrementa a métrica (nunca lança). */
@@ -592,6 +594,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
     const bearer = bearerToken(req);
     const apiKey = await resolveApiKeyBearer(bearer, context.home);
     if (apiKey) {
+      setRequestApiKeyScopes(req, apiKey.scopes);
       // `*` = equivalente ao token admin, alcança inclusive rota não catalogada.
       // Escopo restrito só alcança rota catalogada cujo `domain` casa.
       if (!apiKey.scopes.includes("*")) {
