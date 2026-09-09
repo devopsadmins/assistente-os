@@ -11,8 +11,22 @@ import {
   excluirFamilia,
 } from "@assistente-os/core";
 import { sendJson, type RequestContext } from "./shared.js";
+import { getRequestAccountId } from "./accountAuth.js";
 
-/** Rotas de famílias (onboarding do canal WhatsApp familiar): /familias, /familias/:id, /familias/:id/onboarding */
+/**
+ * Rotas de famílias (onboarding do canal WhatsApp familiar): /familias,
+ * /familias/:id, /familias/:id/onboarding.
+ *
+ * SPEC-ISO1 (Fase 5 do plano de engine headless, 2026-09-09): `familias` não
+ * tem `account_id` — é uma feature de operador (onboarding via WhatsApp), sem
+ * modelo de dono self-service. Antes desta checagem, essas rotas só exigiam
+ * `token` genérico — QUALQUER conta self-service autenticada (`/auth/login`)
+ * conseguia listar/ver/**apagar** dados de qualquer família (nome de criança,
+ * telefone, dados de anamnese) via o gate central, que só escopa
+ * `/souls/:id/*`. Confirmado ao vivo. Mesmo padrão de admin-only de
+ * `adminPlans.ts`/`adminApiKeys.ts`: re-checa aqui porque o gate central não
+ * sabe que `/familias` é sensível.
+ */
 export async function handleFamilias(
   req: IncomingMessage,
   res: ServerResponse,
@@ -20,6 +34,12 @@ export async function handleFamilias(
   path: string,
   context: RequestContext,
 ): Promise<boolean> {
+  if (!path.startsWith("/familias")) return false;
+  if (getRequestAccountId(req) != null) {
+    sendJson(res, 403, { error: "rota exclusiva do token admin" });
+    return true;
+  }
+
   const { home } = context;
 
   if (req.method === "GET" && path === "/familias") {

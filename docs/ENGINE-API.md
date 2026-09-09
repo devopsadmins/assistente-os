@@ -112,6 +112,36 @@ manda no corpo, já que o daemon não tem acesso ao git de quem chama).
 duplicação). `GET /trace/:id` e `GET /api/manifest` já existiam — a CLI só não
 foi reapontada pra eles ainda (dogfood adiado; não é gap de alcance).
 
+## Isolamento entre contas
+
+- **Gate central de posse de soul** (`server.ts` `soulBelongsToAccount`) cobre
+  todo path que casa `/^\/souls\/([^/]+)(?:\/|$)/` — inclusive o path SEM
+  segmento seguinte (`GET /souls/:id` sozinho). **Achado 2026-09-09:** até
+  aqui o regex exigia uma barra depois do id, então `GET /souls/:id` escapava
+  do gate — qualquer conta lia o config completo de qualquer soul só sabendo
+  o id. Corrigido; `soul-ownership-sweep.test.ts` varre automaticamente toda
+  rota GET escopada por soul (derivado de `REST_ROUTES`, não lista manual) e
+  quebra se alguma voltar a vazar.
+- **`/familias/*` é admin-only.** A tabela `familias` não tem `account_id` —
+  é uma feature de operador (onboarding via WhatsApp), sem modelo de dono
+  self-service. Até 2026-09-09 essas rotas só exigiam `token` genérico —
+  qualquer conta self-service conseguia listar/ver/apagar dados de qualquer
+  família (nome de criança, telefone, anamnese). `handleFamilias` agora
+  recusa toda sessão de conta com 403.
+- **`REST_ROUTES` teve entradas fantasmas removidas** (`GET /graph/:soulId`,
+  `GET /memory/status`, `POST /memory/search`, `GET /accounts/me/souls`) —
+  herdadas sem verificar da lista antiga mantida à mão. `catalog-routes-exist.test.ts`
+  chama de verdade toda rota GET catalogada contra um daemon real e falha se
+  cair no fallback 404 genérico — o par do `mcp-catalog.test.ts` (que faz o
+  mesmo para as tools MCP), agora para REST.
+- **`ownerAccountId` não tem FK de banco** (souls não são uma tabela — vivem
+  em `config.json` em disco). Não é uma lacuna de verdade hoje: a única
+  origem legítima de `ownerAccountId` é `getRequestAccountId(req)` (a própria
+  sessão autenticada), nunca um valor vindo do cliente — não existe caminho
+  pra gravar um `ownerAccountId` inválido/de outra conta pela API self-service.
+  Só entraria em jogo se a criação de soul algum dia aceitasse `ownerAccountId`
+  arbitrário no corpo (não aceita).
+
 ## Consumo hoje (referência)
 
 - `packages/web` — SPA React que já consome o daemon via `src/api/{client,stream}.ts`

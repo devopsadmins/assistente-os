@@ -682,9 +682,20 @@ function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
-/** true = a soul de um path `/souls/:id/*` pertence à conta (ou o path não é de soul). */
+/**
+ * true = a soul de um path `/souls/:id` ou `/souls/:id/*` pertence à conta
+ * (ou o path não é de soul).
+ *
+ * SPEC-ISO1 (achado 2026-09-09, Fase 5 do plano de engine headless): o regex
+ * original exigia uma barra DEPOIS do id (`/souls\/([^/]+)\/`), então cobria
+ * `/souls/:id/context`, `/souls/:id/chat` etc. mas deixava passar batido o
+ * path SEM segmento seguinte — `GET /souls/:id` sozinho. Confirmado ao vivo:
+ * uma conta sem nenhuma relação com a soul lia o config completo (incl.
+ * `ownerAccountId`) de qualquer soul só por saber o id. `(?:\/|$)` fecha as
+ * duas formas.
+ */
 async function soulBelongsToAccount(home: string, path: string, accountId: number): Promise<boolean> {
-  const m = path.match(/^\/souls\/([^/]+)\//);
+  const m = path.match(/^\/souls\/([^/]+)(?:\/|$)/);
   if (!m) return true;
   const { getSoul } = await import("@assistente-os/core");
   const soul = getSoul(home, decodeURIComponent(m[1]!));

@@ -8,6 +8,30 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ## [Não lançado]
 
+### Corrigido
+
+- **Vazamento entre contas em `GET /souls/:id`** (2026-09-09, achado ao
+  construir a Fase 5 do plano de engine headless). O gate central de posse de
+  soul (`server.ts`) exigia uma barra depois do id (`/souls\/([^/]+)\/`), então
+  cobria `/souls/:id/context`, `/souls/:id/chat` etc. mas deixava passar
+  batido `GET /souls/:id` sozinho — qualquer conta self-service autenticada
+  lia o config completo (incl. `ownerAccountId`) de qualquer soul de qualquer
+  outra conta só sabendo o id. Confirmado ao vivo antes do fix. Novo guard
+  `soul-ownership-sweep.test.ts` varre toda rota GET escopada por soul
+  (derivado de `REST_ROUTES`, não lista manual).
+- **`/familias/*` sem isolamento nenhum** — a tabela `familias` não tem
+  `account_id` (feature de operador, sem modelo de dono self-service); as
+  rotas só exigiam `token` genérico, então qualquer conta self-service
+  conseguia listar/ver/**apagar** dados de qualquer família (nome de criança,
+  telefone, anamnese). `handleFamilias` agora recusa sessão de conta com 403
+  (mesmo padrão de `adminPlans.ts`).
+- **4 entradas fantasmas em `REST_ROUTES`** (`GET /graph/:soulId`,
+  `GET /memory/status`, `POST /memory/search`, `GET /accounts/me/souls`) —
+  herdadas sem verificar da lista antiga mantida à mão que a Fase 0 deveria
+  ter substituído; não correspondiam a nenhum handler real. Removidas. Novo
+  guard `catalog-routes-exist.test.ts` chama de verdade toda rota GET
+  catalogada contra um daemon real (par do `mcp-catalog.test.ts` para REST).
+
 ### Adicionado
 
 - **Engine headless — Fase 3: verbos operacionais por HTTP** (2026-09-09).

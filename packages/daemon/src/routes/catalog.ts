@@ -77,9 +77,6 @@ export const REST_ROUTES: readonly RestRoute[] = [
   { method: "POST", path: "/souls/:id/limpar", domain: "memory", auth: "token", description: "Zera o índice RAG da soul." },
   { method: "GET", path: "/souls/:id/graph", domain: "memory", auth: "token", description: "Grafo de conhecimento da soul." },
   { method: "POST", path: "/souls/:id/graph/observation", domain: "memory", auth: "token", description: "Adiciona uma observação a uma entidade do grafo." },
-  { method: "GET", path: "/graph/:soulId", domain: "memory", auth: "token", description: "Alias de /souls/:id/graph (compat)." },
-  { method: "GET", path: "/memory/status", domain: "memory", auth: "token", description: "Stats de memória agregadas (compat)." },
-  { method: "POST", path: "/memory/search", domain: "memory", auth: "token", description: "Busca RAG (compat; corpo carrega soul)." },
 
   // ── Alma-base (journaling) ──────────────────────────────────────────────
   { method: "POST", path: "/souls/:id/anotar", domain: "journal", auth: "token", description: "Anota item cronológico na sessão do dia. Idempotente na data." },
@@ -132,19 +129,18 @@ export const REST_ROUTES: readonly RestRoute[] = [
   { method: "POST", path: "/api/telegram/send", domain: "channels", auth: "token", description: "Envia mensagem pelo Telegram." },
 
   // ── Famílias (Modo Convivência / LGPD) ─────────────────────────────────
-  { method: "GET", path: "/familias", domain: "familias", auth: "token", description: "Lista famílias (souls familia_<telefone>)." },
-  { method: "POST", path: "/familias", domain: "familias", auth: "token", description: "Cria uma família." },
-  { method: "GET", path: "/familias/:id", domain: "familias", auth: "token", description: "Detalhe de uma família." },
-  { method: "DELETE", path: "/familias/:id", domain: "familias", auth: "token", description: "Exclui uma família (direito ao apagamento, LGPD)." },
-  { method: "POST", path: "/familias/:id/encerrar", domain: "familias", auth: "token", description: "Encerra o vínculo de uma família." },
-  { method: "GET", path: "/familias/:id/onboarding", domain: "familias", auth: "token", description: "Estado do onboarding da família." },
+  { method: "GET", path: "/familias", domain: "familias", auth: "admin", description: "Lista famílias (souls familia_<telefone>). Sem modelo de dono self-service — admin-only." },
+  { method: "POST", path: "/familias", domain: "familias", auth: "admin", description: "Cria uma família." },
+  { method: "GET", path: "/familias/:id", domain: "familias", auth: "admin", description: "Detalhe de uma família." },
+  { method: "DELETE", path: "/familias/:id", domain: "familias", auth: "admin", description: "Exclui uma família (direito ao apagamento, LGPD)." },
+  { method: "POST", path: "/familias/:id/encerrar", domain: "familias", auth: "admin", description: "Encerra o vínculo de uma família." },
+  { method: "GET", path: "/familias/:id/onboarding", domain: "familias", auth: "admin", description: "Estado do onboarding da família." },
 
   // ── Contas self-service (Modo Amigável) ────────────────────────────────
   { method: "POST", path: "/auth/signup", domain: "accounts", auth: "public", description: "Cria conta (e-mail/senha scrypt) e devolve sessão." },
   { method: "POST", path: "/auth/login", domain: "accounts", auth: "public", description: "Autentica e devolve sessão de 30 dias." },
   { method: "POST", path: "/auth/logout", domain: "accounts", auth: "account", description: "Revoga a sessão atual." },
   { method: "GET", path: "/auth/me", domain: "accounts", auth: "account", description: "Conta e plano da sessão atual." },
-  { method: "GET", path: "/accounts/me/souls", domain: "accounts", auth: "account", description: "Souls da conta logada." },
   { method: "POST", path: "/accounts/me/souls", domain: "accounts", auth: "account", description: "Cria soul self-service (grants dentro da allowlist; modelo dentro do plano)." },
   { method: "GET", path: "/accounts/me/souls/:id", domain: "accounts", auth: "account", description: "Config editável de uma soul da conta." },
   { method: "PATCH", path: "/accounts/me/souls/:id", domain: "accounts", auth: "account", description: "Edita description/perfil/contexto/guardrails (re-clampados no teto global)." },
