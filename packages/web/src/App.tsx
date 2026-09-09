@@ -2,7 +2,11 @@ import { ThreadScreen } from "./screens/ThreadScreen";
 import type { ApiClientConfig } from "./api/client";
 
 const config: ApiClientConfig = {
-  baseUrl: "",
+  // Vazio (relativo) no dev normal, onde o proxy do Vite cuida do daemon.
+  // O build do shell desktop (packages/desktop) passa VITE_API_BASE_URL
+  // explicitamente porque ali não existe proxy — é o Electron falando
+  // direto com o daemon pela LAN.
+  baseUrl: (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "",
   token: import.meta.env.VITE_DEV_TOKEN as string,
 };
 

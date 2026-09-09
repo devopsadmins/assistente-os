@@ -41,6 +41,12 @@ playwright-report/
 # de quem rodou, não é portável entre máquinas.
 .vercel/
 
+# Build/empacotamento do shell desktop (packages/desktop) — gerado, embute
+# IP/token de LAN específicos de quem empacotou.
+packages/web/dist-desktop/
+packages/desktop/app/
+packages/desktop/release/
+
 # Material de trabalho de cliente — perfis, workshops, docs de engajamento.
 # Nomes reais de clientes não entram no repo do produto; o lugar disso é a
 # soul `consultoria_ia` (ver docs/ROADMAP.md e a nota de arquivamento).
