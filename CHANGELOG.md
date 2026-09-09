@@ -10,6 +10,44 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Engine headless — Fase 3: verbos operacionais por HTTP** (2026-09-09).
+  `POST /admin/backup` (backup completo — souls/ + dump do Postgres — com a
+  retenção de 7 dias) e `POST /admin/discriminator` (gate SPEC-GR4/Guardian
+  sobre um `changesSummary` calculado pelo cliente), ambas admin-only
+  (`packages/daemon/src/routes/adminOps.ts`). `createFullBackup`/
+  `pruneOldBackups` saíram de `packages/cli/src/backup.ts` para
+  `packages/daemon/src/backup.ts` — a CLI (`os backup`) passa a importar de
+  `@assistente-os/daemon` em vez de duplicar; `archiver`/`@types/archiver`
+  saíram das deps do `cli` e entraram nas do `daemon`. `CLI_ONLY_VERBS`
+  corrigido no catálogo: `migrate`/`import-sc` são import local de souls (não
+  migração de Postgres, como a descrição antiga dizia por engano) — ficam de
+  fora de propósito.
+- **Engine headless — Fase 1: chaves de API com escopo + CORS opt-in**
+  (2026-09-09). 3ª credencial aceita pelo daemon, além do token admin (abre
+  tudo) e da sessão de conta: `api_keys` (migração `0026_api_keys` —
+  `key_hash`/`label`/`scopes`/`account_id`/`expires_at`/`revoked_at`),
+  `packages/core/src/api-keys.ts` (`createApiKey`/`resolveApiKey`/
+  `revokeApiKey`/`listApiKeys`/`scopeAllows`). Um escopo é `*`, um `domain` de
+  `REST_ROUTES` (`chat`, `souls`, `admin`, …) ou `<domain>:read`/`:write`; o
+  gate central de `server.ts` casa a requisição contra o catálogo
+  (`matchRoute`) e recusa fora do escopo com `403 E_AUTHZ`. Chave presa a uma
+  conta herda o escopo de posse de soul; chave de serviço (`account_id` nulo)
+  age como admin dentro do escopo. Rota admin `GET/POST/DELETE
+  /admin/api-keys`. **CORS:** nova config `corsOrigins`
+  (`ASSISTENTE_OS_CORS_ORIGINS`, lista ou `*`; vazio = comportamento de
+  sempre) — o gate ecoa os cabeçalhos e responde o preflight `OPTIONS`. Token
+  admin e sessões de conta inalterados.
+- **Contrato de engine headless — Fase 0** (2026-09-09). Início do plano
+  "assistente-os como motor consumido por app cliente independente"
+  (`docs/ENGINE-API.md`). `packages/daemon/src/routes/catalog.ts` passa a ser a
+  **fonte única de verdade** do contrato HTTP: `REST_ROUTES` (todas as ~70
+  rotas, com `auth`/`domain`/`streaming`), `SSE_EVENTS`, `WS_EVENT_TYPES`,
+  `ERROR_CODES`, `MCP_TOOL_CATALOG` (~65 tools) e `CLI_ONLY_VERBS`. `GET
+  /llms.txt` e `GET /api/capabilities` deixam de ter listas divergentes mantidas
+  à mão (a de `handleCapabilities` tinha `mcpTools: []` como stub) e passam a
+  derivar do catálogo; novo `GET /api/openapi.json` gera OpenAPI 3.1 do mesmo
+  array. `capabilities.test.ts` falha em rota/tool duplicada ou catálogo
+  encolhido. Sem mudança de comportamento nas rotas existentes.
 - **Busca híbrida RAG (RRF), histórico/dedup no grafo e integração OpenRouter**
   (2026-09-08). Inspirado numa análise comparativa do projeto `deeplethe/utopia`:
   (1) `RAG_HYBRID_SEARCH` (off por padrão) — full-text nativo do Postgres

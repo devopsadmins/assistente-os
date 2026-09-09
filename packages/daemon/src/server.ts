@@ -30,7 +30,7 @@ import { handleThreads } from "./routes/threads.js";
 import { handleStream } from "./routes/stream.js";
 import { handleVoice } from "./routes/voice.js";
 import { handlePipelines } from "./routes/pipelines.js";
-import { handleLlmsTxt, handleCapabilities } from "./routes/llms-txt.js";
+import { handleLlmsTxt, handleCapabilities, handleOpenApi } from "./routes/llms-txt.js";
 import { handleWorktree } from "./routes/worktree.js";
 import { handleMissions } from "./routes/missions.js";
 import { handleMetrics } from "./routes/metrics.js";
@@ -42,7 +42,11 @@ import { handleAuth } from "./routes/auth.js";
 import { handleAccountSouls } from "./routes/accountSouls.js";
 import { handleFriendlyAdmin } from "./routes/friendlyAdmin.js";
 import { handleAdminPlans } from "./routes/adminPlans.js";
-import { setRequestAccountId, bearerToken, resolveAccountBearer } from "./routes/accountAuth.js";
+import { handleAdminApiKeys } from "./routes/adminApiKeys.js";
+import { handleAdminOps } from "./routes/adminOps.js";
+import { setRequestAccountId, bearerToken, resolveAccountBearer, resolveApiKeyBearer } from "./routes/accountAuth.js";
+import { matchRoute } from "./routes/catalog.js";
+import { scopeAllows } from "@assistente-os/core";
 
 /**
  * Servidor WS mínimo (handshake + enquadramento texto) sobre o mesmo HTTP.
@@ -511,6 +515,7 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handlePipelines,
   handleLlmsTxt,
   handleCapabilities,
+  handleOpenApi,
   handleWorktree,
   handleMissions,
   handleMetrics,
@@ -520,6 +525,8 @@ const ROUTE_HANDLERS: RouteHandler[] = [
   handleAccountSouls,
   handleFriendlyAdmin,
   handleAdminPlans,
+  handleAdminApiKeys,
+  handleAdminOps,
 ];
 
 /** Handler de erro para os loops de background: loga + incrementa a métrica (nunca lança). */
@@ -541,6 +548,28 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
 
   logger.info({ method: req.method, path }, "incoming request");
 
+  // CORS opt-in (ASSISTENTE_OS_CORS_ORIGINS). Sem origens configuradas, nada
+  // muda — o daemon é loopback/LAN. Só custa um loadConfig quando há header
+  // `Origin` (requisição de browser) OU é o preflight — o tráfego normal
+  // (monitoramento, CLI, MCP) nem toca nisso.
+  const corsOrigin =
+    req.headers.origin || req.method === "OPTIONS"
+      ? resolveCorsOrigin(req.headers.origin, loadConfig({ home: context.home }).corsOrigins)
+      : "";
+  if (corsOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", corsOrigin);
+    res.setHeader("Vary", "Origin");
+    if (corsOrigin !== "*") res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "authorization, content-type, x-client-id");
+    res.setHeader("Access-Control-Max-Age", "600");
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(corsOrigin ? 204 : 405);
+    res.end();
+    return;
+  }
+
   if (serveStatic(req, res, webDir)) return;
 
   // Exige Bearer token quando ASSISTENTE_OS_DAEMON_TOKEN está configurado.
@@ -557,25 +586,46 @@ async function handle(req: IncomingMessage, res: ServerResponse, context: Reques
   // memory.ts). Token admin nunca perde acesso a nada — só quando ele NÃO
   // bate é que se tenta o caminho de conta.
   if (token && path !== "/health" && !path.startsWith("/auth/") && !isAuthorized(req, token, path)) {
-    const accountId = await resolveAccountBearer(bearerToken(req), context.home);
-    if (accountId == null) {
-      sendJson(res, 401, { error: "não autorizado" });
-      return;
-    }
-    setRequestAccountId(req, accountId);
+    // Bearer não é o token admin. Duas credenciais alternativas, nesta ordem:
+    // (1) chave de API com escopo (prefixo `aos_`) — checada contra o `domain`
+    //     da rota catalogada; (2) sessão de conta (modo amigável).
+    const bearer = bearerToken(req);
+    const apiKey = await resolveApiKeyBearer(bearer, context.home);
+    if (apiKey) {
+      // `*` = equivalente ao token admin, alcança inclusive rota não catalogada.
+      // Escopo restrito só alcança rota catalogada cujo `domain` casa.
+      if (!apiKey.scopes.includes("*")) {
+        const route = matchRoute(req.method ?? "GET", path);
+        if (!route || !scopeAllows(apiKey.scopes, route.domain, req.method ?? "GET")) {
+          sendJson(res, 403, {
+            error: `chave de API sem escopo para ${req.method ?? "GET"} ${path}`,
+            code: "E_AUTHZ",
+          });
+          return;
+        }
+      }
+      // Chave presa a uma conta herda o escopo de posse de soul; chave de
+      // serviço (account_id nulo) segue como admin DENTRO do escopo concedido.
+      if (apiKey.accountId != null) {
+        setRequestAccountId(req, apiKey.accountId);
+        if (!(await soulBelongsToAccount(context.home, path, apiKey.accountId))) {
+          sendJson(res, 403, { error: "soul não pertence a esta conta" });
+          return;
+        }
+      }
+    } else {
+      const accountId = await resolveAccountBearer(bearer, context.home);
+      if (accountId == null) {
+        sendJson(res, 401, { error: "não autorizado" });
+        return;
+      }
+      setRequestAccountId(req, accountId);
 
-    // Guarda de posse CENTRALIZADA: sessão de conta só acessa /souls/<id>/* das
-    // próprias souls. Checar isso rota por rota (como fiz em chat.ts/memory.ts
-    // na Fase 1) deixa buraco em toda rota nova que esquecer o guard — upload,
-    // contexto, grafo, buffer, etc. já eram alcançáveis por qualquer conta pra
-    // qualquer soul antes desta checagem. Aqui cobre TODO /souls/:id/*, atual e
-    // futuro, num lugar só. GET /souls (sem id) fica de fora — já se
-    // autoescopa em souls.ts pela mesma razão de listar em vez de acessar uma.
-    const soulPathMatch = path.match(/^\/souls\/([^/]+)\//);
-    if (soulPathMatch) {
-      const { getSoul } = await import("@assistente-os/core");
-      const targetSoul = getSoul(context.home, decodeURIComponent(soulPathMatch[1]!));
-      if (!targetSoul || targetSoul.config.ownerAccountId !== accountId) {
+      // Guarda de posse CENTRALIZADA: sessão de conta só acessa /souls/<id>/*
+      // das próprias souls. Cobre TODO /souls/:id/* num lugar só — toda rota
+      // nova entra coberta. GET /souls (sem id) fica de fora, já se autoescopa
+      // em souls.ts.
+      if (!(await soulBelongsToAccount(context.home, path, accountId))) {
         sendJson(res, 403, { error: "soul não pertence a esta conta" });
         return;
       }
@@ -630,6 +680,23 @@ function defaultWebDir(): string {
 
 function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+
+/** true = a soul de um path `/souls/:id/*` pertence à conta (ou o path não é de soul). */
+async function soulBelongsToAccount(home: string, path: string, accountId: number): Promise<boolean> {
+  const m = path.match(/^\/souls\/([^/]+)\//);
+  if (!m) return true;
+  const { getSoul } = await import("@assistente-os/core");
+  const soul = getSoul(home, decodeURIComponent(m[1]!));
+  return !!soul && soul.config.ownerAccountId === accountId;
+}
+
+/** Resolve o valor de `Access-Control-Allow-Origin` para esta requisição, ou "" se CORS está off. */
+function resolveCorsOrigin(origin: string | undefined, allowed: string[]): string {
+  if (allowed.length === 0) return "";
+  if (allowed.includes("*")) return "*";
+  if (origin && allowed.includes(origin)) return origin;
+  return "";
 }
 
 function isAuthorized(req: IncomingMessage, token: string, path: string): boolean {

@@ -53,7 +53,7 @@ import {
 } from "@assistente-os/memory";
 import { startDaemon } from "@assistente-os/daemon";
 import { join } from "node:path";
-import { createFullBackup, pruneOldBackups } from "./backup.js";
+import { createFullBackup, pruneOldBackups } from "@assistente-os/daemon";
 import { runSkillCommand } from "./skill.js";
 import { runRagCommand, isIndexStale } from "./rag.js";
 import { runPromptCommand } from "./prompt.js";

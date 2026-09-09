@@ -17,6 +17,7 @@
     "@assistente-os/voice": "*",
     "@sentry/node": "^8.55.2",
     "adm-zip": "^0.6.0",
+    "archiver": "^8.0.0",
     "baileys": "^7.0.0-rc14",
     "busboy": "^1.6.0",
     "pdf-parse": "^1.1.1",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",
+    "@types/archiver": "^8.0.0",
     "@types/busboy": "^1.5.4"
   }
 }

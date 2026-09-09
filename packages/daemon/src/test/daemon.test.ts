@@ -702,7 +702,7 @@ test("daemon: GET /llms.txt expõe rotas, tools MCP e souls (loopback, sem token
     assert.match(res.headers.get("content-type") ?? "", /text\/markdown/);
     const body = await res.text();
     assert.match(body, /^# terrasIA/);
-    assert.ok(body.includes("## Rotas ativas"));
+    assert.ok(body.includes("## Rotas REST + WebSocket"));
     assert.ok(body.includes("## Catálogo de MCP Tools"));
     assert.ok(body.includes("spec_grill_plan"));
     assert.ok(body.includes("## Souls registradas"));

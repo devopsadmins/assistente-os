@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import { loadConfig, getPool, resolveAccountSession } from "@assistente-os/core";
+import { loadConfig, getPool, resolveAccountSession, resolveApiKey, type ApiKeyRecord } from "@assistente-os/core";
 
 /**
  * Contexto de conta resolvido pra UMA requisição (modo amigável, Fase 1).
@@ -42,4 +42,16 @@ export async function resolveAccountBearer(bearer: string, home: string): Promis
   const pool = getPool(loadConfig({ home }).databaseUrl);
   const session = await resolveAccountSession(pool, bearer);
   return session?.accountId ?? null;
+}
+
+/**
+ * Chamado pelo gate central em server.ts quando o Bearer NÃO bate com o token
+ * admin — tenta resolvê-lo como chave de API com escopo (prefixo `aos_`).
+ * `null` = não é uma chave válida/ativa; o gate então tenta o caminho de
+ * sessão de conta antes de recusar.
+ */
+export async function resolveApiKeyBearer(bearer: string, home: string): Promise<ApiKeyRecord | null> {
+  if (!bearer) return null;
+  const pool = getPool(loadConfig({ home }).databaseUrl);
+  return resolveApiKey(pool, bearer);
 }

@@ -574,4 +574,26 @@ export const MIGRATIONS: Migration[] = [
         ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'free' REFERENCES plans (id);
     `,
   },
+  {
+    // Chaves de API com escopo — 3ª credencial aceita pelo daemon, além do
+    // token admin e da sessão de conta. Uma chave não-admin: escopos
+    // explícitos (ver SCOPES em api-keys.ts), revogável, opcionalmente
+    // presa a uma conta (account_id NÃO nulo ⇒ herda o escopo de posse de
+    // soul daquela conta). key_hash = sha256(chave em claro) — a chave só
+    // existe em claro no retorno de createApiKey.
+    id: "0026_api_keys",
+    sql: `
+      CREATE TABLE IF NOT EXISTS api_keys (
+        key_hash TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        scopes TEXT[] NOT NULL DEFAULT '{}',
+        account_id BIGINT REFERENCES accounts (id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
+        last_used_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_keys_account ON api_keys (account_id);
+    `,
+  },
 ];

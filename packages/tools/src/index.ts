@@ -80,7 +80,9 @@ export interface Tool {
   };
 }
 
-const TOOLS: Tool[] = [
+/** Catálogo completo das tools MCP. Exportado para o guard de paridade com
+ *  `MCP_TOOL_CATALOG` (packages/daemon/src/routes/catalog.ts). */
+export const TOOLS: Tool[] = [
   ...SOULS_TOOLS,
   ...MEMORY_TOOLS,
   ...MISC_TOOLS,

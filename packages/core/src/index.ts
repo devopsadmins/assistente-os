@@ -13,6 +13,7 @@ export * from "./entityQueue.js";
 export * from "./advisoryLock.js";
 export * from "./sessions.js";
 export * from "./accounts.js";
+export * from "./api-keys.js";
 export * from "./threads.js";
 export * from "./friendlyAllowlist.js";
 export * from "./rag-eval-runs.js";

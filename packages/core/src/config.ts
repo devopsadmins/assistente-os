@@ -60,6 +60,14 @@ export interface AssistenteOsConfig {
   routerTiers: string[];
   /** Secret compartilhado para verificar webhooks assinados (HMAC-SHA256). */
   webhookSecret?: string;
+  /**
+   * Origens permitidas para CORS (env ASSISTENTE_OS_CORS_ORIGINS, lista
+   * separada por vírgula, ou `*`). Vazio = sem cabeçalhos CORS (comportamento
+   * de sempre; o daemon é loopback/LAN). Uma app cliente separada em browser
+   * precisa da própria origem aqui. `*` não combina com credenciais — o gate
+   * só ecoa `Allow-Credentials` quando a origem é explícita.
+   */
+  corsOrigins: string[];
   /** Limite padrão de turnos por sessão (env ASSISTENTE_OS_MAX_TURNS). */
   defaultMaxTurns: number;
   /** Azure DevOps organization name (e.g., 'sousalimaconsultoria') */
@@ -190,6 +198,11 @@ export function loadConfig(overrides: Partial<AssistenteOsConfig> = {}): Assiste
         : null) ||
       ["local", "zen", "soul"],
     webhookSecret: overrides.webhookSecret ?? process.env.ASSISTENTE_OS_WEBHOOK_SECRET,
+    corsOrigins:
+      overrides.corsOrigins ??
+      (process.env.ASSISTENTE_OS_CORS_ORIGINS
+        ? process.env.ASSISTENTE_OS_CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+        : []),
     defaultMaxTurns: overrides.defaultMaxTurns ?? (Number(process.env.ASSISTENTE_OS_MAX_TURNS) || 10),
     adoOrg: overrides.adoOrg ?? process.env.AZURE_DEVOPS_ORG ?? process.env.ADO_ORG,
     adoPat: overrides.adoPat ?? process.env.AZURE_DEVOPS_PAT ?? process.env.ADO_PAT,

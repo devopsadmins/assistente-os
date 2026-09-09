@@ -1,4 +1,6 @@
 export * from "./server.js";
+export * from "./routes/catalog.js";
+export * from "./backup.js";
 export * from "./runner.js";
 export * from "./langgraph-runner.js";
 export * from "./langgraph-tools.js";
