@@ -86,6 +86,29 @@ milhões nem inchar a equipe de TI* — é onde está a monetização:
   limpeza do caminho legado `X-Client-Id`/`client_key` (coexiste com
   `accounts` sem reconciliação) e do `ffmpeg` hardcoded.
 
+### Engine headless — API remota completa p/ app cliente independente (2026-09-09)
+
+Plano de 6 fases pra consumir o assistente-os como motor por uma aplicação
+separada, na LAN — contexto/validação contra o material do LionCorp e Fases
+0/1/3/5 (contrato único, chaves de API + CORS, verbos operacionais, isolamento)
+já entregues, ver Concluído. Em aberto:
+
+- **Fase 2 — MCP sobre HTTP (adiada, decisão do usuário 2026-09-09).**
+  Montar `/mcp` dentro do processo do daemon exige antes realocar o kernel
+  MCP inteiro (`McpServer`, `TOOLS`, `FAMILY_HANDLERS`, as 14 famílias,
+  `tools.test.ts` de 57 KB — ~20 arquivos) de `packages/tools/src/` pra
+  `packages/daemon/src/mcp/`, porque `tools` já depende de `@assistente-os/daemon`
+  e o import reverso viraria ciclo. `McpServer.handleMessage(msg)` já é
+  agnóstico de transporte — só falta o wrapper HTTP depois da realocação.
+  Retomar como passo dedicado, com `tools.test.ts` rodando a cada etapa.
+- **Fase 4 — SDK `@assistente-os/client`** (não iniciada). Extrair
+  `packages/web/src/api/{client,stream}.ts` pra um pacote agnóstico de
+  framework (REST + SSE + tipos do manifesto de `/api/openapi.json`);
+  `packages/web` reaponta pra ele como prova de que o contrato serve um
+  consumidor real.
+- Detalhe completo (contexto, validação LionCorp, arquivos-chave,
+  verificação): `docs/ENGINE-API.md` + plano de sessão arquivado.
+
 ### Modo Amigável — PAUSADO (decisão do usuário, 2026-09-04)
 
 Trabalho existente (Fases 0–4 + upload de conhecimento, ver Concluído) segue
@@ -108,10 +131,13 @@ aqui só o resumo:
   build) + roteamento em `server.ts` (`/` deveria servir `packages/web` com
   sessão de conta válida, `/hud` exigir token admin). `FM5` do backlog de
   friendly é o mesmo item que B-DEPLOY-2 — não tratar como dois.
-- **Gaps de isolamento** (arquitetura, não UX — fora do board de friendly mas
-  documentados lá): `soul.config.ownerAccountId` não tem FK, isolamento é só
-  por aplicação rota-a-rota, sem teste que quebre ao esquecer o gate numa
-  rota nova; `excluirFamilia` (LGPD) não tem dimensão de conta.
+- ~~**Gaps de isolamento**~~ **FEITO 2026-09-09** (Fase 5 do plano de engine
+  headless, ver Concluído) — teste que quebra ao esquecer o gate numa rota
+  nova existe agora (`soul-ownership-sweep.test.ts`, achou e fechou um
+  vazamento real em `GET /souls/:id`); `/familias/*` (não `excluirFamilia`
+  isoladamente) ganhou dimensão de conta (admin-only, já que a tabela não tem
+  `account_id`). FK em `ownerAccountId` avaliada e documentada como
+  não-lacuna — ver `docs/ENGINE-API.md` § Isolamento entre contas.
 
 ### RAG / medição
 
@@ -306,6 +332,40 @@ nesta página.
 ---
 
 ## Concluído (histórico)
+
+### 2026-09-09 — Engine headless: contrato único, chaves de API, verbos operacionais, isolamento
+
+Fases 0/1/3/5 do plano "assistente-os como motor consumido por um app cliente
+independente" (contexto e validação contra o material do LionCorp em
+`docs/ENGINE-API.md`; Fase 2 adiada e Fase 4 não iniciada, ver Aberto).
+
+- **Fase 0 — contrato**: `packages/daemon/src/routes/catalog.ts` vira fonte
+  única de verdade do contrato HTTP (`REST_ROUTES` ~70 rotas, `SSE_EVENTS`,
+  `WS_EVENT_TYPES`, `ERROR_CODES`, `MCP_TOOL_CATALOG` 65 tools,
+  `CLI_ONLY_VERBS`). `/llms.txt` e `/api/capabilities` passam a derivar dele
+  (antes tinham listas divergentes mantidas à mão, uma com `mcpTools: []`
+  como stub). Novo `GET /api/openapi.json`.
+- **Fase 1 — chaves de API + CORS**: migração `0026_api_keys` +
+  `packages/core/src/api-keys.ts` — chave `aos_…` com escopos (`*` |
+  `<domain>` | `<domain>:read|write`), revogável, opcionalmente presa a
+  conta; `GET/POST/DELETE /admin/api-keys`. CORS opt-in
+  (`ASSISTENTE_OS_CORS_ORIGINS`). Token admin e sessão de conta inalterados.
+- **Fase 3 — verbos operacionais** (escopo reduzido — a CLI não fala HTTP
+  com o daemon, dogfood de paridade ficou pendente): `POST /admin/backup`,
+  `POST /admin/discriminator`. `createFullBackup`/`pruneOldBackups`
+  migraram de `packages/cli` pra `packages/daemon/src/backup.ts`.
+- **Fase 5 — isolamento**: achado real, não hipotético — `GET /souls/:id`
+  (sem segmento seguinte) escapava do gate central de posse de soul,
+  qualquer conta self-service lia o config completo de qualquer soul de
+  qualquer outra conta só sabendo o id; corrigido. `/familias/*` não tinha
+  isolamento nenhum (tabela sem `account_id`), virou admin-only. 4 entradas
+  fantasmas em `REST_ROUTES` (herdadas da lista antiga sem verificar)
+  removidas. Dois novos guards de drift permanentes:
+  `soul-ownership-sweep.test.ts` (varre toda rota GET escopada por soul,
+  derivada do catálogo) e `catalog-routes-exist.test.ts` (chama de verdade
+  toda rota GET catalogada, falha no fallback 404 genérico).
+- Verificação: build limpo dos 6 pacotes backend, typecheck+lint (0 erros),
+  suíte completa de daemon/tools/cli sem falha atribuível.
 
 ### 2026-09-06 — FM1: ingestão de PDF/DOCX/XLSX no upload self-service
 
