@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { startFakeDaemon, type FakeDaemon } from "../test/fakeDaemon";
 import { useThreads } from "./useThreads";
-import type { ApiClientConfig } from "../api/client";
+import type { ApiClientConfig } from "@assistente-os/client";
 
 let daemon: FakeDaemon;
 

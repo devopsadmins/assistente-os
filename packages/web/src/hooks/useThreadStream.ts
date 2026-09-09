@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getThreadMessages, type ApiClientConfig } from "../api/client";
-import { streamThreadMessage, type StreamEvent } from "../api/stream";
+import { getThreadMessages, streamThreadMessage, type ApiClientConfig, type StreamEvent } from "@assistente-os/client";
 
 export type DisplayMessage =
   // `id` is a real server row id for assistant turns (`done.messageId`),

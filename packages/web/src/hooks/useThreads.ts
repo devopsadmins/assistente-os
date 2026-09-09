@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { createThread, listThreads, type ApiClientConfig } from "../api/client";
-import type { Thread } from "../api/types";
+import { createThread, listThreads, type ApiClientConfig, type Thread } from "@assistente-os/client";
 
 export interface UseThreadsResult {
   threads: Thread[];

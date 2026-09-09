@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { Markdown, Message, MessageList, StreamingText } from "@assistente-os/ui";
-import type { ApiClientConfig } from "../api/client";
+import type { ApiClientConfig } from "@assistente-os/client";
 import { useThreadStream } from "../hooks/useThreadStream";
 import { useThreads } from "../hooks/useThreads";
 

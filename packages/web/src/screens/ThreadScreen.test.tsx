@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { startFakeDaemon, type FakeDaemon } from "../test/fakeDaemon";
 import { ThreadScreen } from "./ThreadScreen";
-import type { ApiClientConfig } from "../api/client";
+import type { ApiClientConfig } from "@assistente-os/client";
 
 let daemon: FakeDaemon;
 // Capturado pelo handler, verificado no corpo do teste — ver a mesma nota em

@@ -1,6 +1,7 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { SSEFrameParser, type StreamEvent, streamThreadMessage, type ApiClientConfig } from "./stream";
-import { startFakeDaemon, type FakeDaemon } from "../test/fakeDaemon";
+import { SSEFrameParser, type StreamEvent, streamThreadMessage } from "./stream";
+import type { ApiClientConfig } from "./client";
+import { startFakeDaemon, type FakeDaemon } from "./test/fakeDaemon";
 
 describe("SSEFrameParser", () => {
   it("faz parsing de um frame único recebido de uma vez", () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startFakeDaemon, type FakeDaemon } from "../test/fakeDaemon";
+import { startFakeDaemon, type FakeDaemon } from "./test/fakeDaemon";
 import { ApiError, createThread, getThreadMessages, listThreads, type ApiClientConfig } from "./client";
 
 let daemon: FakeDaemon;

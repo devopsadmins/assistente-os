@@ -34,6 +34,19 @@ config sensível (`config.ts`, `policy.ts`, `migrations.ts`, `manifest.ts`,
 
 ### Adicionado
 
+- **Engine headless — Fase 4: SDK cliente `@assistente-os/client`**
+  (2026-09-09). Novo workspace `packages/client` — extrai o que vivia em
+  `packages/web/src/api/` (`client.ts`, `stream.ts`, `types.ts`) pra um
+  pacote sem dependência de React/Vite, no molde de `@assistente-os/ui`
+  (exporta TS fonte direto, sem `dist/`, transpilado pelo bundler de quem
+  consome). `listThreads`/`createThread`/`getThreadMessages`,
+  `streamThreadMessage` + `SSEFrameParser` (parser incremental de frames
+  SSE), tipos `Thread`/`ThreadMessage`. `packages/web` reapontado pra
+  importar dele (dogfood — prova que o SDK serve um consumidor real antes de
+  existir um segundo). Pensado pra também servir, via dependência `file:`,
+  o futuro app cliente independente (`/home/support/terrasia_client`, Vite +
+  React 19 + TS — mesma stack do `packages/web`, pra reaproveitar o
+  encapsulamento Electron já validado em `packages/desktop`).
 - **Engine headless — Fase 3: verbos operacionais por HTTP** (2026-09-09).
   `POST /admin/backup` (backup completo — souls/ + dump do Postgres — com a
   retenção de 7 dias) e `POST /admin/discriminator` (gate SPEC-GR4/Guardian

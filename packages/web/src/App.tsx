@@ -1,5 +1,5 @@
 import { ThreadScreen } from "./screens/ThreadScreen";
-import type { ApiClientConfig } from "./api/client";
+import type { ApiClientConfig } from "@assistente-os/client";
 
 const config: ApiClientConfig = {
   // Vazio (relativo) no dev normal, onde o proxy do Vite cuida do daemon.

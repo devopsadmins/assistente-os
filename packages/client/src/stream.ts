@@ -1,10 +1,5 @@
 import type { ApiClientConfig } from "./client";
 
-// Re-exported only so `./stream` can stand in for `./client` in an existing
-// test import path — not an intentional public re-export barrel. Import
-// `ApiClientConfig` from `./client` directly in new code.
-export type { ApiClientConfig };
-
 export type StreamEvent =
   | { type: "step"; step: string; message?: string; tool?: string }
   | { type: "token"; text: string }

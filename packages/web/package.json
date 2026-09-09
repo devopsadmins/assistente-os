@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@assistente-os/client": "*",
     "@assistente-os/ui": "*",
     "react": "19.0.0",
     "react-dom": "19.0.0"

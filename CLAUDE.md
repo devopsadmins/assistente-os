@@ -56,11 +56,12 @@ etc.) or fix the root script to add `--if-present` until this is resolved.
 | `cli` | the `os` command |
 | `voice` | VAD + Whisper STT + TTS |
 | `ui` | shared React 19 component library (`@assistente-os/ui`) — Radix primitives, OKLCH theme tokens, Ladle catalog; the frontend dependency zone |
+| `client` | framework-agnostic REST + SSE SDK (`@assistente-os/client`) — `listThreads`/`createThread`/`getThreadMessages`, `streamThreadMessage` + `SSEFrameParser`; no React/Vite dependency, exports raw TS source (like `ui`, no `dist/`) so any bundler (this repo's `web`, or an external app via a `file:` dependency) transpiles it directly |
 | `web` | Vite + React 19 SPA (`packages/web`) — in-flight thread-based redesign, **not yet the prod entrypoint** (paused with Modo Amigável; see `docs/ROADMAP.md`) |
 | `desktop` | Electron shell (`npm run dev:desktop` at the root) loading the built `web` SPA — packages a portable `.zip` for Windows (`package:win`) pointed at a LAN daemon via `VITE_API_BASE_URL`; no source dependency on other packages, just consumes `web`'s build output |
 
 Package dep graph: `memory`/`voice` → `core`; `daemon` → `core`/`memory`/`voice`;
-`tools` → `core`/`memory`/`daemon`; `cli` → `core`/`memory`/`daemon`; `web` → `ui`.
+`tools` → `core`/`memory`/`daemon`; `cli` → `core`/`memory`/`daemon`; `web` → `ui`/`client`.
 The reverse never happens: `core` must not import from `memory` — this is an enforced
 convention (`CONTRIBUTING.md`), not just an emergent pattern.
 
