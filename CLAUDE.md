@@ -37,6 +37,12 @@ Library + `expectNoA11yViolations`). DB tests create an isolated Postgres schema
 (`packages/*/src/test/pgTestHelper.ts`); `DATABASE_URL` or `DATABASE_URL_TEST` points at the
 instance. Without Postgres only the non-DB subset runs.
 
+**`npm run build` currently fails at the repo root**: it runs `npm run build --workspaces`
+without `--if-present`, and `packages/desktop` (new, Electron) has no `build` script (only
+`dev`/`build:web`/`prepare:app`/`package:win`) — npm errors with "Missing script: build" on
+that workspace. Build individual workspaces (`npm run build --workspace=@assistente-os/core`,
+etc.) or fix the root script to add `--if-present` until this is resolved.
+
 ## Architecture — the big picture
 
 **Monorepo, npm workspaces (`packages/*`), ESM (`"type": "module"`). Backend packages: `tsc -b`, `src/` → `dist/` (gitignored). Frontend packages (`ui`/`web`): `tsc --noEmit` + Vite, no `dist/`.**
@@ -51,6 +57,7 @@ instance. Without Postgres only the non-DB subset runs.
 | `voice` | VAD + Whisper STT + TTS |
 | `ui` | shared React 19 component library (`@assistente-os/ui`) — Radix primitives, OKLCH theme tokens, Ladle catalog; the frontend dependency zone |
 | `web` | Vite + React 19 SPA (`packages/web`) — in-flight thread-based redesign, **not yet the prod entrypoint** (paused with Modo Amigável; see `docs/ROADMAP.md`) |
+| `desktop` | Electron shell (`npm run dev:desktop` at the root) loading the built `web` SPA — packages a portable `.zip` for Windows (`package:win`) pointed at a LAN daemon via `VITE_API_BASE_URL`; no source dependency on other packages, just consumes `web`'s build output |
 
 Package dep graph: `memory`/`voice` → `core`; `daemon` → `core`/`memory`/`voice`;
 `tools` → `core`/`memory`/`daemon`; `cli` → `core`/`memory`/`daemon`; `web` → `ui`.
